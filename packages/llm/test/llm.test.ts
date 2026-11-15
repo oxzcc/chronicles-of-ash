@@ -117,6 +117,22 @@ describe("OpenRouter", () => {
   });
   it("ошибка HTTP — LlmError с признаком повтора", async () => {
     const fetchImpl = (async () => new Response("rate limited", { status: 429 })) as unknown as typeof fetch;
-    await expect(new OpenRouterProvider({ apiKey: "k", fetchImpl }).complete({ model: "m", messages: [] })).rejects.toMatchObject({ status: 429, retryable: true });
+    await expect(new OpenRouterProvider({ apiKey: "k", fetchImpl, retries: 0 }).complete({ model: "m", messages: [] })).rejects.toMatchObject({ status: 429, retryable: true });
+  });
+  it("повторяет после сбоя сети, но не после 400", async () => {
+    let n = 0;
+    const flaky = (async () => {
+      if (n++ === 0) throw new TypeError("fetch failed");
+      return new Response('data: {"choices":[{"delta":{"content":"ок"}}]}\n\ndata: [DONE]\n\n');
+    }) as unknown as typeof fetch;
+    expect((await new OpenRouterProvider({ apiKey: "k", fetchImpl: flaky }).complete({ model: "m", messages: [] })).text).toBe("ок");
+    let m = 0;
+    const bad = (async () => (m++, new Response("bad", { status: 400 }))) as unknown as typeof fetch;
+    await expect(new OpenRouterProvider({ apiKey: "k", fetchImpl: bad }).complete({ model: "m", messages: [] })).rejects.toMatchObject({ status: 400 });
+    expect(m).toBe(1);
+  });
+  it("ответ ассистента с вызовом инструмента — content строка, не null", () => {
+    const w = toWireMessages([{ role: "assistant", content: "", toolCalls: [{ id: "1", name: "roll_check", arguments: "{}" }] }]);
+    expect(w[0]).toMatchObject({ content: "" });
   });
 });
