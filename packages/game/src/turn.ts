@@ -42,6 +42,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       kind, action: label, narration: resp.narration, speaker: resp.speaker?.name ?? null, line: resp.line,
       suggestions: resp.suggestions, response: resp, applied, rolls: r.rolls, combatEvents: [],
       model: r.model, promptVersion: r.promptVersion, usage: r.usage, degraded: r.degraded,
+      ...(r.degraded ? { raw: r.rawText.slice(0, 8000) } : {}),
     });
     return { resp, applied };
   };

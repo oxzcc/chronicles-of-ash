@@ -36,7 +36,7 @@ export async function newGame(o: { router: ModelRouter; tier: Tier; draft: Chara
   let campaign: Campaign | null = null;
   for (let attempt = 0; attempt < 2 && !campaign; attempt++) {
     const r = await provider.complete({
-      model, signal: o.signal, maxTokens: 1500, temperature: 1,
+      model, signal: o.signal, maxTokens: 3000, temperature: 1,
       messages: [{ role: "user", content: questPrompt(character) }],
     });
     usage = addUsage(usage, r.usage);

@@ -33,6 +33,8 @@ export interface TurnRecord {
   promptVersion: string;
   usage: Usage;
   degraded: boolean;
+  /** Сырой ответ модели — только когда JSON не разобрался, для разбора промптов. */
+  raw?: string;
 }
 
 /** События для клиента по ходу хода (SSE). */

@@ -1,4 +1,4 @@
-import { LlmError, emptyUsage, type ChatMessage, type CompletionRequest, type CompletionResult, type LlmProvider, type ToolCall } from "./types";
+import { LlmError, emptyUsage, type ReasoningEffort, type ChatMessage, type CompletionRequest, type CompletionResult, type LlmProvider, type ToolCall } from "./types";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -59,6 +59,11 @@ export interface OpenRouterOptions {
   fetchImpl?: typeof fetch;
   /** Повторы при сбое сети и 429/5xx до начала ответа. */
   retries?: number;
+  /**
+   * Усилие рассуждений по умолчанию. Без него Sonnet 5.5 тратит до 90% выходных токенов
+   * на скрытые рассуждения: ход в 2–3 раза дольше и дороже, ответ может обрезаться.
+   */
+  reasoningEffort?: ReasoningEffort;
 }
 
 export class OpenRouterProvider implements LlmProvider {
@@ -93,7 +98,8 @@ export class OpenRouterProvider implements LlmProvider {
         messages: toWireMessages(req.messages),
         stream: true,
         usage: { include: true },
-        max_tokens: req.maxTokens ?? 1200,
+        max_tokens: req.maxTokens ?? 2000,
+        ...((req.reasoningEffort ?? this.opts.reasoningEffort) ? { reasoning: { effort: req.reasoningEffort ?? this.opts.reasoningEffort } } : {}),
         temperature: req.temperature ?? 0.9,
         ...(req.tools?.length
           ? { tools: req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) }

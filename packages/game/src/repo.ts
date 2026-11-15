@@ -104,7 +104,7 @@ export async function saveTurn(db: Db, c: { id: string; characterId: string; tur
           narration: r.narration,
           speaker: r.speaker,
           line: r.line,
-          response: { ...(r.response ?? {}), suggestions: r.suggestions, combatEvents: r.combatEvents },
+          response: { ...(r.response ?? {}), suggestions: r.suggestions, combatEvents: r.combatEvents, ...(r.raw ? { raw: r.raw } : {}) },
           applied: r.applied,
           rolls: r.rolls,
           model: r.model,

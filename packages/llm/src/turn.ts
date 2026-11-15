@@ -69,6 +69,7 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
       model: o.model,
       messages,
       tools: allowTools ? [rollCheckTool] : undefined,
+      maxTokens: 2000,
       signal: o.signal,
       onText,
     });

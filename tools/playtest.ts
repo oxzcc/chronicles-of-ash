@@ -81,7 +81,7 @@ function transcript(s: Save): string {
     if (r.line) lines.push("", `**${r.speaker ?? "NPC"}:** «${r.line}»`);
     if (r.applied?.notes.length) lines.push("", `_Изменения: ${r.applied.notes.join(" · ")}_`);
     if (r.applied?.rejected.length) lines.push("", `_Отклонено движком: ${r.applied.rejected.join("; ")}_`);
-    if (r.degraded) lines.push("", "**⚠ JSON не разобран**");
+    if (r.degraded) lines.push("", "**⚠ JSON не разобран.** Сырой ответ:", "", "```", r.raw ?? "", "```");
     lines.push("");
   }
   return lines.join("\n");
