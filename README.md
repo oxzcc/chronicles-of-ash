@@ -30,7 +30,7 @@ pnpm dev                    # http://localhost:3000
 
 ```bash
 pnpm check:apis
-pnpm arena:run -- anthropic/claude-sonnet-5.5 deepseek/deepseek-v4-flash google/gemini-3.5-flash
+pnpm arena:run -- anthropic/claude-sonnet-5.5 deepseek/deepseek-v4.1-flash google/gemini-3.8-flash
 pnpm arena:ballot tools/arena/out/run-<дата>.json   # открыть получившийся .html в браузере
 ```
 

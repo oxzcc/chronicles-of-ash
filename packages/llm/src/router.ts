@@ -17,7 +17,7 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
     fake: env.LLM_FAKE === "1" || !env.OPENROUTER_API_KEY,
     models: {
       narratorPaid: env.NARRATOR_MODEL_PAID || "anthropic/claude-sonnet-5.5",
-      narratorFree: env.NARRATOR_MODEL_FREE || "deepseek/deepseek-v4-flash",
+      narratorFree: env.NARRATOR_MODEL_FREE || "deepseek/deepseek-v4.1-flash",
       utility: env.UTILITY_MODEL || "anthropic/claude-haiku-5.5",
     },
   };

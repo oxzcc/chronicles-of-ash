@@ -9,3 +9,4 @@ coverage/
 .DS_Store
 tools/arena/out/
 *.tsbuildinfo
+tools/playtest/out/
