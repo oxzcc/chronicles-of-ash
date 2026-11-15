@@ -11,6 +11,9 @@ importers:
       '@ash/engine':
         specifier: workspace:^
         version: link:packages/engine
+      '@ash/game':
+        specifier: workspace:^
+        version: link:packages/game
       '@ash/llm':
         specifier: workspace:^
         version: link:packages/llm
@@ -36,6 +39,9 @@ importers:
       '@ash/engine':
         specifier: workspace:^
         version: link:../../packages/engine
+      '@ash/game':
+        specifier: workspace:^
+        version: link:../../packages/game
       '@ash/llm':
         specifier: workspace:^
         version: link:../../packages/llm
@@ -79,6 +85,21 @@ importers:
         version: 0.31.11
 
   packages/engine: {}
+
+  packages/game:
+    dependencies:
+      '@ash/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ash/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@ash/llm':
+        specifier: workspace:*
+        version: link:../llm
+      drizzle-orm:
+        specifier: ^0.45.0
+        version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
 
   packages/llm:
     dependencies:

@@ -17,7 +17,8 @@
     "db:generate": "pnpm --filter @ash/db generate",
     "check:apis": "tsx --env-file-if-exists=.env tools/check-apis.ts",
     "arena:run": "tsx --env-file-if-exists=.env tools/arena/run.ts",
-    "arena:ballot": "tsx tools/arena/ballot.ts"
+    "arena:ballot": "tsx tools/arena/ballot.ts",
+    "playtest": "tsx --env-file-if-exists=.env tools/playtest.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -37,6 +38,7 @@
   },
   "dependencies": {
     "@ash/engine": "workspace:^",
+    "@ash/game": "workspace:^",
     "@ash/llm": "workspace:^"
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Прогон тестовых сцен на нескольких моделях.
- *   pnpm arena:run -- anthropic/claude-sonnet-5.5 deepseek/deepseek-v4-flash google/gemini-3.5-flash
+ *   pnpm arena:run -- anthropic/claude-sonnet-5.5 deepseek/deepseek-v4.1-flash google/gemini-3.8-flash
  *   pnpm arena:run -- --scenes 02,05 <модели…>
  * Без аргументов берёт модели из ARENA_MODELS (через запятую).
  * Все модели получают одинаковые броски: генератор сидируется по id сцены.

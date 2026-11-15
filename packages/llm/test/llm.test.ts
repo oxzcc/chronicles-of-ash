@@ -136,3 +136,20 @@ describe("OpenRouter", () => {
     expect(w[0]).toMatchObject({ content: "" });
   });
 });
+
+describe("рассуждения модели", () => {
+  it("усилие по умолчанию уходит в запрос, запрос может его переопределить", async () => {
+    const bodies: any[] = [];
+    const fetchImpl = (async (_u: string, init: any) => {
+      bodies.push(JSON.parse(init.body));
+      return new Response('data: {"choices":[{"delta":{"content":"ок"}}]}\n\ndata: [DONE]\n\n');
+    }) as unknown as typeof fetch;
+    const p = new OpenRouterProvider({ apiKey: "k", fetchImpl, reasoningEffort: "low" });
+    await p.complete({ model: "m", messages: [] });
+    await p.complete({ model: "m", messages: [], reasoningEffort: "high" });
+    expect(bodies[0].reasoning).toEqual({ effort: "low" });
+    expect(bodies[1].reasoning).toEqual({ effort: "high" });
+    await new OpenRouterProvider({ apiKey: "k", fetchImpl }).complete({ model: "m", messages: [] });
+    expect(bodies[2].reasoning).toBeUndefined();
+  });
+});

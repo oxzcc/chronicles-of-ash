@@ -38,12 +38,16 @@ export function addUsage(a: Usage, b: Usage): Usage {
   };
 }
 
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+
 export interface CompletionRequest {
   model: string;
   messages: ChatMessage[];
   tools?: ToolDef[];
   maxTokens?: number;
   temperature?: number;
+  /** Сколько модель «думает» перед ответом. Для рассказчика хватает low: быстрее и дешевле. */
+  reasoningEffort?: ReasoningEffort;
   signal?: AbortSignal;
   /** Каждый новый кусок текста по мере генерации. */
   onText?: (delta: string, full: string) => void;

@@ -1,0 +1,110 @@
+:root {
+  --bg: #15110e;
+  --panel: #1e1813;
+  --panel-2: #261e17;
+  --line: #3a2e24;
+  --ink: #e8dcc8;
+  --muted: #a89a86;
+  --ember: #d9773a;
+  --gold: #d9b25c;
+  --blood: #a33a32;
+  --ok: #8fc18f;
+  --serif: Georgia, "Times New Roman", serif;
+  --sans: -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--serif); }
+a { color: var(--gold); }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { opacity: 0.45; cursor: default; }
+h1, h2, h3 { font-weight: 400; letter-spacing: 0.02em; margin: 0 0 12px; }
+input, textarea, select { font: inherit; color: inherit; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+textarea { resize: vertical; }
+
+.wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 80px; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.btn { background: var(--blood); color: #f6eadb; border: 0; border-radius: 6px; padding: 10px 18px; }
+.btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+.btn.small { padding: 6px 12px; font-size: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.error { color: #f0a38f; }
+
+/* Главная */
+.hero-title { font-size: 44px; margin-bottom: 4px; }
+.list { display: grid; gap: 10px; margin-top: 18px; }
+.list a { text-decoration: none; color: inherit; }
+.list .card:hover { border-color: var(--ember); }
+
+/* Создание героя */
+.choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.choice { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.choice.on { border-color: var(--ember); background: #2b1f17; }
+.choice b { display: block; margin-bottom: 4px; font-weight: 400; font-size: 17px; }
+.choice span { font-size: 13px; color: var(--muted); font-family: var(--sans); }
+.section { margin-top: 28px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; text-align: center; }
+.stat .v { font-size: 26px; }
+.stat .m { color: var(--gold); font-family: var(--sans); font-size: 13px; }
+.stat button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-family: var(--sans); }
+.chip.on { border-color: var(--ember); background: #2b1f17; }
+.chip.fixed { border-style: dashed; opacity: 0.8; }
+
+/* Игра */
+.game { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; max-width: 1240px; margin: 0 auto; padding: 20px; min-height: 100vh; }
+@media (max-width: 900px) { .game { grid-template-columns: 1fr; } }
+.scene { display: flex; flex-direction: column; min-height: calc(100vh - 40px); }
+.scene-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 10px; gap: 12px; }
+.scene-head h2 { margin: 0; font-size: 24px; }
+.journal { flex: 1; overflow-y: auto; padding-right: 6px; }
+.entry { margin: 18px 0; }
+.entry .you { font-family: var(--sans); color: var(--muted); font-size: 14px; border-left: 2px solid var(--ember); padding-left: 10px; margin-bottom: 10px; }
+.entry p { line-height: 1.65; font-size: 18px; margin: 0 0 12px; }
+.entry .npc { font-style: italic; color: #ecd2a8; }
+.entry .npc b { font-style: normal; font-weight: 400; color: var(--gold); }
+.roll-chip { display: inline-block; font-family: var(--sans); font-size: 13px; background: #2a2014; border: 1px solid #5a4423; color: var(--gold); border-radius: 6px; padding: 3px 8px; margin: 0 6px 8px 0; }
+.roll-chip.fail { color: #f0a38f; border-color: #5a2a23; background: #2a1714; }
+.combat-log { font-family: var(--sans); font-size: 14px; line-height: 1.5; color: var(--muted); }
+.combat-log .hit { color: var(--ok); } .combat-log .hurt { color: #f0a38f; } .combat-log .miss { opacity: 0.75; }
+.writing { color: var(--muted); font-style: italic; }
+.composer { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 8px; }
+.composer textarea { width: 100%; min-height: 64px; }
+.suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.suggestions button { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-size: 15px; text-align: left; }
+.suggestions button:hover:not(:disabled) { border-color: var(--ember); }
+
+.side { display: grid; gap: 14px; align-content: start; }
+.side h3 { font-size: 17px; margin-bottom: 8px; color: var(--gold); }
+.bar { height: 10px; background: #33261c; border-radius: 6px; overflow: hidden; margin: 6px 0 4px; }
+.bar > div { height: 100%; background: linear-gradient(90deg, #8f2c25, #c4473b); transition: width 0.4s; }
+.kv { display: flex; justify-content: space-between; font-family: var(--sans); font-size: 14px; color: var(--muted); }
+.items { font-family: var(--sans); font-size: 14px; margin: 0; padding-left: 18px; line-height: 1.6; }
+.obj { font-family: var(--sans); font-size: 14px; line-height: 1.5; margin: 0 0 6px; }
+.obj.done { color: var(--ok); text-decoration: line-through; opacity: 0.8; }
+.map { width: 100%; height: auto; background: #1a140f; border: 1px solid var(--line); border-radius: 8px; }
+.map text { font-family: var(--sans); font-size: 9px; fill: var(--muted); pointer-events: none; }
+.map .node { cursor: default; }
+.map .node.near { cursor: pointer; }
+.map .node.near:hover circle { stroke: var(--ember); stroke-width: 2.5; }
+
+/* Бой */
+.enemies { display: grid; gap: 8px; margin-bottom: 10px; }
+.enemy { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-family: var(--sans); font-size: 14px; }
+.enemy.target { border-color: var(--blood); }
+.enemy.dead { opacity: 0.4; text-decoration: line-through; }
+.moves { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Кубик */
+.dice-veil { position: fixed; inset: 0; background: rgba(10, 7, 5, 0.6); display: grid; place-items: center; z-index: 10; animation: fade 0.2s; }
+.dice { text-align: center; }
+.d20 { width: 130px; height: 130px; margin: 0 auto 14px; display: grid; place-items: center; font-size: 46px; color: #fff3df; background: radial-gradient(circle at 35% 30%, #c4473b, #5c1c17); clip-path: polygon(50% 0, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%); }
+.d20.spin { animation: spin 0.7s ease-out; }
+.dice .label { font-family: var(--sans); color: var(--muted); }
+.dice .verdict { font-size: 26px; margin-top: 6px; }
+.dice .verdict.ok { color: var(--ok); } .dice .verdict.bad { color: #f0a38f; } .dice .verdict.crit { color: var(--gold); }
+@keyframes spin { from { transform: rotate(-540deg) scale(0.4); } to { transform: rotate(0) scale(1); } }
+@keyframes fade { from { opacity: 0; } }
