@@ -58,14 +58,15 @@ async function checkFal() {
   console.log("\nfal.ai (FLUX)");
   if (!env.FAL_KEY) return bad("FAL_KEY не задан");
   const models = {
-    background: env.FAL_BACKGROUND_MODEL || "fal-ai/flux-2/klein",
+    background: env.FAL_BACKGROUND_MODEL || "fal-ai/flux-2/klein/4b",
     portrait: env.FAL_PORTRAIT_MODEL || "fal-ai/flux-pro/kontext/text-to-image",
   };
   if (!withImages) {
     // Пустой запрос: 422 значит, что ключ и модель приняты, а не хватает только промпта.
     for (const [role, id] of Object.entries(models)) {
       const r = await falRun(id, {});
-      if (r.status === 401 || r.status === 403) bad(`${role}: ключ не принят (HTTP ${r.status})`);
+      if (r.body?.type === "endpoint_not_priced") bad(`${role}: «${id}» — неверный id модели, проверь на fal.ai/models`);
+      else if (r.status === 401 || r.status === 403) bad(`${role}: ключ не принят (HTTP ${r.status})`);
       else if (r.status === 404) bad(`${role}: модели «${id}» нет — проверь id на fal.ai/models`);
       else ok(`${role}: ${id} доступна (HTTP ${r.status}; для пробной картинки запусти с --images)`);
     }
