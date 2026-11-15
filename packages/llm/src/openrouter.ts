@@ -15,7 +15,7 @@ export function toWireMessages(messages: ChatMessage[]) {
       case "assistant":
         return {
           role: "assistant",
-          content: m.content || null,
+          content: m.content ?? "", // некоторые провайдеры (Qwen) не принимают null
           ...(m.toolCalls?.length
             ? { tool_calls: m.toolCalls.map((t) => ({ id: t.id, type: "function", function: { name: t.name, arguments: t.arguments } })) }
             : {}),
@@ -57,6 +57,8 @@ export interface OpenRouterOptions {
   /** Название приложения в статистике OpenRouter. */
   appName?: string;
   fetchImpl?: typeof fetch;
+  /** Повторы при сбое сети и 429/5xx до начала ответа. */
+  retries?: number;
 }
 
 export class OpenRouterProvider implements LlmProvider {
@@ -64,6 +66,19 @@ export class OpenRouterProvider implements LlmProvider {
   constructor(private readonly opts: OpenRouterOptions) {}
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
+    // Повтор только до начала ответа: сбой сети или 429/5xx. Оборванный поток не повторяем — текст уже ушёл игроку.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.once(req);
+      } catch (e) {
+        const retryable = e instanceof LlmError ? e.retryable && !e.streamStarted : e instanceof TypeError;
+        if (!retryable || attempt >= (this.opts.retries ?? 2) || req.signal?.aborted) throw e;
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+      }
+    }
+  }
+
+  private async once(req: CompletionRequest): Promise<CompletionResult> {
     const f = this.opts.fetchImpl ?? fetch;
     const res = await f(`${this.opts.baseUrl ?? BASE_URL}/chat/completions`, {
       method: "POST",
@@ -97,7 +112,7 @@ export class OpenRouterProvider implements LlmProvider {
     const calls = new Map<number, ToolCall>();
 
     for await (const chunk of readSse(res.body)) {
-      if (chunk.error) throw new LlmError(`OpenRouter: ${chunk.error.message ?? "stream error"}`, chunk.error.code, true);
+      if (chunk.error) throw new LlmError(`OpenRouter: ${chunk.error.message ?? "stream error"}`, chunk.error.code, true, text.length > 0);
       if (chunk.model) model = chunk.model;
       const choice = chunk.choices?.[0];
       const delta = choice?.delta;

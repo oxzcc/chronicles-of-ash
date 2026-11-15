@@ -63,7 +63,7 @@ export interface LlmProvider {
 }
 
 export class LlmError extends Error {
-  constructor(message: string, readonly status?: number, readonly retryable = false) {
+  constructor(message: string, readonly status?: number, readonly retryable = false, readonly streamStarted = false) {
     super(message);
     this.name = "LlmError";
   }
