@@ -1,0 +1,42 @@
+{
+  "name": "chronicles-of-ash",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @ash/web dev",
+    "build": "pnpm --filter @ash/web build",
+    "typecheck": "tsc -p . && pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:up": "docker compose up -d postgres redis",
+    "db:migrate": "pnpm --filter @ash/db migrate",
+    "db:generate": "pnpm --filter @ash/db generate",
+    "check:apis": "tsx --env-file-if-exists=.env tools/check-apis.ts",
+    "arena:run": "tsx --env-file-if-exists=.env tools/arena/run.ts",
+    "arena:ballot": "tsx tools/arena/ballot.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.23.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  },
+  "type": "module",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "prisma",
+      "@prisma/engines",
+      "@prisma/client",
+      "sharp"
+    ]
+  },
+  "dependencies": {
+    "@ash/engine": "workspace:^",
+    "@ash/llm": "workspace:^"
+  }
+}
