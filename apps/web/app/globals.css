@@ -143,6 +143,7 @@ textarea { resize: vertical; }
 .vn-bust.left { left: 0; object-position: left bottom; }
 .vn-bust.right { right: 0; transform: scaleX(-1); object-position: left bottom; }
 .vn-silhouette { opacity: 0.9; animation: vnPulse 2.2s ease-in-out infinite; }
+.vn-silhouette.still { animation: none; opacity: 0.7; }
 @keyframes vnPulse { 50% { opacity: 0.6; } }
 
 /* Верхняя панель */

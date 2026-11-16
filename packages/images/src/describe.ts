@@ -36,6 +36,44 @@ export interface NpcCard {
   look?: string;
 }
 
+/**
+ * NPC без карточки: мастер дал ему реплики, но расу, пол и внешность описал только для главного
+ * собеседника. Догадываемся по имени, репликам и сцене (в русском пол обычно слышен: «рогатая», «пришла»).
+ */
+export async function guessNpc(
+  router: ModelRouter,
+  o: { name: string; lines: string[]; scene: string },
+  signal?: AbortSignal,
+): Promise<{ card: NpcCard; description: string }> {
+  let card: NpcCard = { name: o.name, race: "human", gender: "m", role: "" };
+  let look = "";
+  try {
+    const raw = await ask(
+      router,
+      `A character in a Russian dark fantasy story speaks, but nobody described them. Guess who they are from the name, their lines and the scene.
+Name: ${o.name}
+Their lines (Russian): ${o.lines.map((l) => `«${l}»`).join(" ").slice(0, 600)}
+Scene (Russian): ${o.scene.slice(0, 600)}
+Return JSON only: {"race":"human|elf|dwarf|halfling|tiefling|halforc","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 15-30 words: age, build, face, hair, clothing, one distinctive detail, expression; no names, no style words"}`,
+      signal,
+    );
+    const j = extractJson(raw) as Record<string, unknown> | null;
+    if (j) {
+      const race = String(j.race) as RaceKey;
+      card = {
+        name: o.name,
+        race: race in RACES ? race : "human",
+        gender: j.gender === "f" ? "f" : "m",
+        role: String(j.role ?? "").trim().slice(0, 60),
+      };
+      const l = oneLine(String(j.look ?? ""));
+      if (l && !CYR.test(l)) look = l;
+    }
+  } catch {}
+  const description = `${genderEn(card.gender)}, ${raceEn(card.race, card.gender)}, ${look || "a stranger of a dark fantasy village, weathered face, period clothing"}`;
+  return { card, description };
+}
+
 export async function describeNpc(router: ModelRouter, npc: NpcCard, signal?: AbortSignal): Promise<string> {
   const fallback = `${genderEn(npc.gender)}, ${raceEn(npc.race, npc.gender)}, ${npc.role ? "a local of a dark fantasy village" : "a traveller"}, weathered face, period clothing`;
   try {

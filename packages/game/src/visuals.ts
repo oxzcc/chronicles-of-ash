@@ -2,7 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { characters, images, npcs, type Db } from "@ash/db";
 import { hashStr, locationById, type Campaign, type CharacterDraft, type LocationType } from "@ash/engine";
 import {
-  baseHero, describeLocation, describeNpc, heroVariants, renderBackground, renderPortrait,
+  baseHero, describeLocation, describeNpc, guessNpc, heroVariants, renderBackground, renderPortrait,
   type ImageProvider, type ImageStorage, type NpcCard, type TimeOfDay,
 } from "@ash/images";
 import type { ModelRouter, Speaker } from "@ash/llm";
@@ -15,6 +15,8 @@ import { GameError, type GameState, type TurnRecord } from "./types";
 
 type Job =
   | { type: "npc"; npcId: string; card: NpcCard }
+  /** NPC без карточки: расу, пол и облик угадывает служебная модель по репликам. */
+  | { type: "npc-guess"; npcId: string; name: string; lines: string[]; scene: string }
   | { type: "background"; locType: LocationType; name: string; desc: string; time: TimeOfDay }
   | { type: "hero"; description: string; label: string; seed: number };
 
@@ -98,13 +100,38 @@ export async function ensureNpc(db: Db, campaignId: string, s: Speaker) {
     await db.update(npcs).set({ portraitImageId: imageId }).where(eq(npcs.id, row.id));
 }
 
-async function ensureNpcs(db: Db, campaignId: string, records: TurnRecord[]) {
+/**
+ * Каждому, кто говорит в репликах, — портрет. Карточку (раса, пол, облик) мастер даёт только
+ * главному собеседнику; остальных говорящих раньше пропускали — и на экране висел силуэт.
+ */
+async function ensureNpcs(db: Db, campaignId: string, records: TurnRecord[], heroName: string) {
   for (const r of records) if (r.response?.speaker) await ensureNpc(db, campaignId, r.response.speaker);
+  const lines = new Map<string, { name: string; lines: string[]; scene: string }>();
+  for (const r of records) {
+    const scene = r.beats.filter((b) => !b.speaker).map((b) => b.text).join(" ");
+    for (const b of r.beats) {
+      if (!b.speaker || npcKey(b.speaker) === npcKey(heroName)) continue;
+      const k = npcKey(b.speaker);
+      const e = lines.get(k) ?? { name: b.speaker, lines: [], scene };
+      e.lines.push(b.text);
+      lines.set(k, e);
+    }
+  }
+  for (const [k, e] of lines) {
+    const [row] = await db
+      .insert(npcs)
+      .values({ campaignId, name: e.name, nameKey: k, race: "human", gender: "m", role: "", appearance: "" })
+      .onConflictDoNothing()
+      .returning({ id: npcs.id });
+    if (!row) continue;
+    const imageId = await enqueue(db, { kind: "npc", campaignId, job: { type: "npc-guess", npcId: row.id, name: e.name, lines: e.lines.slice(0, 4), scene: e.scene } });
+    await db.update(npcs).set({ portraitImageId: imageId }).where(eq(npcs.id, row.id));
+  }
 }
 
 /** Вызывается после хода, до сохранения: может записать фон в состояние кампании. */
 export async function prepareVisuals(db: Db, campaignId: string, state: GameState, records: TurnRecord[]) {
-  await ensureNpcs(db, campaignId, records);
+  await ensureNpcs(db, campaignId, records, state.character.name);
   await ensureBackground(db, campaignId, state.campaign);
 }
 
@@ -186,6 +213,10 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
     if (j.type === "npc") {
       const description = await describeNpc(d.router, j.card, signal);
       r = await renderPortrait({ provider: d.provider, storage: d.storage, description, key: `npc/${row.id}`, signal });
+    } else if (j.type === "npc-guess") {
+      const g = await guessNpc(d.router, j, signal);
+      await d.db.update(npcs).set({ race: g.card.race, gender: g.card.gender, role: g.card.role }).where(eq(npcs.id, j.npcId));
+      r = await renderPortrait({ provider: d.provider, storage: d.storage, description: g.description, key: `npc/${row.id}`, signal });
     } else if (j.type === "hero") {
       r = await renderPortrait({ provider: d.provider, storage: d.storage, description: j.description, key: `hero/${row.id}`, seed: j.seed, signal });
     } else {

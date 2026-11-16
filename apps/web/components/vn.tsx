@@ -11,9 +11,10 @@ export function beatsOf(t: Pick<TurnView, "beats" | "combatEvents" | "narration"
 }
 
 /** Силуэт, пока портрет рисуется. */
-export function Silhouette({ side = "left" }: { side?: "left" | "right" }) {
+/** Силуэт: пульсирует, пока портрет рисуется; без пульса — если портрета не будет. */
+export function Silhouette({ side = "left", still }: { side?: "left" | "right"; still?: boolean }) {
   return (
-    <svg className={`vn-bust vn-silhouette ${side}`} viewBox="0 0 400 560" aria-hidden="true">
+    <svg className={`vn-bust vn-silhouette ${still ? "still" : ""} ${side}`} viewBox="0 0 400 560" aria-hidden="true">
       <defs>
         <radialGradient id="sil" cx="50%" cy="35%" r="60%">
           <stop offset="0" stopColor="#3b2c20" />
@@ -27,10 +28,10 @@ export function Silhouette({ side = "left" }: { side?: "left" | "right" }) {
 }
 
 /** Бюст говорящего: готовый портрет или силуэт. Тусклый, когда говорит рассказчик. */
-export function Bust({ url, name, side = "left", dim }: { url: string | null | undefined; name: string; side?: "left" | "right"; dim?: boolean }) {
+export function Bust({ url, name, side = "left", dim, failed }: { url: string | null | undefined; name: string; side?: "left" | "right"; dim?: boolean; failed?: boolean }) {
   return (
     <div className={`vn-bust-wrap ${side} ${dim ? "dim" : ""}`}>
-      {url ? <img key={url} className={`vn-bust ${side}`} src={url} alt={name} /> : <Silhouette side={side} />}
+      {url ? <img key={url} className={`vn-bust ${side}`} src={url} alt={name} /> : <Silhouette side={side} still={failed} />}
     </div>
   );
 }

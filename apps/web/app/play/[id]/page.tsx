@@ -161,8 +161,10 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     if (!view || !scene) return false;
     const bg = scene.locations[view.campaign.current];
     const npc = view.campaign.npc ? scene.npcs[key(view.campaign.npc.name)] : undefined;
-    return [bg, npc, scene.hero].some((x) => x && (x.status === "queued" || x.status === "working"));
-  }, [view, scene]);
+    // Все, кто говорит в текущих репликах, — их портреты тоже ждём.
+    const speakers = beats.flatMap((b) => (b.speaker ? [scene.npcs[key(b.speaker)]] : []));
+    return [bg, npc, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"));
+  }, [view, scene, beats]);
   useEffect(() => {
     if (!pending) return;
     const t = setInterval(() => {
@@ -200,7 +202,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           <Bust url={null} name="Противник" side="right" />
         </>
       ) : (
-        onStage && <Bust url={stage?.url} name={onStage} side="left" dim={!speakerName} />
+        onStage && <Bust url={stage?.url} name={onStage} side="left" dim={!speakerName} failed={!stage || stage.status === "failed" || stage.status === "none"} />
       )}
 
       <header className="vn-hud">

@@ -186,6 +186,25 @@ describe.skipIf(!url)("картинки", async () => {
     expect(await drain(d)).toBe(0);
   });
 
+  it("второй говорящий без карточки тоже получает портрет", async () => {
+    const d = await deps();
+    await drain(d);
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const g = await freshGame("guess");
+    const id = await createCampaign(db, uid, g);
+    const c = await loadCampaign(db, uid, id);
+    const r = await playTurn(dpsFake(), c.state, c.recent, { kind: "start" });
+    r.records[0]!.beats.push({ speaker: "Серый плащ", text: "Выходи, рогатая." }, { speaker: c.state.character.name, text: "Не дождёшься." });
+    await v.prepareVisuals(db, id, r.state, r.records);
+    let scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
+    expect(scene.npcs["серый плащ"]!.status).toBe("queued");
+    expect(scene.npcs[c.state.character.name.toLowerCase()]).toBeUndefined(); // герой — не NPC
+    await drain(d);
+    scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
+    expect(scene.npcs["серый плащ"]!.url).toMatch(/^\/api\/images\/npc\/.+\.webp$/);
+  });
+
   it("обычные локации берут фон из общей библиотеки по типу", async () => {
     const d = await deps();
     const uid = crypto.randomUUID();
