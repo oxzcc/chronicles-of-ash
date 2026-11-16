@@ -1,6 +1,6 @@
 import { CLASSES, RACES, type CharacterDraft, type Gender, type LocationType, type RaceKey } from "@ash/engine";
 import { extractJson, type ModelRouter } from "@ash/llm";
-import { CLASS_EN, LOCATION_EN, RACE_EN } from "./style";
+import { CLASS_EN, INTERIOR_TYPES, LOCATION_EN, raceEn } from "./style";
 
 /**
  * Служебная модель переводит русское описание в короткий английский промпт для FLUX.
@@ -37,16 +37,16 @@ export interface NpcCard {
 }
 
 export async function describeNpc(router: ModelRouter, npc: NpcCard, signal?: AbortSignal): Promise<string> {
-  const fallback = `${genderEn(npc.gender)}, ${RACE_EN[npc.race]}, ${npc.role ? "a local of a dark fantasy village" : "a traveller"}, weathered face, period clothing`;
+  const fallback = `${genderEn(npc.gender)}, ${raceEn(npc.race, npc.gender)}, ${npc.role ? "a local of a dark fantasy village" : "a traveller"}, weathered face, period clothing`;
   try {
     const text = oneLine(
       await ask(
         router,
-        `Write an English image prompt fragment (15-35 words, no style words, no names) describing how this dark fantasy character looks: age, build, face, hair, clothing, one distinctive detail, expression.\nCharacter: ${npc.name}, ${RACES[npc.race].name} (${RACE_EN[npc.race]}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
+        `Write an English image prompt fragment (15-35 words, no style words, no names) describing how this dark fantasy character looks: age, build, face, hair, clothing, one distinctive detail, expression.\nCharacter: ${npc.name}, ${RACES[npc.race].name} (${raceEn(npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
         signal,
       ),
     );
-    return text && !CYR.test(text) ? `${genderEn(npc.gender)}, ${RACE_EN[npc.race]}, ${text}` : fallback;
+    return text && !CYR.test(text) ? `${genderEn(npc.gender)}, ${raceEn(npc.race, npc.gender)}, ${text}` : fallback;
   } catch {
     return fallback;
   }
@@ -58,7 +58,7 @@ export async function describeLocation(router: ModelRouter, loc: { name: string;
     const text = oneLine(
       await ask(
         router,
-        `Write an English image prompt fragment (15-35 words, no style words, no people) describing this dark fantasy location as a wide establishing shot.\nPlace: ${loc.name} (${loc.type}). Description (Russian): ${loc.desc}\nAnswer with the fragment only.`,
+        `Write an English image prompt fragment (15-35 words, no style words, no people) describing this medieval dark fantasy location as a wide establishing shot${INTERIOR_TYPES.includes(loc.type) ? ", seen from the INSIDE (interior view)" : ""}. Only medieval objects: no ships with engines, no machines, no modern items.\nPlace: ${loc.name} (${loc.type}). Description (Russian): ${loc.desc}\nAnswer with the fragment only.`,
         signal,
       ),
     );
@@ -84,7 +84,7 @@ const VARIETY = [
 ];
 
 export function baseHero(d: Pick<CharacterDraft, "race" | "cls" | "gender">): string {
-  return `${genderEn(d.gender)}, ${RACE_EN[d.race]}, ${CLASS_EN[d.cls]}`;
+  return `${genderEn(d.gender)}, ${raceEn(d.race, d.gender)}, ${CLASS_EN[d.cls]}`;
 }
 
 /**

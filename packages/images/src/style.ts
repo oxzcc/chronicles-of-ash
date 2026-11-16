@@ -1,11 +1,11 @@
-import type { ClassKey, LocationType, RaceKey } from "@ash/engine";
+import type { ClassKey, Gender, LocationType, RaceKey } from "@ash/engine";
 
 /**
  * Единый стиль всех картинок (docs/style.md). FLUX лучше понимает английский,
  * поэтому промпты картинок — на английском, а тексты игроку — на русском.
  */
 export const STYLE_PREFIX =
-  "dark fantasy painterly illustration, oil painting texture, muted earthy palette with ember orange accents, detailed but soft brushwork, in the style of a classic CRPG character art, no text, no watermark, no signature";
+  "dark fantasy painterly illustration, oil painting texture, muted earthy palette with ember orange accents, detailed but soft brushwork, in the style of a classic CRPG character art, medieval world with no modern or industrial objects, no text, no watermark, no signature";
 
 /**
  * Портреты рисуются на светлом ровном фоне и с ярким светом на лице:
@@ -18,11 +18,20 @@ const BACKGROUND_LIGHT = "wide establishing shot, empty scene with no people, at
 export const RACE_EN: Record<RaceKey, string> = {
   human: "human",
   elf: "elf with pointed ears",
-  dwarf: "stocky dwarf with a braided beard",
+  dwarf: "stocky dwarf",
   halfling: "halfling, small and nimble",
   tiefling: "tiefling with curved horns and dusky red skin",
   halforc: "half-orc with grey-green skin and small tusks",
 };
+
+/** Раса с учётом пола: «борода» в описании дварфа перевешивала пол — все дварфийки выходили бородачами. */
+export function raceEn(race: RaceKey, gender: Gender): string {
+  if (race === "dwarf") return gender === "f" ? "stocky dwarf woman, beardless" : "stocky dwarf with a braided beard";
+  return RACE_EN[race];
+}
+
+/** Места, которые рисуются изнутри. */
+export const INTERIOR_TYPES: LocationType[] = ["tavern", "temple", "cave"];
 
 export const CLASS_EN: Record<ClassKey, string> = {
   fighter: "warrior in chainmail with a longsword",

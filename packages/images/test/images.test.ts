@@ -71,3 +71,12 @@ describe("fal", () => {
     expect(c.costUsd).toBeGreaterThan(0);
   });
 });
+
+describe("raceEn", () => {
+  it("дварфийка без бороды, дварф с бородой", async () => {
+    const { raceEn } = await import("../src/style");
+    expect(raceEn("dwarf", "f")).toContain("beardless");
+    expect(raceEn("dwarf", "m")).toContain("beard");
+    expect(raceEn("elf", "f")).toBe("elf with pointed ears");
+  });
+});
