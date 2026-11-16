@@ -13,9 +13,15 @@ const CYR = /[а-яё]/i;
  */
 const genderEn = (g: Gender) => (g === "f" ? "a woman, female character" : "a man, male character");
 
-async function ask(router: ModelRouter, prompt: string, maxTokens = 300, signal?: AbortSignal): Promise<string> {
+/**
+ * Служебные модели «думают» даже на minimal: 1000–2000 скрытых токенов до ответа.
+ * С маленьким лимитом ответ приходит пустым (finish_reason=length) — поэтому лимит с запасом.
+ */
+export const UTILITY_MAX_TOKENS = 3000;
+
+async function ask(router: ModelRouter, prompt: string, signal?: AbortSignal): Promise<string> {
   const { provider, model } = router.route("utility");
-  const r = await provider.complete({ model, maxTokens, temperature: 0.9, signal, messages: [{ role: "user", content: prompt }] });
+  const r = await provider.complete({ model, maxTokens: UTILITY_MAX_TOKENS, reasoningEffort: "minimal", temperature: 0.9, signal, messages: [{ role: "user", content: prompt }] });
   return r.text.trim();
 }
 
@@ -37,7 +43,6 @@ export async function describeNpc(router: ModelRouter, npc: NpcCard, signal?: Ab
       await ask(
         router,
         `Write an English image prompt fragment (15-35 words, no style words, no names) describing how this dark fantasy character looks: age, build, face, hair, clothing, one distinctive detail, expression.\nCharacter: ${npc.name}, ${RACES[npc.race].name} (${RACE_EN[npc.race]}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
-        200,
         signal,
       ),
     );
@@ -54,7 +59,6 @@ export async function describeLocation(router: ModelRouter, loc: { name: string;
       await ask(
         router,
         `Write an English image prompt fragment (15-35 words, no style words, no people) describing this dark fantasy location as a wide establishing shot.\nPlace: ${loc.name} (${loc.type}). Description (Russian): ${loc.desc}\nAnswer with the fragment only.`,
-        200,
         signal,
       ),
     );
@@ -95,7 +99,6 @@ export async function heroVariants(router: ModelRouter, d: Pick<CharacterDraft, 
 Vary age, hair colour and style, face shape, scars or marks, a clothing detail and expression so that the 4 people are easy to tell apart.
 Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and an age.
 Return JSON only: [{"label":"4-7 слов по-русски","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,
-      700,
       signal,
     );
     const arr = extractJson(`{"v":${raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1)}}`) as { v?: unknown[] } | null;
