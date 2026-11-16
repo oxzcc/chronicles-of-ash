@@ -80,3 +80,13 @@ describe("raceEn", () => {
     expect(raceEn("elf", "f")).toBe("elf with pointed ears");
   });
 });
+
+describe("clippedShare", () => {
+  it("силуэт внутри кадра — 0, упёрся в верх — больше лимита", async () => {
+    const sharp = (await import("sharp")).default;
+    const { clippedShare, CLIP_LIMIT } = await import("../src/process");
+    const png = (svg: string) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300">${svg}</svg>`)).png().toBuffer();
+    expect(await clippedShare(await png(`<rect x="50" y="40" width="100" height="260" fill="#800"/>`))).toBe(0);
+    expect(await clippedShare(await png(`<rect x="20" y="0" width="160" height="300" fill="#800"/>`))).toBeGreaterThan(CLIP_LIMIT);
+  });
+});

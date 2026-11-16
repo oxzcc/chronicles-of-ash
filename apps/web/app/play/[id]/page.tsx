@@ -169,7 +169,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       api<SceneView>(`/api/campaigns/${id}/scene`)
         .then((s) => setView((v) => v && { ...v, scene: s }))
         .catch(() => undefined);
-    }, 2000);
+    }, 1000);
     return () => clearInterval(t);
   }, [pending, id]);
 

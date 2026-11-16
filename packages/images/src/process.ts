@@ -23,6 +23,25 @@ export async function finishPortrait(cutout: Buffer): Promise<{ bytes: Buffer; w
   return { bytes: out.data, width: out.info.width, height: out.info.height };
 }
 
+/**
+ * Насколько силуэт обрезан рамкой: доля непрозрачных пикселей в полосе 3 px
+ * сверху, слева и справа (низ не считаем — портрет по пояс и должен быть срезан).
+ * Больше CLIP_LIMIT — голова или плечи упёрлись в край, кадр надо перерисовать.
+ */
+export const CLIP_LIMIT = 0.03;
+export async function clippedShare(cutout: Buffer): Promise<number> {
+  const { data, info } = await sharp(cutout).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+  const band = 3;
+  const opaque = (x: number, y: number) => data[(y * w + x) * 4 + 3]! > 128;
+  let hit = 0;
+  let total = 0;
+  for (let y = 0; y < band; y++) for (let x = 0; x < w; x++) (total++, opaque(x, y) && hit++);
+  for (let y = band; y < h; y++)
+    for (const x of [0, 1, 2, w - 3, w - 2, w - 1]) (total++, opaque(x, y) && hit++);
+  return total ? hit / total : 0;
+}
+
 export async function finishBackground(image: Buffer): Promise<{ bytes: Buffer; width: number; height: number }> {
   const out = await sharp(image)
     .resize({ width: 1920, withoutEnlargement: true })

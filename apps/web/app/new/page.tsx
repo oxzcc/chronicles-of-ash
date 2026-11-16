@@ -86,7 +86,7 @@ export default function NewHero() {
       const r = await api<{ images: { id: string; status: string; url: string | null }[] }>(`/api/portraits?ids=${faces.map((f) => f.id).join(",")}`).catch(() => null);
       if (!r) return;
       setFaces((cur) => cur.map((f) => ({ ...f, ...(r.images.find((i) => i.id === f.id) ?? {}) })));
-    }, 1500);
+    }, 1000);
     return () => clearInterval(t);
   }, [facesPending, faces]);
 

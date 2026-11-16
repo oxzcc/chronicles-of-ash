@@ -1,5 +1,5 @@
 import { secureRng, type CombatMove } from "@ash/engine";
-import { GameError, loadCampaign, playTurn, prepareVisuals, saveTurn, sceneView, type TurnInput } from "@ash/game";
+import { ensureNpc, GameError, loadCampaign, playTurn, prepareVisuals, saveTurn, sceneView, type TurnInput } from "@ash/game";
 import { currentUser, errorResponse, getDb, getRouter, getWorldBible, sseStream, withCampaignLock } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +48,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const db = getDb();
       const c = await loadCampaign(db, userId, id);
       const out = await playTurn(
-        { router: getRouter(), tier, worldBible: getWorldBible(), rng: secureRng, signal: req.signal, emit: (e) => send(e.type, e) },
+        {
+          router: getRouter(), tier, worldBible: getWorldBible(), rng: secureRng, signal: req.signal, emit: (e) => send(e.type, e),
+          // Портрет нового NPC начинает рисоваться, пока мастер ещё дописывает ход.
+          onSpeaker: (s) => void ensureNpc(db, c.id, s).catch((e) => console.error("[images] early npc", e)),
+        },
         c.state, c.recent, input,
       );
       // Картинки — в очередь до сохранения: фон локации записывается в состояние кампании.

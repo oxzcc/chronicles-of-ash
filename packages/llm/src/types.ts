@@ -38,7 +38,8 @@ export function addUsage(a: Usage, b: Usage): Usage {
   };
 }
 
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+/** none — без скрытых рассуждений (DeepSeek: ответ за 1–2 с вместо 5). */
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high";
 
 export interface CompletionRequest {
   model: string;

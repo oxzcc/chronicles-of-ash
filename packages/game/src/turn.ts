@@ -28,6 +28,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       scene: { character: c, campaign: w, history: history(), action },
       onBeats: (beats) => deps.emit?.({ type: "beats", beats }),
       onRoll: (roll) => deps.emit?.({ type: "roll", roll }),
+      onSpeaker: deps.onSpeaker,
       allowChecks: !opts.preRolls?.length,
     });
     const resp = r.response;

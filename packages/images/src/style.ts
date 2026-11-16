@@ -11,7 +11,9 @@ export const STYLE_PREFIX =
  * Портреты рисуются на светлом ровном фоне и с ярким светом на лице:
  * так фон чисто вырезается, а персонаж потом читается на тёмной сцене.
  */
-const PORTRAIT_LIGHT = "half-body portrait, three-quarter view, bright warm key light on the face, soft rim light, plain flat light grey studio background, figure fully inside the frame";
+/** Один кадр для всех: по пояс, голова в верхней трети с запасом сверху — тогда портреты одного масштаба и не обрезаны. */
+const PORTRAIT_LIGHT =
+  "waist-up portrait of a single character, centered, three-quarter view, head in the upper third with empty space above it, shoulders and elbows fully inside the frame, cut at the waist, bright warm key light on the face, soft rim light, plain flat light grey studio background";
 
 const BACKGROUND_LIGHT = "wide establishing shot, empty scene with no people, atmospheric depth, drifting grey ash in the air, no lettering, signs without text";
 

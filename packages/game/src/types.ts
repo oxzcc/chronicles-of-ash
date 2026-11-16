@@ -1,5 +1,5 @@
 import type { AppliedChanges, Campaign, Character, CheckResult, CombatEvent, CombatMove, CombatOutcome, CombatState } from "@ash/engine";
-import type { Beat, GmResponse, HistoryEntry, ModelRouter, Suggestion, Tier, Usage } from "@ash/llm";
+import type { Beat, GmResponse, HistoryEntry, ModelRouter, Speaker, Suggestion, Tier, Usage } from "@ash/llm";
 import type { Rng } from "@ash/engine";
 
 export interface GameState {
@@ -54,6 +54,8 @@ export interface TurnDeps {
   rng: Rng;
   signal?: AbortSignal;
   emit?: (e: GameEvent) => void;
+  /** Рассказчик назвал NPC (ещё идёт ход) — для раннего старта портрета. */
+  onSpeaker?: (speaker: Speaker) => void;
 }
 
 export interface TurnOutcome {

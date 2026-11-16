@@ -14,14 +14,14 @@ const CYR = /[а-яё]/i;
 const genderEn = (g: Gender) => (g === "f" ? "a woman, female character" : "a man, male character");
 
 /**
- * Служебные модели «думают» даже на minimal: 1000–2000 скрытых токенов до ответа.
- * С маленьким лимитом ответ приходит пустым (finish_reason=length) — поэтому лимит с запасом.
+ * Без скрытых рассуждений: описание для картинки не стоит 5 секунд ожидания.
+ * Лимит с запасом — если модель всё же «думает», ответ не обрежется до пустого.
  */
 export const UTILITY_MAX_TOKENS = 3000;
 
 async function ask(router: ModelRouter, prompt: string, signal?: AbortSignal): Promise<string> {
   const { provider, model } = router.route("utility");
-  const r = await provider.complete({ model, maxTokens: UTILITY_MAX_TOKENS, reasoningEffort: "minimal", temperature: 0.9, signal, messages: [{ role: "user", content: prompt }] });
+  const r = await provider.complete({ model, maxTokens: UTILITY_MAX_TOKENS, reasoningEffort: "none", temperature: 0.9, signal, messages: [{ role: "user", content: prompt }] });
   return r.text.trim();
 }
 

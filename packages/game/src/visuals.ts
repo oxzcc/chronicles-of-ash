@@ -5,7 +5,7 @@ import {
   baseHero, describeLocation, describeNpc, heroVariants, renderBackground, renderPortrait,
   type ImageProvider, type ImageStorage, type NpcCard, type TimeOfDay,
 } from "@ash/images";
-import type { ModelRouter } from "@ash/llm";
+import type { ModelRouter, Speaker } from "@ash/llm";
 import { GameError, type GameState, type TurnRecord } from "./types";
 
 /**
@@ -31,11 +31,19 @@ export const MAX_ATTEMPTS = 3;
 
 export const npcKey = (name: string) => name.trim().toLowerCase().replace(/ё/g, "е");
 
+/** Будильник воркера: новая задача берётся сразу, а не на следующем опросе. */
+const sleepers = new Set<() => void>();
+const wakeWorker = () => {
+  for (const w of sleepers) w();
+  sleepers.clear();
+};
+
 async function enqueue(db: Db, v: { kind: string; job: Job; tags?: string[]; userId?: string; campaignId?: string }): Promise<string> {
   const [row] = await db
     .insert(images)
     .values({ kind: v.kind, job: v.job as Record<string, unknown>, tags: v.tags ?? [], userId: v.userId, campaignId: v.campaignId, prompt: "", model: "", status: "queued" })
     .returning({ id: images.id });
+  wakeWorker();
   return row!.id;
 }
 
@@ -70,24 +78,28 @@ async function ensureBackground(db: Db, campaignId: string, w: Campaign) {
   });
 }
 
-/** Новый NPC из реплик мастера → карточка и портрет в очередь. Уже известный — ничего не делаем. */
-async function ensureNpcs(db: Db, campaignId: string, records: TurnRecord[]) {
-  for (const r of records) {
-    const s = r.response?.speaker;
-    if (!s) continue;
+/**
+ * Новый NPC → карточка и портрет в очередь. Уже известный — ничего не делаем.
+ * Зовётся дважды: из потока хода, как только карточка дописана, и после хода (на случай,
+ * если ранний вызов не случился); уникальный индекс не даёт задвоить.
+ */
+export async function ensureNpc(db: Db, campaignId: string, s: Speaker) {
     const [row] = await db
       .insert(npcs)
       .values({ campaignId, name: s.name, nameKey: npcKey(s.name), race: s.race, gender: s.gender, role: s.role, appearance: s.look ?? "" })
       .onConflictDoNothing()
       .returning({ id: npcs.id });
-    if (!row) continue;
+    if (!row) return;
     const imageId = await enqueue(db, {
       kind: "npc",
       campaignId,
       job: { type: "npc", npcId: row.id, card: { name: s.name, race: s.race, gender: s.gender, role: s.role, look: s.look } },
     });
     await db.update(npcs).set({ portraitImageId: imageId }).where(eq(npcs.id, row.id));
-  }
+}
+
+async function ensureNpcs(db: Db, campaignId: string, records: TurnRecord[]) {
+  for (const r of records) if (r.response?.speaker) await ensureNpc(db, campaignId, r.response.speaker);
 }
 
 /** Вызывается после хода, до сохранения: может записать фон в состояние кампании. */
@@ -194,7 +206,7 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
   return true;
 }
 
-/** Воркер в процессе сервера: несколько параллельных потоков, опрос раз в секунду, пока очередь пуста. */
+/** Воркер в процессе сервера: несколько параллельных потоков; пустая очередь — опрос раз в секунду или пробуждение от enqueue. */
 export function startWorker(d: VisualDeps, o: { concurrency?: number; idleMs?: number; signal?: AbortSignal } = {}) {
   const loop = async () => {
     while (!o.signal?.aborted) {
@@ -204,7 +216,11 @@ export function startWorker(d: VisualDeps, o: { concurrency?: number; idleMs?: n
       } catch (e) {
         console.error("[images] worker error", e);
       }
-      if (!worked) await new Promise((r) => setTimeout(r, o.idleMs ?? 1000));
+      if (!worked)
+        await new Promise<void>((r) => {
+          const t = setTimeout(r, o.idleMs ?? 1000);
+          sleepers.add(() => (clearTimeout(t), r()));
+        });
     }
   };
   return Promise.all(Array.from({ length: o.concurrency ?? 3 }, loop));

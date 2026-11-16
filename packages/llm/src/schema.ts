@@ -176,6 +176,21 @@ export function partialBeats(text: string): Beat[] {
   return [];
 }
 
+export type Speaker = NonNullable<z.output<typeof SpeakerSchema>>;
+
+/**
+ * Карточка NPC из недописанного ответа — как только она дописана целиком
+ * (после неё в JSON уже начались другие поля). Нужна, чтобы портрет начинал рисоваться
+ * до конца хода. undefined — ещё рано; null — в ответе NPC нет.
+ */
+export function partialSpeaker(text: string): Speaker | null | undefined {
+  const raw = parsePartialJson(text) as Record<string, unknown> | null;
+  if (!raw || !("speaker" in raw)) return undefined;
+  const keys = Object.keys(raw);
+  if (keys.indexOf("speaker") === keys.length - 1) return undefined;
+  return SpeakerSchema.parse(raw.speaker);
+}
+
 /** Первый годный JSON-объект в тексте (модели иногда пишут что-то до или после). */
 export function extractJson(text: string): unknown | null {
   const t = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");

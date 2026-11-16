@@ -37,7 +37,7 @@ export function falConfigFromEnv(env: Record<string, string | undefined> = proce
   if (!env.FAL_KEY || env.IMAGES_FAKE === "1") return null;
   return {
     key: env.FAL_KEY,
-    portraitModel: env.FAL_PORTRAIT_MODEL || "fal-ai/flux-pro/kontext/text-to-image",
+    portraitModel: env.FAL_PORTRAIT_MODEL || "fal-ai/flux-2/klein/4b",
     backgroundModel: env.FAL_BACKGROUND_MODEL || "fal-ai/flux-2/klein/4b",
     cutoutModel: env.FAL_CUTOUT_MODEL || "fal-ai/birefnet/v2",
   };
