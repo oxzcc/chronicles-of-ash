@@ -46,7 +46,7 @@ describe("описания для FLUX", () => {
   });
   it("NPC без ответа модели — английский промпт из данных", async () => {
     const d = await describeNpc(fakeRouter(), { name: "Годрик", race: "dwarf", gender: "m", role: "трактирщик" });
-    expect(d).toMatch(/^man, stocky dwarf/);
+    expect(d).toMatch(/^a man, male character, stocky dwarf/);
     expect(/[а-я]/i.test(portraitPrompt(d))).toBe(false);
   });
 });

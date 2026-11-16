@@ -7,7 +7,11 @@ import { CLASS_EN, LOCATION_EN, RACE_EN } from "./style";
  * Если ответа нет или он не по-английски — собираем промпт из данных сами.
  */
 const CYR = /[а-яё]/i;
-const genderEn = (g: Gender) => (g === "f" ? "woman" : "man");
+/**
+ * Пол — первым и с повтором: иначе FLUX на «пожилом следопыте в капюшоне» рисует бородатого старика
+ * даже для героини (найдено на первом живом прогоне).
+ */
+const genderEn = (g: Gender) => (g === "f" ? "a woman, female character" : "a man, male character");
 
 async function ask(router: ModelRouter, prompt: string, maxTokens = 300, signal?: AbortSignal): Promise<string> {
   const { provider, model } = router.route("utility");
@@ -89,6 +93,7 @@ export async function heroVariants(router: ModelRouter, d: Pick<CharacterDraft, 
       router,
       `You design 4 clearly DIFFERENT looks for a dark fantasy player character. Base: ${baseHero(d)} (${RACES[d.race].name}, ${CLASSES[d.cls].name}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
 Vary age, hair colour and style, face shape, scars or marks, a clothing detail and expression so that the 4 people are easy to tell apart.
+Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and an age.
 Return JSON only: [{"label":"4-7 слов по-русски","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,
       700,
       signal,

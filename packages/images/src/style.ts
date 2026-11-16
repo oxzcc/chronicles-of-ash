@@ -13,7 +13,7 @@ export const STYLE_PREFIX =
  */
 const PORTRAIT_LIGHT = "half-body portrait, three-quarter view, bright warm key light on the face, soft rim light, plain flat light grey studio background, figure fully inside the frame";
 
-const BACKGROUND_LIGHT = "wide establishing shot, empty scene with no people, atmospheric depth, drifting grey ash in the air";
+const BACKGROUND_LIGHT = "wide establishing shot, empty scene with no people, atmospheric depth, drifting grey ash in the air, no lettering, signs without text";
 
 export const RACE_EN: Record<RaceKey, string> = {
   human: "human",
