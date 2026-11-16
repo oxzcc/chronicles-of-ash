@@ -42,6 +42,9 @@ importers:
       '@ash/game':
         specifier: workspace:^
         version: link:../../packages/game
+      '@ash/images':
+        specifier: workspace:^
+        version: link:../../packages/images
       '@ash/llm':
         specifier: workspace:^
         version: link:../../packages/llm
@@ -94,12 +97,27 @@ importers:
       '@ash/engine':
         specifier: workspace:*
         version: link:../engine
+      '@ash/images':
+        specifier: workspace:^
+        version: link:../images
       '@ash/llm':
         specifier: workspace:*
         version: link:../llm
       drizzle-orm:
         specifier: ^0.45.0
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
+
+  packages/images:
+    dependencies:
+      '@ash/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@ash/llm':
+        specifier: workspace:*
+        version: link:../llm
+      sharp:
+        specifier: ^0.35.5
+        version: 0.35.5(@types/node@22.20.5)
 
   packages/llm:
     dependencies:
@@ -1842,8 +1860,7 @@ snapshots:
   '@exodus/bytes@1.16.0':
     optional: true
 
-  '@img/colour@1.1.0':
-    optional: true
+  '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.35.5':
     optionalDependencies:
@@ -2494,8 +2511,7 @@ snapshots:
 
   scheduler@0.28.0: {}
 
-  semver@7.8.6:
-    optional: true
+  semver@7.8.6: {}
 
   server-only@0.0.1: {}
 
@@ -2531,7 +2547,6 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.5
       '@img/sharp-win32-x64': 0.35.5
       '@types/node': 22.20.5
-    optional: true
 
   source-map-js@1.2.2: {}
 

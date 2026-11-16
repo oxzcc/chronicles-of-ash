@@ -60,6 +60,7 @@ async function checkFal() {
   const models = {
     background: env.FAL_BACKGROUND_MODEL || "fal-ai/flux-2/klein/4b",
     portrait: env.FAL_PORTRAIT_MODEL || "fal-ai/flux-pro/kontext/text-to-image",
+    cutout: env.FAL_CUTOUT_MODEL || "fal-ai/birefnet/v2",
   };
   if (!withImages) {
     // Пустой запрос: 422 значит, что ключ и модель приняты, а не хватает только промпта.
@@ -73,6 +74,7 @@ async function checkFal() {
     return;
   }
   for (const [role, id] of Object.entries(models)) {
+    if (role === "cutout") continue; // вырезанию нужен вход-картинка — проверяется в игре
     const t0 = Date.now();
     const r = await falRun(id, { prompt: "dark fantasy painterly illustration, abandoned village at dusk, drifting grey ash", num_images: 1 });
     const url = r.body?.images?.[0]?.url;

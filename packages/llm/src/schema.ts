@@ -20,6 +20,7 @@ const SpeakerSchema = z
     race: z.enum(RACE_KEYS).catch("human"),
     gender: z.enum(["m", "f"]).catch("m"),
     role: str(60),
+    look: str(200).optional(),
   })
   .nullable()
   .catch(null)

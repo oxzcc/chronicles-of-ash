@@ -2,6 +2,9 @@
 
 import type { Campaign, Character, CheckResult, CombatEvent, CombatOutcome, CombatState } from "@ash/engine";
 import type { Beat, Suggestion } from "@ash/llm";
+import type { SceneView } from "@ash/game";
+
+export type { SceneView };
 
 export type { Beat, Suggestion };
 
@@ -25,13 +28,14 @@ export interface CampaignView {
   campaign: Campaign;
   turns: TurnView[];
   costUsd: number;
+  scene: SceneView;
 }
 
 export type TurnStreamEvent =
   | { type: "beats"; beats: Beat[] }
   | { type: "roll"; roll: CheckResult }
   | { type: "combat"; events: CombatEvent[]; combat: CombatState | null; outcome: CombatOutcome }
-  | { type: "done"; turnNo: number; character: Character; campaign: Campaign; turns: TurnView[]; costUsd: number }
+  | { type: "done"; turnNo: number; character: Character; campaign: Campaign; turns: TurnView[]; costUsd: number; scene: SceneView }
   | { type: "error"; message: string };
 
 export async function api<T>(url: string, body?: unknown): Promise<T> {

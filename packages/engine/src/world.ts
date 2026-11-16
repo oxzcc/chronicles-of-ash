@@ -19,6 +19,8 @@ export interface MapLocation {
   x: number;
   y: number;
   visited: boolean;
+  /** Фон локации (id картинки) — выбирается при первом входе. */
+  imageId?: string;
 }
 
 export interface Speaker {

@@ -25,7 +25,10 @@ export default function NewHero() {
   const [base, setBase] = useState({ ...RECOMMENDED_STATS.fighter });
   const [skills, setSkills] = useState<SkillName[]>([]);
   const [backstory, setBackstory] = useState("");
-  const [busy, setBusy] = useState<"" | "story" | "create">("");
+  const [busy, setBusy] = useState<"" | "story" | "create" | "faces">("");
+  const [look, setLook] = useState("");
+  const [faces, setFaces] = useState<{ id: string; label: string; status: string; url: string | null }[]>([]);
+  const [face, setFace] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const draft: CharacterDraft = { name, gender, race, cls, base, skills, backstory };
@@ -61,11 +64,37 @@ export default function NewHero() {
     }
   }
 
+  async function drawFaces() {
+    setBusy("faces");
+    setError("");
+    setFace(null);
+    try {
+      const r = await api<{ options: { id: string; label: string }[] }>("/api/portraits", { draft, notes: look });
+      setFaces(r.options.map((o) => ({ ...o, status: "queued", url: null })));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  // Портреты рисуются в фоне — опрашиваем, пока не будут готовы все четыре.
+  const facesPending = faces.some((f) => f.status === "queued" || f.status === "working");
+  useEffect(() => {
+    if (!facesPending) return;
+    const t = setInterval(async () => {
+      const r = await api<{ images: { id: string; status: string; url: string | null }[] }>(`/api/portraits?ids=${faces.map((f) => f.id).join(",")}`).catch(() => null);
+      if (!r) return;
+      setFaces((cur) => cur.map((f) => ({ ...f, ...(r.images.find((i) => i.id === f.id) ?? {}) })));
+    }, 1500);
+    return () => clearInterval(t);
+  }, [facesPending, faces]);
+
   async function create() {
     setBusy("create");
     setError("");
     try {
-      const r = await api<{ id: string }>("/api/campaigns", { draft });
+      const r = await api<{ id: string }>("/api/campaigns", { draft, portraitId: face ?? undefined });
       router.push(`/play/${r.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -162,6 +191,27 @@ export default function NewHero() {
             );
           })}
         </div>
+      </div>
+
+      <div className="section">
+        <h2>Облик</h2>
+        <p className="small muted">Опиши внешность или оставь пустым — мастер нарисует четыре разных варианта. Выбранный портрет станет лицом героя во всех сценах.</p>
+        <div className="row">
+          <input value={look} onChange={(e) => setLook(e.target.value)} maxLength={300} placeholder="Например: рыжая, шрам через бровь, потёртый кожаный плащ" style={{ flex: 1, minWidth: 260 }} />
+          <button className="btn ghost small" onClick={drawFaces} disabled={!!busy || facesPending}>
+            {busy === "faces" ? "Мастер придумывает образы…" : faces.length ? "Ещё 4 варианта" : "Нарисовать 4 варианта"}
+          </button>
+        </div>
+        {faces.length > 0 && (
+          <div className="faces">
+            {faces.map((f) => (
+              <button key={f.id} className={`face ${face === f.id ? "on" : ""}`} disabled={f.status !== "ready"} onClick={() => setFace(f.id)} aria-label={`Портрет: ${f.label}`}>
+                {f.url ? <img src={f.url} alt="" /> : <span className="face-wait">{f.status === "failed" ? "Не вышло" : "Рисую…"}</span>}
+                <span className="face-label">{f.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="section">

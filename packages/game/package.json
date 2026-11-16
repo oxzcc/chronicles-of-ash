@@ -12,6 +12,7 @@
   "dependencies": {
     "@ash/db": "workspace:*",
     "@ash/engine": "workspace:*",
+    "@ash/images": "workspace:^",
     "@ash/llm": "workspace:*",
     "drizzle-orm": "^0.45.0"
   }

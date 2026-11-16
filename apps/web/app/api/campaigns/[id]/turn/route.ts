@@ -1,5 +1,5 @@
 import { secureRng, type CombatMove } from "@ash/engine";
-import { GameError, loadCampaign, playTurn, saveTurn, type TurnInput } from "@ash/game";
+import { GameError, loadCampaign, playTurn, prepareVisuals, saveTurn, sceneView, type TurnInput } from "@ash/game";
 import { currentUser, errorResponse, getDb, getRouter, getWorldBible, sseStream, withCampaignLock } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +51,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         { router: getRouter(), tier, worldBible: getWorldBible(), rng: secureRng, signal: req.signal, emit: (e) => send(e.type, e) },
         c.state, c.recent, input,
       );
+      // Картинки — в очередь до сохранения: фон локации записывается в состояние кампании.
+      await prepareVisuals(db, c.id, out.state, out.records).catch((e) => console.error("[images] prepare", e));
       const turnNo = await saveTurn(db, c, out.state, out.records);
       send("done", {
         turnNo, character: out.state.character, campaign: out.state.campaign,
@@ -59,6 +61,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           rolls: r.rolls, suggestions: r.suggestions, combatEvents: r.combatEvents,
         })),
         costUsd: out.records.reduce((s, r) => s + r.usage.costUsd, 0),
+        scene: await sceneView(db, c.id, c.characterId, out.state.campaign),
       });
     }),
   );
