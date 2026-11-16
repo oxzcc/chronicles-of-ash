@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { LOCATION_TYPES, locationById, type CheckResult, type CombatEvent, type CombatMove } from "@ash/engine";
-import { api, sleep, streamTurn, type CampaignView, type TurnView } from "@/lib/client";
-import { CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, WorldMap, type DiceView } from "@/components/game";
+import { api, sleep, streamTurn, type Beat, type CampaignView, type Suggestion } from "@/lib/client";
+import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
 
 type Input =
   | { kind: "start" }
   | { kind: "action"; text: string }
+  | { kind: "choice"; index: number }
   | { kind: "travel"; to: string }
   | { kind: "rest" }
   | { kind: "combat"; move: CombatMove; target?: number };
@@ -16,9 +17,13 @@ type Input =
 interface Live {
   label: string;
   kind: string;
-  narration: string;
+  beats: Beat[];
+  /** Что показать, пока нет текста: «Годрик отвечает…». */
+  waiting: string;
   rolls: CheckResult[];
   combatEvents: CombatEvent[];
+  /** Ход сохранён и уже в журнале; ждём только, пока доиграет кубик. */
+  done?: boolean;
 }
 
 export default function Play({ params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +32,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const [live, setLive] = useState<Live | null>(null);
   const [dice, setDice] = useState<DiceView | null>(null);
   const [text, setText] = useState("");
+  const [asking, setAsking] = useState<{ index: number; s: Suggestion & { check: { skill: string; dc: number } } } | null>(null);
   const [error, setError] = useState("");
   const busy = live !== null;
   const journal = useRef<HTMLDivElement>(null);
@@ -39,7 +45,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
 
   useEffect(() => {
     journal.current?.scrollTo({ top: journal.current.scrollHeight, behavior: "smooth" });
-  }, [view?.turns.length, live?.narration, live?.combatEvents.length]);
+  }, [view?.turns.length, live?.beats, live?.combatEvents.length]);
 
   /** Кубики показываются по очереди, каждый ~1.6 с, не задерживая поток текста. */
   const showDice = (d: DiceView) => {
@@ -54,9 +60,9 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     async (input: Input, label: string) => {
       if (live) return;
       setError("");
-      setLive({ label, kind: input.kind, narration: "", rolls: [], combatEvents: [] });
+      setLive({ label, kind: input.kind, beats: [], waiting: waitingLabel(input.kind), rolls: [], combatEvents: [] });
       await streamTurn(`/api/campaigns/${id}/turn`, input, (e) => {
-        if (e.type === "narration") setLive((l) => l && { ...l, narration: e.text });
+        if (e.type === "beats") setLive((l) => l && { ...l, beats: e.beats });
         else if (e.type === "roll") {
           showDice(diceFromCheck(e.roll));
           setLive((l) => l && { ...l, rolls: [...l.rolls, e.roll] });
@@ -66,6 +72,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           setLive((l) => l && { ...l, combatEvents: [...l.combatEvents, ...e.events] });
           setView((v) => v && { ...v, campaign: { ...v.campaign, combat: e.combat } });
         } else if (e.type === "done") {
+          setLive((l) => l && { ...l, done: true });
           setView((v) => v && { ...v, turnNo: e.turnNo, character: e.character, campaign: e.campaign, turns: [...v.turns, ...e.turns], costUsd: v.costUsd + e.costUsd });
           if (input.kind === "action") setText("");
         } else if (e.type === "error") setError(e.message);
@@ -75,6 +82,16 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     },
     [id, live],
   );
+
+  /** Подпись ожидания по контексту: кто сейчас «говорит». */
+  function waitingLabel(kind: Input["kind"]): string {
+    const npc = view?.campaign.npc?.name;
+    if (kind === "action" || kind === "choice") return npc ? `${npc} отвечает` : "Мир откликается";
+    if (kind === "travel") return "Дорога ведёт дальше";
+    if (kind === "rest") return "Привал";
+    if (kind === "start") return "История начинается";
+    return "Пыль оседает";
+  }
 
   // Новая кампания — мастер сразу рассказывает завязку.
   useEffect(() => {
@@ -111,11 +128,11 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           {view.turns.map((t) => (
             <Entry key={t.turnNo} t={t} />
           ))}
-          {live && (
+          {live && !live.done && (
             <>
-              {live.kind === "action" && <div className="entry"><div className="you">{live.label}</div></div>}
-              <Entry t={{ kind: "start", action: "", narration: live.narration, speaker: null, line: "", rolls: live.rolls, combatEvents: live.combatEvents }} />
-              {!live.narration && !live.combatEvents.length && <p className="writing">Мастер пишет…</p>}
+              {(live.kind === "action" || live.kind === "choice") && <div className="entry"><div className="you">{live.label}</div></div>}
+              <Entry t={{ kind: "start", action: "", beats: live.beats, rolls: live.rolls, combatEvents: live.combatEvents }} />
+              {!live.beats.length && <p className="writing">{live.waiting}</p>}
             </>
           )}
         </div>
@@ -127,13 +144,16 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         ) : (
           <div className="composer">
             {suggestions.length > 0 && (
-              <div className="suggestions">
-                {suggestions.map((s) => (
-                  <button key={s} disabled={busy} onClick={() => send({ kind: "action", text: s }, s)}>
-                    {s}
-                  </button>
-                ))}
-              </div>
+              <Suggestions
+                items={suggestions}
+                c={c}
+                disabled={busy}
+                onPick={(index) => {
+                  const s = suggestions[index]!;
+                  if (s.check) setAsking({ index, s: s as typeof s & { check: NonNullable<typeof s.check> } });
+                  else send({ kind: "choice", index }, s.text);
+                }}
+              />
             )}
             <textarea
               value={text}
@@ -151,7 +171,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
             <div className="row" style={{ justifyContent: "space-between", marginTop: 8 }}>
               <span className="small muted">Enter — отправить, Shift+Enter — новая строка</span>
               <button className="btn" disabled={busy || !text.trim()} onClick={submit}>
-                {busy ? "Мастер пишет…" : "Действовать"}
+                {busy ? `${live?.waiting ?? ""}…` : "Действовать"}
               </button>
             </div>
           </div>
@@ -172,6 +192,18 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </aside>
 
+      {asking && (
+        <CheckDialog
+          s={asking.s}
+          c={c}
+          onCancel={() => setAsking(null)}
+          onRoll={() => {
+            const a = asking;
+            setAsking(null);
+            send({ kind: "choice", index: a.index }, a.s.text);
+          }}
+        />
+      )}
       {dice && <Dice dice={dice} />}
     </div>
   );

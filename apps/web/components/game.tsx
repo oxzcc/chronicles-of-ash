@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  CLASSES, LOCATION_TYPES, neighbors, RACES, isPotion,
+  abilityMod, CLASSES, LOCATION_TYPES, neighbors, proficiency, RACES, isPotion, resolveSkill, STATS,
   type Campaign, type Character, type CheckResult, type CombatMove, type DiceShow,
 } from "@ash/engine";
-import type { TurnView } from "@/lib/client";
+import type { Beat, Suggestion, TurnView } from "@/lib/client";
 
 /** Кубик на экране — из проверки навыка или из боя. */
 export type DiceView = { label: string; d20: number; calc: string; verdict: string; tone: "crit" | "ok" | "bad" };
@@ -35,17 +35,40 @@ export function Dice({ dice }: { dice: DiceView }) {
 
 const KIND_LABEL: Record<string, string> = { travel: "Путь", rest: "Привал", knockout: "Поражение", start: "" };
 
-export function Entry({ t }: { t: Pick<TurnView, "kind" | "action" | "narration" | "speaker" | "line" | "rolls" | "combatEvents"> }) {
+/** Реплики хода: повествование отдельными абзацами, речь NPC — в рамке с именем, как в новелле. */
+export function Beats({ beats }: { beats: Beat[] }) {
+  return (
+    <>
+      {beats.map((b, i) =>
+        b.speaker ? (
+          <div key={i} className="say">
+            <div className="say-name">{b.speaker}</div>
+            <div className="say-text">{b.text}</div>
+          </div>
+        ) : (
+          b.text.split(/\n+/).filter(Boolean).map((p, k) => (
+            <p key={`${i}-${k}`} className="narr">
+              {p}
+            </p>
+          ))
+        ),
+      )}
+    </>
+  );
+}
+
+export function Entry({ t }: { t: Pick<TurnView, "kind" | "action" | "beats" | "rolls" | "combatEvents"> }) {
+  const player = t.kind === "action" || t.kind === "choice";
   return (
     <div className="entry">
-      {t.kind === "action" && <div className="you">{t.action}</div>}
-      {t.kind !== "action" && t.kind !== "start" && t.kind !== "combat" && <div className="you">{KIND_LABEL[t.kind] ?? ""} · {t.action}</div>}
+      {player && <div className="you">{t.action}</div>}
+      {!player && t.kind !== "start" && t.kind !== "combat" && <div className="you">{KIND_LABEL[t.kind] ?? ""} · {t.action}</div>}
       {t.rolls.map((r, i) => (
         <span key={i} className={`roll-chip ${r.success ? "" : "fail"}`}>
           🎲 {r.summary}
         </span>
       ))}
-      {t.combatEvents.length > 0 ? (
+      {t.combatEvents.length > 0 && (
         <div className="combat-log">
           {t.combatEvents.map((e, i) => (
             <div key={i} className={e.tone}>
@@ -53,14 +76,64 @@ export function Entry({ t }: { t: Pick<TurnView, "kind" | "action" | "narration"
             </div>
           ))}
         </div>
-      ) : (
-        t.narration.split(/\n+/).filter(Boolean).map((p, i) => <p key={i}>{p}</p>)
       )}
-      {t.line && (
-        <p className="npc">
-          <b>{t.speaker ?? "Голос"}:</b> «{t.line}»
-        </p>
-      )}
+      <Beats beats={t.beats} />
+    </div>
+  );
+}
+
+/** Модификатор и шанс успеха проверки — игрок видит их до броска, как в BG3. */
+export function checkOdds(c: Character, skill: string, dc: number) {
+  const r = resolveSkill(skill) ?? { stat: "wis" as const, skill: null };
+  const mod = abilityMod(c.stats[r.stat]) + (r.skill && c.skills.includes(r.skill) ? proficiency(c.level) : 0);
+  let wins = 0;
+  for (let d = 1; d <= 20; d++) if (d === 20 || (d !== 1 && d + mod >= dc)) wins++;
+  return { mod, chance: wins * 5, stat: STATS[r.stat].short, proficient: !!(r.skill && c.skills.includes(r.skill)) };
+}
+
+export function Suggestions({ items, c, disabled, onPick }: { items: Suggestion[]; c: Character; disabled: boolean; onPick: (index: number) => void }) {
+  return (
+    <div className="suggestions">
+      {items.map((s, i) => (
+        <button key={i} disabled={disabled} onClick={() => onPick(i)}>
+          {s.check && (
+            <span className="check-tag">
+              {s.check.skill} · СЛ {s.check.dc}
+            </span>
+          )}
+          {s.text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function CheckDialog({ s, c, onRoll, onCancel }: { s: Suggestion & { check: { skill: string; dc: number } }; c: Character; onRoll: () => void; onCancel: () => void }) {
+  const o = checkOdds(c, s.check.skill, s.check.dc);
+  return (
+    <div className="dice-veil" onClick={onCancel}>
+      <div className="check-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Проверка навыка">
+        <div className="small muted">Проверка</div>
+        <h2>{s.check.skill}</h2>
+        <div className="check-dc">СЛ {s.check.dc}</div>
+        <p className="small muted">«{s.text}»</p>
+        <div className="kv" style={{ justifyContent: "center", gap: 18 }}>
+          <span>
+            Бонус {o.mod >= 0 ? "+" : "−"}
+            {Math.abs(o.mod)} ({o.stat}
+            {o.proficient ? ", владение" : ""})
+          </span>
+          <span>Шанс {o.chance}%</span>
+        </div>
+        <div className="row" style={{ justifyContent: "center", marginTop: 18 }}>
+          <button className="btn" onClick={onRoll} autoFocus>
+            Бросить d20
+          </button>
+          <button className="btn ghost" onClick={onCancel}>
+            Отмена
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

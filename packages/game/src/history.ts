@@ -4,13 +4,13 @@ import type { TurnRecord } from "./types";
 /** Сколько последних записей журнала идёт в промпт (как в плане: ~14 событий). */
 export const HISTORY_WINDOW = 14;
 
-export type Recordish = Pick<TurnRecord, "kind" | "action" | "narration" | "speaker" | "line" | "rolls">;
+export type Recordish = Pick<TurnRecord, "kind" | "action" | "narration" | "speaker" | "line" | "rolls"> & { suggestions?: TurnRecord["suggestions"] };
 
 /** Журнал ходов → события для промпта мастера. */
 export function toHistory(records: Recordish[]): HistoryEntry[] {
   const out: HistoryEntry[] = [];
   for (const r of records) {
-    if (r.kind === "action") out.push({ who: "player", text: r.action });
+    if (r.kind === "action" || r.kind === "choice") out.push({ who: "player", text: r.action });
     else if (r.kind === "combat") {
       out.push({ who: "combat", text: r.narration });
       continue;

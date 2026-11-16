@@ -1,6 +1,6 @@
 import { skillCheck, type CheckResult, type Edge, type Rng } from "@ash/engine";
 import { narratorSystemPrompt, narratorUserPrompt, rollCheckTool, PROMPT_VERSION, type SceneContext } from "./prompts/gm";
-import { parseGmResponse, partialNarration, type GmResponse } from "./schema";
+import { parseGmResponse, partialBeats, type Beat, type GmResponse } from "./schema";
 import { addUsage, emptyUsage, type ChatMessage, type LlmProvider, type Usage } from "./types";
 
 export const MAX_CHECKS_PER_TURN = 2;
@@ -12,8 +12,10 @@ export interface NarratorTurnOptions {
   scene: SceneContext;
   rng: Rng;
   signal?: AbortSignal;
-  /** Повествование целиком по мере генерации. */
-  onNarration?: (text: string) => void;
+  /** Реплики по мере генерации (последняя может быть недописана). */
+  onBeats?: (beats: Beat[]) => void;
+  /** false — модели не даётся roll_check (например, проверка уже брошена игрой). */
+  allowChecks?: boolean;
   /** Бросок сделан — клиент показывает анимацию до продолжения текста. */
   onRoll?: (roll: CheckResult) => void | Promise<void>;
 }
@@ -56,15 +58,16 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
   let retried = false;
   let shown = "";
   const onText = (_d: string, full: string) => {
-    const n = partialNarration(full);
-    if (n && n !== shown) {
-      shown = n;
-      o.onNarration?.(n);
+    const beats = partialBeats(full);
+    const key = JSON.stringify(beats);
+    if (beats.length && key !== shown) {
+      shown = key;
+      o.onBeats?.(beats);
     }
   };
 
   for (let step = 0; step < MAX_CHECKS_PER_TURN + 2; step++) {
-    const allowTools = rolls.length < MAX_CHECKS_PER_TURN;
+    const allowTools = o.allowChecks !== false && rolls.length < MAX_CHECKS_PER_TURN;
     const res = await o.provider.complete({
       model: o.model,
       messages,
@@ -102,7 +105,10 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
     if (!retried) {
       retried = true;
       messages.push({ role: "assistant", content: res.text });
-      messages.push({ role: "user", content: `Ответ не разобран (${parsed.error}). Повтори тот же ход строго одним JSON-объектом по схеме из правил, без текста вокруг.` });
+      messages.push({
+        role: "user",
+        content: `Ответ не принят (${parsed.error}). Повтори тот же ход строго одним JSON-объектом по схеме из правил, без текста вокруг, только по-русски.`,
+      });
       continue;
     }
     return { response: parsed.fallback, rolls, usage, model, promptVersion: PROMPT_VERSION, requests, degraded: true, rawText: res.text };

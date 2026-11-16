@@ -15,7 +15,7 @@ class Scripted implements LlmProvider {
   name = "scripted";
   constructor(private readonly replies: object[]) {}
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    const text = JSON.stringify({ narration: "…", ...(this.replies.shift() ?? {}) });
+    const text = JSON.stringify({ beats: [{ speaker: null, text: "…" }], ...(this.replies.shift() ?? {}) });
     req.onText?.(text, text);
     return { text, toolCalls: [], usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0, costUsd: 0.001 }, model: "s", finishReason: "stop" };
   }
@@ -57,9 +57,24 @@ describe("ход", () => {
     const b = await playTurn(deps({ emit: (e) => events.push(e) }), g, a.records, { kind: "action", text: "Расспрашиваю старика" });
     expect(b.records[0]!.rolls).toHaveLength(1);
     expect(events.some((e) => e.type === "roll")).toBe(true);
-    expect(events.some((e) => e.type === "narration")).toBe(true);
+    expect(events.some((e) => e.type === "beats")).toBe(true);
     expect(g.campaign.npc?.name).toBe("Старый Ведун");
     expect(g.campaign.turn).toBe(2);
+  });
+  it("вариант с проверкой: кубик бросает игра до рассказа, СЛ берётся из сохранённого варианта", async () => {
+    const g = await freshGame();
+    const events: GameEvent[] = [];
+    const a = await playTurn(deps(), g, [], { kind: "start" });
+    expect(a.records[0]!.suggestions[1]).toEqual({ text: "Убеждаю его рассказать правду", check: { skill: "Убеждение", dc: 13 } });
+    const b = await playTurn(deps({ emit: (e) => events.push(e) }), g, a.records, { kind: "choice", index: 1 });
+    expect(events[0]!.type).toBe("roll");
+    expect(b.records[0]!.kind).toBe("choice");
+    expect(b.records[0]!.action).toBe("Убеждаю его рассказать правду");
+    expect(b.records[0]!.rolls).toHaveLength(1); // фейковая модель не просила второй бросок: инструмент отключён
+    expect(b.records[0]!.rolls[0]!.dc).toBe(13);
+    const plain = await playTurn(deps(), g, [...a.records, ...b.records], { kind: "choice", index: 0 });
+    expect(plain.records[0]!.rolls).toHaveLength(1); // без проверки — мастер может бросить сам
+    await expect(playTurn(deps(), g, a.records, { kind: "choice", index: 7 })).rejects.toThrow(/неактуален/);
   });
   it("пустое действие отклоняется", async () => {
     const g = await freshGame();
@@ -124,6 +139,8 @@ describe.skipIf(!url)("база", () => {
     const again = await loadCampaign(db, uid, id);
     expect(again.turnNo).toBe(1);
     expect(again.recent[0]!.narration).toContain("пепел");
+    expect(again.recent[0]!.beats).toHaveLength(3);
+    expect(again.recent[0]!.suggestions[2]!.check).toEqual({ skill: "Внимательность", dc: 12 });
     expect((await campaignTurns(db, id))[0]!.suggestions).toHaveLength(3);
     await expect(loadCampaign(db, crypto.randomUUID(), id)).rejects.toThrow(/не найдена/);
   });

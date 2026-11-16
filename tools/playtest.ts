@@ -68,17 +68,18 @@ function nextInput(s: Save): TurnInput {
   const last = [...s.records].reverse().find((r) => r.suggestions.length);
   const free = ["Осматриваюсь внимательнее и прислушиваюсь", "Спрашиваю, что здесь недавно случилось", "Пытаюсь незаметно проследить за подозрительным типом"];
   if (n % 3 === 2 || !last) return { kind: "action", text: free[n % free.length]! };
-  return { kind: "action", text: last.suggestions[n % last.suggestions.length]! };
+  // Варианты мастера выбираем по номеру: так проверяется путь с заранее брошенной проверкой.
+  return { kind: "choice", index: n % last.suggestions.length };
 }
 
 function transcript(s: Save): string {
   const w = s.state.campaign;
   const lines = [`# Плейтест: ${w.questTitle}`, "", `Тариф: ${tier}. ${w.hook}`, ""];
   for (const [i, r] of s.records.entries()) {
-    lines.push(`## ${i + 1}. ${r.kind === "action" ? `> ${r.action}` : `[${r.action}]`}`);
+    lines.push(`## ${i + 1}. ${r.kind === "action" || r.kind === "choice" ? `> ${r.action}` : `[${r.action}]`}`);
     for (const roll of r.rolls) lines.push(`- 🎲 ${roll.summary}`);
-    lines.push("", r.narration);
-    if (r.line) lines.push("", `**${r.speaker ?? "NPC"}:** «${r.line}»`);
+    for (const b of r.beats?.length ? r.beats : [{ speaker: null, text: r.narration }]) lines.push("", b.speaker ? `**${b.speaker}:** «${b.text}»` : b.text);
+    if (r.suggestions.length) lines.push("", `_Варианты: ${r.suggestions.map((x) => (x.check ? `[${x.check.skill} ${x.check.dc}] ${x.text}` : x.text)).join(" · ")}_`);
     if (r.applied?.notes.length) lines.push("", `_Изменения: ${r.applied.notes.join(" · ")}_`);
     if (r.applied?.rejected.length) lines.push("", `_Отклонено движком: ${r.applied.rejected.join("; ")}_`);
     if (r.degraded) lines.push("", "**⚠ JSON не разобран.** Сырой ответ:", "", "```", r.raw ?? "", "```");
@@ -114,7 +115,7 @@ while (save.playerTurns < target) {
     save.records.push(...r.records);
     if (input.kind !== "combat") save.playerTurns++;
     const main = r.records.find((x) => x.model !== "engine");
-    console.log(`${save.playerTurns}/${target} ${input.kind}${"text" in input ? `: ${input.text.slice(0, 50)}` : ""} — ${Date.now() - t0} мс${main?.degraded ? " ⚠ JSON" : ""}${r.records.some((x) => x.kind === "combat") ? " ⚔" : ""}`);
+    console.log(`${save.playerTurns}/${target} ${input.kind}${"text" in input ? `: ${input.text.slice(0, 50)}` : ""}${"index" in input ? ` #${input.index}` : ""} — ${Date.now() - t0} мс${main?.degraded ? " ⚠ JSON" : ""}${r.records.some((x) => x.kind === "combat") ? " ⚔" : ""}`);
   } catch (e) {
     console.log(`ошибка на ходу ${input.kind}: ${(e as Error).message}`);
     if (input.kind === "start") break;
