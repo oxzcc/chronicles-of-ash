@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createCharacter, layoutCampaign, mulberry32, RECOMMENDED_STATS, scriptedRng } from "@ash/engine";
 import {
-  FakeProvider, OpenRouterProvider, parseGmResponse, partialNarration, runNarratorTurn, toWireMessages,
+  FakeProvider, OpenRouterProvider, parseGmResponse, parsePartialJson, partialBeats, runNarratorTurn, toWireMessages,
   type CompletionRequest, type CompletionResult, type LlmProvider,
 } from "../src/index";
 
@@ -29,22 +29,47 @@ class Scripted implements LlmProvider {
 
 describe("разбор ответа мастера", () => {
   it("достаёт JSON из мусора и чинит поля", () => {
-    const r = parseGmResponse('Вот ответ:\n```json\n{"narration":"Тьма.","speaker":{"name":"Бран","race":"goblin"},"changes":{"gold":"12"},"suggestions":[1,"Иду"]}\n```');
+    const r = parseGmResponse('Вот ответ:\n```json\n{"beats":[{"speaker":null,"text":"Тьма."},{"speaker":"Бран","text":"«Кто здесь?»"},{"speaker":"Рассказчик","text":"Тишина."}],"speaker":{"name":"Бран","race":"goblin"},"changes":{"gold":"12"},"suggestions":[1,"Иду",{"text":"Лгу","skill":"Обман","dc":40},{"text":"Колдую","skill":"Некромантия","dc":12}]}\n```');
     expect(r.ok).toBe(true);
     if (!r.ok) return;
+    expect(r.value.beats).toEqual([{ speaker: null, text: "Тьма." }, { speaker: "Бран", text: "Кто здесь?" }, { speaker: null, text: "Тишина." }]);
+    expect(r.value.narration).toBe("Тьма.\n\nБран: «Кто здесь?»\n\nТишина.");
     expect(r.value.speaker).toMatchObject({ name: "Бран", race: "human", gender: "m" });
     expect(r.value.changes.gold).toBe(12);
-    expect(r.value.suggestions).toEqual(["1", "Иду"]);
+    expect(r.value.suggestions).toEqual([{ text: "Иду" }, { text: "Лгу", check: { skill: "Обман", dc: 25 } }, { text: "Колдую" }]);
     expect(r.value.combat).toBeNull();
   });
-  it("битый JSON — запасное повествование", () => {
-    const r = parseGmResponse('{"narration":"Дверь скрипит\\nи открывается');
+  it("старый формат narration + line превращается в реплики", () => {
+    const r = parseGmResponse('{"narration":"Дверь скрипит.\\n\\nВходит стражник.","speaker":{"name":"Вейл"},"line":"Бумаги!"}');
+    expect(r.ok && r.value.beats).toEqual([{ speaker: null, text: "Дверь скрипит." }, { speaker: null, text: "Входит стражник." }, { speaker: "Вейл", text: "Бумаги!" }]);
+  });
+  it("иероглифы — повод для повтора, в запасном тексте вычищены", () => {
+    const r = parseGmResponse('{"beats":[{"speaker":null,"text":"Он смотрит 突然 на тебя."}]}');
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.fallback.narration).toBe("Дверь скрипит\nи открывается");
+    expect(r.error).toMatch(/иероглиф/);
+    expect(r.fallback.beats[0]!.text).toBe("Он смотрит  на тебя.");
   });
-  it("частичный текст для стриминга", () => {
-    expect(partialNarration('{"narration":"При\\"вет')).toBe('При"вет');
+  it("битый JSON — запасные реплики", () => {
+    const r = parseGmResponse('{"beats":[{"speaker":null,"text":"Дверь скрипит\\nи открывается');
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.fallback.beats[0]!.text).toBe("Дверь скрипит\nи открывается");
+  });
+});
+
+describe("стриминг реплик", () => {
+  it("недописанный JSON разбирается на каждом шаге", () => {
+    const full = '{"beats":[{"speaker":null,"text":"Ветер воет."},{"speaker":"Годрик","text":"Пей или уходи, \\"гость\\"."}],"changes":{"hp":0}}';
+    const seen = new Set<string>();
+    for (let n = 1; n <= full.length; n++) seen.add(JSON.stringify(partialBeats(full.slice(0, n))));
+    const last = partialBeats(full);
+    expect(last).toEqual([{ speaker: null, text: "Ветер воет." }, { speaker: "Годрик", text: 'Пей или уходи, "гость".' }]);
+    expect(seen.size).toBeGreaterThan(20);
+    expect(parsePartialJson('{"beats":[{"speaker":"Го')).toEqual({ beats: [{ speaker: "Го" }] });
+  });
+  it("иероглифы не показываются даже на лету", () => {
+    expect(partialBeats('{"beats":[{"speaker":null,"text":"Шаги 突然 стихли')).toEqual([{ speaker: null, text: "Шаги  стихли" }]);
   });
 });
 
@@ -52,7 +77,7 @@ describe("ход рассказчика", () => {
   it("roll_check бросает сервер и результат уходит модели", async () => {
     const p = new Scripted([
       { toolCalls: [{ id: "c1", name: "roll_check", arguments: '{"skill":"Обман","dc":13}' }] },
-      { text: '{"narration":"Стражник верит тебе.","suggestions":["Иду дальше"]}' },
+      { text: '{"beats":[{"speaker":null,"text":"Стражник верит тебе."}],"suggestions":["Иду дальше"]}' },
     ]);
     const rolls: number[] = [];
     const r = await runNarratorTurn({ provider: p, model: "m", worldBible: "", scene: scene(), rng: scriptedRng([15]), onRoll: (x) => void rolls.push(x.d20) });
@@ -63,16 +88,17 @@ describe("ход рассказчика", () => {
     const toolMsg = p.calls[1]!.messages.at(-1)!;
     expect(toolMsg).toMatchObject({ role: "tool", toolCallId: "c1" });
     expect(r.response.narration).toBe("Стражник верит тебе.");
+    expect(r.response.suggestions).toEqual([{ text: "Иду дальше" }]);
   });
   it("не больше двух проверок, третья отклоняется", async () => {
     const call = (id: string) => ({ toolCalls: [{ id, name: "roll_check", arguments: '{"skill":"Атлетика","dc":10}' }] });
-    const p = new Scripted([call("1"), call("2"), { text: '{"narration":"Готово."}' }]);
+    const p = new Scripted([call("1"), call("2"), { text: '{"beats":[{"speaker":null,"text":"Готово."}]}' }]);
     const r = await runNarratorTurn({ provider: p, model: "m", worldBible: "", scene: scene(), rng: mulberry32(1) });
     expect(r.rolls).toHaveLength(2);
     expect(p.calls[2]!.tools).toBeUndefined();
   });
   it("один повтор при битом JSON", async () => {
-    const p = new Scripted([{ text: "просто текст" }, { text: '{"narration":"Теперь правильно."}' }]);
+    const p = new Scripted([{ text: "просто текст" }, { text: '{"beats":[{"speaker":null,"text":"Теперь правильно."}]}' }]);
     const r = await runNarratorTurn({ provider: p, model: "m", worldBible: "", scene: scene(), rng: mulberry32(1) });
     expect(r.degraded).toBe(false);
     expect(r.requests).toBe(2);
@@ -81,10 +107,10 @@ describe("ход рассказчика", () => {
     const p = new Scripted([{ text: "раз" }, { text: "два" }]);
     const r = await runNarratorTurn({ provider: p, model: "m", worldBible: "", scene: scene(), rng: mulberry32(1) });
     expect(r.degraded).toBe(true);
-    expect(r.response.narration).toBe("два");
+    expect(r.response.beats[0]!.text).toBe("два");
   });
   it("системный промпт кэшируемый, описание мира внутри", async () => {
-    const p = new Scripted([{ text: '{"narration":"Ок."}' }]);
+    const p = new Scripted([{ text: '{"beats":[{"speaker":null,"text":"Ок."}]}' }]);
     await runNarratorTurn({ provider: p, model: "m", worldBible: "Мир Пепла.", scene: scene(), rng: mulberry32(1) });
     const sys = p.calls[0]!.messages[0]!;
     expect(sys).toMatchObject({ role: "system", cache: true });
@@ -92,11 +118,18 @@ describe("ход рассказчика", () => {
     expect(toWireMessages([sys])[0]).toMatchObject({ content: [{ cache_control: { type: "ephemeral" } }] });
   });
   it("фейковая модель проходит полный цикл со стримингом", async () => {
-    const seen: string[] = [];
-    const r = await runNarratorTurn({ provider: new FakeProvider(), model: "fake", worldBible: "", scene: scene(), rng: mulberry32(2), onNarration: (t) => seen.push(t) });
+    const seen: number[] = [];
+    const r = await runNarratorTurn({ provider: new FakeProvider(), model: "fake", worldBible: "", scene: scene(), rng: mulberry32(2), onBeats: (b) => seen.push(b.length) });
     expect(r.rolls).toHaveLength(1);
     expect(r.response.speaker?.name).toBe("Старый Ведун");
-    expect(seen.length).toBeGreaterThan(1);
+    expect(r.response.beats.at(-1)).toEqual({ speaker: "Старый Ведун", text: "Ты не первый, кто спрашивает. Те, кто спрашивал, не вернулись." });
+    expect(seen.length).toBeGreaterThan(3);
+    expect(Math.max(...seen)).toBe(3);
+  });
+  it("без allowChecks инструмент не даётся", async () => {
+    const r = await runNarratorTurn({ provider: new FakeProvider(), model: "fake", worldBible: "", scene: scene(), rng: mulberry32(2), allowChecks: false });
+    expect(r.rolls).toHaveLength(0);
+    expect(r.requests).toBe(1);
   });
 });
 

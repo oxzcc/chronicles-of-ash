@@ -33,19 +33,22 @@ export interface LoadedCampaign {
   recent: TurnRow[];
 }
 
-export type TurnRow = Pick<TurnRecord, "kind" | "action" | "narration" | "speaker" | "line" | "rolls"> & {
+export type TurnRow = Pick<TurnRecord, "kind" | "action" | "narration" | "beats" | "speaker" | "line" | "rolls" | "suggestions"> & {
   turnNo: number;
-  suggestions: string[];
   combatEvents: TurnRecord["combatEvents"];
   createdAt: Date;
 };
 
 function toRow(t: typeof turns.$inferSelect): TurnRow {
-  const resp = (t.response ?? {}) as { suggestions?: string[]; combatEvents?: TurnRecord["combatEvents"] };
+  const resp = (t.response ?? {}) as { beats?: TurnRecord["beats"]; suggestions?: (string | TurnRecord["suggestions"][number])[]; combatEvents?: TurnRecord["combatEvents"] };
+  // Ходы до gm-2: текст без реплик, варианты строками.
+  const beats = resp.beats ?? (t.narration && t.kind !== "combat"
+    ? [...t.narration.split(/\n\s*\n/).map((text) => ({ speaker: null, text })), ...(t.line ? [{ speaker: t.speaker ?? "Голос", text: t.line }] : [])]
+    : []);
   return {
     turnNo: t.turnNo, kind: t.kind as TurnRow["kind"], action: t.action, narration: t.narration,
-    speaker: t.speaker, line: t.line ?? "", rolls: t.rolls ?? [],
-    suggestions: resp.suggestions ?? [], combatEvents: resp.combatEvents ?? [], createdAt: t.createdAt,
+    beats, speaker: t.speaker, line: t.line ?? "", rolls: t.rolls ?? [],
+    suggestions: (resp.suggestions ?? []).map((x) => (typeof x === "string" ? { text: x } : x)), combatEvents: resp.combatEvents ?? [], createdAt: t.createdAt,
   };
 }
 

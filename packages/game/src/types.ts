@@ -1,5 +1,5 @@
 import type { AppliedChanges, Campaign, Character, CheckResult, CombatEvent, CombatMove, CombatOutcome, CombatState } from "@ash/engine";
-import type { GmResponse, HistoryEntry, ModelRouter, Tier, Usage } from "@ash/llm";
+import type { Beat, GmResponse, HistoryEntry, ModelRouter, Suggestion, Tier, Usage } from "@ash/llm";
 import type { Rng } from "@ash/engine";
 
 export interface GameState {
@@ -10,6 +10,8 @@ export interface GameState {
 export type TurnInput =
   | { kind: "start" }
   | { kind: "action"; text: string }
+  /** Вариант из последнего ответа мастера по номеру — проверку и СЛ сервер берёт из сохранённого варианта. */
+  | { kind: "choice"; index: number }
   | { kind: "travel"; to: string }
   | { kind: "rest" }
   | { kind: "combat"; move: CombatMove; target?: number };
@@ -21,10 +23,12 @@ export interface TurnRecord {
   kind: TurnKind;
   /** Что сделал игрок — словами, для журнала и для промпта. */
   action: string;
+  /** Весь текст одной строкой (для промпта и поиска); реплики — в beats. */
   narration: string;
+  beats: Beat[];
   speaker: string | null;
   line: string;
-  suggestions: string[];
+  suggestions: Suggestion[];
   response: GmResponse | null;
   applied: AppliedChanges | null;
   rolls: CheckResult[];
@@ -39,7 +43,7 @@ export interface TurnRecord {
 
 /** События для клиента по ходу хода (SSE). */
 export type GameEvent =
-  | { type: "narration"; text: string }
+  | { type: "beats"; beats: Beat[] }
   | { type: "roll"; roll: CheckResult }
   | { type: "combat"; events: CombatEvent[]; combat: CombatState | null; outcome: CombatOutcome };
 

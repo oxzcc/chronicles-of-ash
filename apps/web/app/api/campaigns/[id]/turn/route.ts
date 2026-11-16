@@ -17,6 +17,9 @@ function parseInput(body: any): TurnInput {
       return { kind: "action", text: String(body.text ?? "") };
     case "travel":
       return { kind: "travel", to: String(body.to ?? "") };
+    case "choice":
+      if (!Number.isInteger(body.index) || body.index < 0 || body.index > 5) throw new GameError("Неизвестный вариант.");
+      return { kind: "choice", index: body.index };
     case "combat":
       if (!MOVES.includes(body.move)) throw new GameError("Неизвестное действие в бою.");
       return { kind: "combat", move: body.move, target: Number.isInteger(body.target) ? body.target : undefined };
@@ -26,7 +29,7 @@ function parseInput(body: any): TurnInput {
 }
 
 /**
- * Ход по SSE: narration (текст по мере генерации), roll (бросок), combat (раунд боя),
+ * Ход по SSE: beats (реплики по мере генерации), roll (бросок), combat (раунд боя),
  * done (новое состояние и записи журнала) или error.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -52,7 +55,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       send("done", {
         turnNo, character: out.state.character, campaign: out.state.campaign,
         turns: out.records.map((r, i) => ({
-          turnNo: c.turnNo + i + 1, kind: r.kind, action: r.action, narration: r.narration, speaker: r.speaker, line: r.line,
+          turnNo: c.turnNo + i + 1, kind: r.kind, action: r.action, narration: r.narration, beats: r.beats, speaker: r.speaker, line: r.line,
           rolls: r.rolls, suggestions: r.suggestions, combatEvents: r.combatEvents,
         })),
         costUsd: out.records.reduce((s, r) => s + r.usage.costUsd, 0),

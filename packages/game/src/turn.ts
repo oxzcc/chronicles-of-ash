@@ -1,5 +1,5 @@
 import {
-  applyChanges, CLASSES, combatSummary, knockOut, locationById, playerMove, startCombat, travel,
+  applyChanges, CLASSES, combatSummary, knockOut, locationById, playerMove, skillCheck, startCombat, travel,
   type CombatEvent, type CombatOutcome,
 } from "@ash/engine";
 import { emptyUsage, runNarratorTurn, systemActions, type HistoryEntry } from "@ash/llm";
@@ -21,13 +21,14 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const history = (): HistoryEntry[] => toHistory([...prior, ...records]);
 
   /** Ход рассказчика: промпт, проверки, применение изменений, бой, если модель его объявила. */
-  const narrate = async (kind: TurnRecord["kind"], label: string, action: string, opts: { keepHp?: boolean } = {}) => {
+  const narrate = async (kind: TurnRecord["kind"], label: string, action: string, opts: { keepHp?: boolean; preRolls?: TurnRecord["rolls"] } = {}) => {
     const { provider, model } = deps.router.route("narrator", deps.tier);
     const r = await runNarratorTurn({
       provider, model, worldBible: deps.worldBible, rng: deps.rng, signal: deps.signal,
       scene: { character: c, campaign: w, history: history(), action },
-      onNarration: (text) => deps.emit?.({ type: "narration", text }),
+      onBeats: (beats) => deps.emit?.({ type: "beats", beats }),
       onRoll: (roll) => deps.emit?.({ type: "roll", roll }),
+      allowChecks: !opts.preRolls?.length,
     });
     const resp = r.response;
     const applied = applyChanges(c, w, {
@@ -39,8 +40,8 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     w.npc = resp.speaker;
     w.turn++;
     records.push({
-      kind, action: label, narration: resp.narration, speaker: resp.speaker?.name ?? null, line: resp.line,
-      suggestions: resp.suggestions, response: resp, applied, rolls: r.rolls, combatEvents: [],
+      kind, action: label, narration: resp.narration, beats: resp.beats, speaker: resp.speaker?.name ?? null, line: "",
+      suggestions: resp.suggestions, response: resp, applied, rolls: [...(opts.preRolls ?? []), ...r.rolls], combatEvents: [],
       model: r.model, promptVersion: r.promptVersion, usage: r.usage, degraded: r.degraded,
       ...(r.degraded ? { raw: r.rawText.slice(0, 8000) } : {}),
     });
@@ -50,7 +51,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const combatRecord = (label: string, events: CombatEvent[], outcome: CombatOutcome) => {
     deps.emit?.({ type: "combat", events, combat: w.combat, outcome });
     records.push({
-      kind: "combat", action: label, narration: events.map((e) => e.text).join(" "), speaker: null, line: "",
+      kind: "combat", action: label, narration: events.map((e) => e.text).join(" "), beats: [], speaker: null, line: "",
       suggestions: [], response: null, applied: null, rolls: [], combatEvents: events,
       model: "engine", promptVersion: "-", usage: emptyUsage(), degraded: false,
     });
@@ -99,6 +100,25 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const text = input.text.trim().slice(0, MAX_ACTION_LENGTH);
       if (!text) throw new GameError("Напиши, что делает герой.");
       const { resp } = await narrate("action", text, text);
+      await maybeStartCombat(resp);
+      await checkDowned();
+      break;
+    }
+    case "choice": {
+      if (w.combat) throw new GameError("Идёт бой — выбери действие в бою.");
+      // Варианты — из последнего ответа мастера, где они были (клиент показывает те же).
+      const last = [...prior, ...records].reverse().find((r) => r.suggestions?.length);
+      const pick = last?.suggestions?.[input.index];
+      if (!pick) throw new GameError("Этот вариант уже неактуален.");
+      let action = pick.text;
+      const preRolls: TurnRecord["rolls"] = [];
+      if (pick.check) {
+        const roll = skillCheck(c, { skill: pick.check.skill, dc: pick.check.dc }, deps.rng);
+        deps.emit?.({ type: "roll", roll });
+        preRolls.push(roll);
+        action = systemActions.checked(pick.text, roll.summary);
+      }
+      const { resp } = await narrate("choice", pick.text, action, { preRolls });
       await maybeStartCombat(resp);
       await checkDowned();
       break;

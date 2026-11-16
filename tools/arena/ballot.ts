@@ -26,7 +26,7 @@ const scenes = run.scenes.map((s: any) => {
     answers: answers.map((a: any, i: number) => ({
       label: String.fromCharCode(65 + i), model: a.model, rolls: a.rolls, degraded: a.degraded,
       narration: a.response.narration, speaker: a.response.speaker?.name ?? "", line: a.response.line,
-      suggestions: a.response.suggestions, changes: a.response.changes, combat: a.response.combat,
+      suggestions: a.response.suggestions.map((s: any) => (typeof s === "string" ? s : s.check ? `[${s.check.skill} ${s.check.dc}] ${s.text}` : s.text)), changes: a.response.changes, combat: a.response.combat,
       questDone: a.response.questDone, questComplete: a.response.questComplete,
       cost: a.usage.costUsd, ms: a.ms,
     })),

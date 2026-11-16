@@ -28,7 +28,7 @@ export class FakeProvider implements LlmProvider {
     const prompt = last?.role === "user" ? last.content : "";
     if (prompt.includes('"questTitle"')) return this.plain(JSON.stringify(FAKE_QUEST));
     if (prompt.includes("предысторию")) return this.plain("Бывший стражник, изгнанный за то, что отпустил пеплорождённую девочку. Теперь он ищет её — и ответ, почему она смотрела на него так, будто знала его имя.");
-    const wantsRoll = (this.opts.askRoll ?? true) && !!req.tools?.length && last?.role === "user";
+    const wantsRoll = (this.opts.askRoll ?? true) && !!req.tools?.length && last?.role === "user" && !prompt.includes("[Проверка уже брошена игрой]");
     if (wantsRoll) {
       return {
         text: "",
@@ -44,14 +44,21 @@ export class FakeProvider implements LlmProvider {
     const fight = /напада|атаку/i.test(playerAction);
     const rollNote = last?.role === "tool" ? ` Бросок: ${last.content}.` : "";
     const json = JSON.stringify({
-      narration: `Ветер гонит пепел по пустой улице. Где-то хлопает ставня, и в тишине слышно, как капает вода с карниза.${rollNote}\n\nСтарик у колодца поднимает на тебя мутные глаза.`,
+      beats: [
+        { speaker: null, text: `Ветер гонит пепел по пустой улице. Где-то хлопает ставня, и в тишине слышно, как капает вода с карниза.${rollNote}` },
+        { speaker: null, text: "Старик у колодца поднимает на тебя мутные глаза." },
+        { speaker: "Старый Ведун", text: "Ты не первый, кто спрашивает. Те, кто спрашивал, не вернулись." },
+      ],
       speaker: { name: "Старый Ведун", race: "human", gender: "m", role: "деревенский знахарь" },
-      line: "Ты не первый, кто спрашивает. Те, кто спрашивал, не вернулись.",
       changes: { hp: 0, gold: 0, addItems: [], removeItems: [] },
       combat: fight ? { enemies: [{ name: "Культист в сером", hp: 9, ac: 12, attack: 3, damage: "1d6+1" }] } : null,
       questDone: [],
       questComplete: false,
-      suggestions: ["Спрашиваю, кто пропал первым", "Предлагаю ему монету за правду", "Осматриваю колодец"],
+      suggestions: [
+        { text: "Спрашиваю, кто пропал первым" },
+        { text: "Убеждаю его рассказать правду", skill: "Убеждение", dc: 13 },
+        { text: "Осматриваю колодец", skill: "Внимательность", dc: 12 },
+      ],
     });
     let text = "";
     for (const piece of json.match(/.{1,40}/gs) ?? []) {

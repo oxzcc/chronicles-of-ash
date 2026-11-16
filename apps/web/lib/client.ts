@@ -1,16 +1,20 @@
 "use client";
 
 import type { Campaign, Character, CheckResult, CombatEvent, CombatOutcome, CombatState } from "@ash/engine";
+import type { Beat, Suggestion } from "@ash/llm";
+
+export type { Beat, Suggestion };
 
 export interface TurnView {
   turnNo: number;
   kind: string;
   action: string;
   narration: string;
+  beats: Beat[];
   speaker: string | null;
   line: string;
   rolls: CheckResult[];
-  suggestions: string[];
+  suggestions: Suggestion[];
   combatEvents: CombatEvent[];
 }
 
@@ -24,7 +28,7 @@ export interface CampaignView {
 }
 
 export type TurnStreamEvent =
-  | { type: "narration"; text: string }
+  | { type: "beats"; beats: Beat[] }
   | { type: "roll"; roll: CheckResult }
   | { type: "combat"; events: CombatEvent[]; combat: CombatState | null; outcome: CombatOutcome }
   | { type: "done"; turnNo: number; character: Character; campaign: Campaign; turns: TurnView[]; costUsd: number }
