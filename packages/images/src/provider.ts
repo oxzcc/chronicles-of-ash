@@ -78,8 +78,8 @@ export class FalImageProvider implements ImageProvider {
     const model = req.quality === "portrait" ? this.cfg.portraitModel : this.cfg.backgroundModel;
     const isKontext = model.includes("kontext");
     const size = isKontext
-      ? { aspect_ratio: req.shape === "portrait" ? "3:4" : "16:9" }
-      : { image_size: req.shape === "portrait" ? "portrait_4_3" : "landscape_16_9" };
+      ? { aspect_ratio: req.shape === "portrait" ? "1:1" : "16:9" }
+      : { image_size: req.shape === "portrait" ? "square_hd" : "landscape_16_9" };
     return this.call(model, { prompt: req.prompt, num_images: 1, ...size, ...(req.seed !== undefined ? { seed: req.seed } : {}) }, req.signal);
   }
 

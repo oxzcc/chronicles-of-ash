@@ -2,7 +2,9 @@ import sharp from "sharp";
 
 /**
  * Постобработка, найденная на макетах:
- * - портрет: вырезанный фон, обрезка по силуэту, светлее и чуть контрастнее сцены;
+ * - портрет: вырезанный фон, светлее и чуть контрастнее сцены. Холст НЕ обрезается по силуэту:
+ *   кадр у всех один (квадрат, по пояс), и целый холст держит один масштаб — широкий
+ *   полуорк и тонкая эльфийка стоят с головой на одной высоте;
  * - фон: темнее и приглушённее, чтобы персонаж на нём читался.
  * Тёплый контур по силуэту рисует CSS (drop-shadow), а не картинка.
  */
@@ -12,9 +14,7 @@ export async function finishPortrait(cutout: Buffer): Promise<{ bytes: Buffer; w
   const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
   for (let i = 3; i < data.length; i += 4) if (data[i]! < 40) data[i] = 0;
   const cleaned = sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } });
-  const trimmed = await cleaned.png().toBuffer();
-  const out = await sharp(trimmed)
-    .trim({ threshold: 1 })
+  const out = await cleaned
     .modulate({ brightness: 1.18, saturation: 1.06 })
     .linear(1.08, -8)
     .resize({ height: 1100, withoutEnlargement: true })

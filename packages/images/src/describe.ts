@@ -78,7 +78,7 @@ export interface LookVariant {
 /** Запасные отличия, если служебная модель не ответила: четыре разных человека, а не один. */
 const VARIETY = [
   { label: "Молодость, рыжие волосы, веснушки", prompt: "young, copper-red hair in a loose braid, freckles, bright curious eyes" },
-  { label: "Старше, шрам, коротко стрижен", prompt: "in their forties, close-cropped greying hair, a pale scar across the eyebrow, tired stern eyes" },
+  { label: "Старше, шрам, короткая стрижка", prompt: "in their forties, close-cropped greying hair, a pale scar across the eyebrow, tired stern eyes" },
   { label: "Тёмные волосы, татуировка, усмешка", prompt: "dark wavy hair, a thin ink tattoo along the cheekbone, sly half-smile" },
   { label: "Светлые волосы, суровый взгляд", prompt: "ash-blond hair tied back, sharp cheekbones, wind-burned skin, cold determined gaze" },
 ];

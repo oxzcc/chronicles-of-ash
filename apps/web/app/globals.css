@@ -133,7 +133,7 @@ textarea { resize: vertical; }
 @keyframes vnFade { from { opacity: 0; } }
 
 /* Бюст: вырезанный портрет, тёплый контур и тень; тусклый, когда говорит рассказчик */
-.vn-bust-wrap { position: absolute; bottom: 0; height: 84%; width: 42%; pointer-events: none; transition: filter 0.35s, opacity 0.35s; }
+.vn-bust-wrap { position: absolute; bottom: 0; height: 84%; width: 48%; pointer-events: none; transition: filter 0.35s, opacity 0.35s; }
 .vn-bust-wrap.left { left: 2%; }
 .vn-bust-wrap.right { right: 2%; }
 .vn-bust-wrap.dim { filter: brightness(0.62) saturate(0.85); }

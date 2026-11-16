@@ -11,7 +11,7 @@ import {
 const fakeRouter = () => createRouter({ fake: true, models: { narratorPaid: "p", narratorFree: "f", utility: "u" } });
 
 describe("конвейер картинок", () => {
-  it("портрет: фон вырезан, обрезан по силуэту, webp с прозрачностью", async () => {
+  it("портрет: фон вырезан, целый квадратный холст, webp с прозрачностью", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ash-img-"));
     const storage = new LocalStorage(dir);
     const r = await renderPortrait({ provider: new FakeImageProvider(), storage, description: "man, human, tavern keeper", key: "npc/test-godric" });
@@ -20,7 +20,8 @@ describe("конвейер картинок", () => {
     const meta = await sharp(bytes).metadata();
     expect(meta.format).toBe("webp");
     expect(meta.hasAlpha).toBe(true);
-    expect(meta.width!).toBeLessThan(768); // обрезан по силуэту
+    expect(meta.width).toBe(meta.height); // холст не обрезан — один масштаб у всех
+    expect(r.redrawn).toBe(false); // силуэт внутри кадра
     const { data } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     expect(data[3]).toBe(0); // угол прозрачный
     expect(r.prompt).toContain("light grey studio background");
@@ -61,11 +62,11 @@ describe("fal", () => {
       const img = { url: `data:image/png;base64,${png.toString("base64")}` };
       return new Response(JSON.stringify({ [key]: key === "image" ? img : [img] }));
     }) as unknown as typeof fetch;
-    const p = new FalImageProvider({ key: "k", portraitModel: "fal-ai/flux-pro/kontext/text-to-image", backgroundModel: "fal-ai/flux-2/klein/4b", cutoutModel: "fal-ai/birefnet/v2", fetchImpl });
+    const p = new FalImageProvider({ key: "k", portraitModel: "fal-ai/flux-2/klein/4b", backgroundModel: "fal-ai/flux-2/klein/4b", cutoutModel: "fal-ai/birefnet/v2", fetchImpl });
     const g = await p.generate({ prompt: "x", shape: "portrait", quality: "portrait", seed: 3 });
     const c = await p.removeBackground(g.bytes);
     expect(g.bytes.equals(png)).toBe(true);
-    expect(calls[0]!.body).toMatchObject({ sync_mode: true, aspect_ratio: "3:4", seed: 3 });
+    expect(calls[0]!.body).toMatchObject({ sync_mode: true, image_size: "square_hd", seed: 3 });
     expect(calls[1]!.url).toBe("https://fal.run/fal-ai/birefnet/v2");
     expect(calls[1]!.body).toMatchObject({ model: "Portrait", output_format: "png" });
     expect(c.costUsd).toBeGreaterThan(0);

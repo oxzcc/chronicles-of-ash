@@ -15,11 +15,11 @@ export class FakeImageProvider implements ImageProvider {
     if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
     const h = hash(req.prompt + (req.seed ?? ""));
     const hue = 15 + (h % 40);
-    const [w, ht] = req.shape === "portrait" ? [768, 1024] : [1344, 768];
+    const [w, ht] = req.shape === "portrait" ? [1024, 1024] : [1344, 768];
     const svg =
       req.shape === "portrait"
         ? `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${ht}"><rect width="100%" height="100%" fill="#d8d4cc"/>
-           <g fill="hsl(${hue},35%,${30 + (h % 25)}%)"><circle cx="384" cy="330" r="150"/><path d="M110 1024 C130 690 250 560 384 560 C518 560 638 690 658 1024 Z"/></g></svg>`
+           <g fill="hsl(${hue},35%,${30 + (h % 25)}%)"><circle cx="512" cy="330" r="150"/><path d="M238 1024 C258 690 378 560 512 560 C646 560 766 690 786 1024 Z"/></g></svg>`
         : `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${ht}"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
            <stop offset="0" stop-color="hsl(${hue},40%,${18 + (h % 12)}%)"/><stop offset="1" stop-color="hsl(${hue + 10},30%,6%)"/></linearGradient></defs>
            <rect width="100%" height="100%" fill="url(#g)"/><path d="M0 560 Q 340 ${430 + (h % 80)} 680 520 T 1344 ${480 + (h % 60)} V768 H0 Z" fill="hsl(${hue},25%,9%)"/></svg>`;
