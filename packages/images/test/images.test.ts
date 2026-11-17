@@ -127,7 +127,7 @@ describe("LoRA стиля", () => {
     expect(lorasFromEnv({ FAL_LORA_ARKHAM_URL: "u", FAL_LORA_ARKHAM_SCALE: "9" }).arkham!.scale).toBe(2);
     expect(lorasFromEnv({ FAL_LORA_ARKHAM_URL: "u", FAL_LORA_ARKHAM_SCALE: "abc" }).arkham!.scale).toBe(1);
     const cfg = falConfigFromEnv({ FAL_KEY: "k", FAL_LORA_ARKHAM_URL: "u" })!;
-    expect(cfg.loraModel).toBe("fal-ai/flux-2/klein/4b/lora");
+    expect(cfg.loraModel).toBe("fal-ai/flux-2/klein/9b/lora");
     expect(new FalImageProvider(cfg).loraFor("arkham")).toEqual({ url: "u", scale: 1 });
     expect(new FalImageProvider(cfg).loraFor("fantasy")).toBeUndefined();
   });

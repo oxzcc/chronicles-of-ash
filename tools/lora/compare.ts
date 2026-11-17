@@ -21,14 +21,18 @@ const arg = (name: string, def: string) => {
 const world = getWorld(arg("world", "arkham"));
 const scales = arg("scales", "0.6,0.8,1").split(",").map(Number).filter((x) => x > 0 && x <= 2);
 
-const cfg = falConfigFromEnv();
-if (!cfg) throw new Error("Нужен FAL_KEY в .env (и IMAGES_FAKE не 1)");
+const env = falConfigFromEnv();
+if (!env) throw new Error("Нужен FAL_KEY в .env (и IMAGES_FAKE не 1)");
+let cfg = env;
 if (!world.art.lora) throw new Error(`У мира ${world.id} нет art.lora (триггера) — сравнивать нечего`);
 
 let loraUrl = arg("lora", "");
 if (!loraUrl) {
   try {
-    loraUrl = JSON.parse(readFileSync(join("data/lora", `${world.id}_lora.json`), "utf8")).loraUrl ?? "";
+    const saved = JSON.parse(readFileSync(join("data/lora", `${world.id}_lora.json`), "utf8"));
+    loraUrl = saved.loraUrl ?? "";
+    // LoRA рисуется той моделью, на которой обучена (9B), даже если в .env её ещё нет.
+    if (saved.inference && !process.env.FAL_LORA_MODEL) cfg = { ...cfg, loraModel: saved.inference };
   } catch {}
 }
 loraUrl ||= cfg.loras?.[world.id]?.url ?? "";

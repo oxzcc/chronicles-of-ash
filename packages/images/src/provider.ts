@@ -47,6 +47,12 @@ export interface FalConfig {
   fetchImpl?: typeof fetch;
 }
 
+/**
+ * Эндпоинт для генерации с LoRA. LoRA обучаются на klein 9B: тренер 4B на fal закрыт,
+ * а LoRA работает только с той моделью, на которой обучена.
+ */
+export const DEFAULT_LORA_MODEL = "fal-ai/flux-2/klein/9b/lora";
+
 /** FAL_LORA_<ID>_URL / FAL_LORA_<ID>_SCALE → LoRA по мирам; сила по умолчанию 1, допустимо 0…2. */
 export function lorasFromEnv(env: Record<string, string | undefined>): Record<string, LoraRef> {
   const out: Record<string, LoraRef> = {};
@@ -67,7 +73,7 @@ export function falConfigFromEnv(env: Record<string, string | undefined> = proce
     portraitModel: env.FAL_PORTRAIT_MODEL || "fal-ai/flux-2/klein/4b",
     backgroundModel: env.FAL_BACKGROUND_MODEL || "fal-ai/flux-2/klein/4b",
     cutoutModel: env.FAL_CUTOUT_MODEL || "fal-ai/birefnet/v2",
-    loraModel: env.FAL_LORA_MODEL || "fal-ai/flux-2/klein/4b/lora",
+    loraModel: env.FAL_LORA_MODEL || DEFAULT_LORA_MODEL,
     loras: lorasFromEnv(env),
   };
 }
@@ -76,8 +82,9 @@ export function falConfigFromEnv(env: Record<string, string | undefined> = proce
 const PRICE: Record<string, number> = {
   "fal-ai/flux-pro/kontext/text-to-image": 0.04,
   "fal-ai/flux-2/klein/4b": 0.003,
-  // $0.01 за мегапиксель: square_hd ≈ 1 Мп, фон 16:9 — около 0,6 Мп.
+  // LoRA-эндпоинты считают за мегапиксель: square_hd ≈ 1 Мп, фон 16:9 — около 0,6 Мп.
   "fal-ai/flux-2/klein/4b/lora": 0.01,
+  "fal-ai/flux-2/klein/9b/lora": 0.015,
   "fal-ai/birefnet/v2": 0.002,
 };
 
@@ -111,7 +118,7 @@ export class FalImageProvider implements ImageProvider {
 
   generate(req: GenerateRequest): Promise<ImageResult> {
     const base = req.quality === "portrait" ? this.cfg.portraitModel : this.cfg.backgroundModel;
-    const model = req.lora ? this.cfg.loraModel || "fal-ai/flux-2/klein/4b/lora" : base;
+    const model = req.lora ? this.cfg.loraModel || DEFAULT_LORA_MODEL : base;
     const isKontext = model.includes("kontext");
     const size = isKontext
       ? { aspect_ratio: req.shape === "portrait" ? "1:1" : "16:9" }

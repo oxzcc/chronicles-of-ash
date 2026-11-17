@@ -20,6 +20,7 @@ no fantasy elements, no modern objects, no text, no watermark, no signature
 - Подписи — `data/lora/arkham_captions.json`: триггер `mthnr style`, затем что изображено, телосложение и цвет фона. Технику и палитру в подписях не описываем — их выучивает LoRA.
 - С LoRA промпт начинается с триггера и короткого префикса из `art.ts` (`lora.stylePrefix`: эпоха и запреты), полный `stylePrefix` не ставится.
 - Включается переменной `FAL_LORA_ARKHAM_URL` (и `FAL_LORA_ARKHAM_SCALE`); без неё — прежний текстовый стиль.
+- LoRA обучается и рисуется на FLUX.2 klein **9B** (тренер 4B на fal закрыт): `FAL_LORA_MODEL=fal-ai/flux-2/klein/9b/lora`, около $0.015 за портрет. Картинки без LoRA (фэнтези) — по-прежнему на 4B.
 - В датасете у многих женщин пышные формы: телосложение указано в каждой подписи, им управляет описание персонажа.
 
 ```bash
