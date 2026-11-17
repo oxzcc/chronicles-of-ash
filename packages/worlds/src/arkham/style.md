@@ -14,6 +14,20 @@ heavy soft shadows, detailed but loose brushwork, New England in 1926, period-ac
 no fantasy elements, no modern objects, no text, no watermark, no signature
 ```
 
+## LoRA стиля
+
+Стиль держит своя LoRA, обученная на 58 картинках владельца (`data/lora/arkham/`, в git не попадают).
+- Подписи — `data/lora/arkham_captions.json`: триггер `mthnr style`, затем что изображено, телосложение и цвет фона. Технику и палитру в подписях не описываем — их выучивает LoRA.
+- С LoRA промпт начинается с триггера и короткого префикса из `art.ts` (`lora.stylePrefix`: эпоха и запреты), полный `stylePrefix` не ставится.
+- Включается переменной `FAL_LORA_ARKHAM_URL` (и `FAL_LORA_ARKHAM_SCALE`); без неё — прежний текстовый стиль.
+- В датасете у многих женщин пышные формы: телосложение указано в каждой подписи, им управляет описание персонажа.
+
+```bash
+pnpm lora:dataset -- --world arkham    # картинки + подписи → data/lora/arkham_dataset.zip
+pnpm lora:train -- --world arkham      # обучение на fal, итог — data/lora/arkham_lora.json
+pnpm lora:compare -- --world arkham    # с LoRA и без, силы 0.6 / 0.8 / 1 → index.html
+```
+
 ## Портреты
 
 Конвейер и кадр — общие для всех миров (по пояс, светло-серый фон, вырезание BiRefNet), см. стиль «Хроник Пепла».

@@ -2,7 +2,7 @@ import { CLIP_LIMIT, clippedShare, finishBackground, finishPortrait } from "./pr
 import type { ImageProvider } from "./provider";
 import type { ImageStorage } from "./storage";
 import type { World } from "@ash/worlds";
-import { backgroundPrompt, portraitPrompt, type TimeOfDay } from "./style";
+import { backgroundPrompt, portraitPrompt, worldLora, type TimeOfDay } from "./style";
 
 export interface Rendered {
   url: string;
@@ -19,12 +19,13 @@ export interface Rendered {
  * берём менее обрезанный вариант.
  */
 export async function renderPortrait(o: { world: World; provider: ImageProvider; storage: ImageStorage; description: string; key: string; seed?: number; signal?: AbortSignal }): Promise<Rendered & { redrawn: boolean }> {
-  const prompt = portraitPrompt(o.world, o.description);
+  const lora = worldLora(o.world, o.provider);
+  const prompt = portraitPrompt(o.world, o.description, !!lora);
   const seed = o.seed ?? Math.floor(Math.random() * 1e6);
   let cost = 0;
   let model = "";
   const attempt = async (s: number) => {
-    const raw = await o.provider.generate({ prompt, shape: "portrait", quality: "portrait", seed: s, signal: o.signal });
+    const raw = await o.provider.generate({ prompt, shape: "portrait", quality: "portrait", seed: s, lora, signal: o.signal });
     const cut = await o.provider.removeBackground(raw.bytes, o.signal);
     cost += raw.costUsd + cut.costUsd;
     model = `${raw.model}+${cut.model}`;
@@ -44,8 +45,9 @@ export async function renderPortrait(o: { world: World; provider: ImageProvider;
 
 /** Фон локации: генерация → приглушение → webp → хранилище. */
 export async function renderBackground(o: { world: World; provider: ImageProvider; storage: ImageStorage; description: string; time: TimeOfDay; key: string; seed?: number; signal?: AbortSignal }): Promise<Rendered> {
-  const prompt = backgroundPrompt(o.world, o.description, o.time);
-  const raw = await o.provider.generate({ prompt, shape: "landscape", quality: "background", seed: o.seed, signal: o.signal });
+  const lora = worldLora(o.world, o.provider);
+  const prompt = backgroundPrompt(o.world, o.description, o.time, !!lora);
+  const raw = await o.provider.generate({ prompt, shape: "landscape", quality: "background", seed: o.seed, lora, signal: o.signal });
   const done = await finishBackground(raw.bytes);
   const url = await o.storage.put(`${o.key}.webp`, done.bytes, "image/webp");
   return { url, prompt, model: raw.model, costUsd: raw.costUsd, width: done.width, height: done.height };
