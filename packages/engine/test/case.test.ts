@@ -79,11 +79,16 @@ describe("дело: ходы", () => {
     expect(deductionCandidates(w)).toHaveLength(0);
     expect(() => markDeduction(w, "c10")).toThrow();
   });
+  it("потерянный рассудок стоит очков", () => {
+    const w = fresh();
+    w.case!.sanityLost = 3;
+    expect(closeCase(w, [{ id: "a1", answer: "Кит", verdict: "right" }])).toMatchObject({ points: 20, sanityPenalty: 6, score: 14 });
+  });
   it("счёт: очки за ответы, штраф за лишние визиты, наставник — максимум", () => {
     const w = fresh();
     w.case!.visits = 6; // путь наставника — 4
     const r = closeCase(w, [{ id: "a1", answer: "Кит", verdict: "right" }, { id: "a2", answer: "?", verdict: "partial" }]);
-    expect(r).toMatchObject({ points: 25, max: 40, penalty: 6, score: 19, mentor: 40, timeUp: false });
+    expect(r).toMatchObject({ points: 25, max: 40, penalty: 6, sanityPenalty: 0, score: 19, mentor: 40, timeUp: false });
     expect(r.answers[2]).toMatchObject({ id: "a3", verdict: "wrong" });
     expect(w.complete).toBe(true);
     expect(() => closeCase(w, [])).toThrow(/закрыто/);

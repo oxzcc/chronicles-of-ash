@@ -6,6 +6,8 @@ import type { Campaign } from "./world";
 /** Изменения, которые предлагает модель. Код применяет их с ограничениями. */
 export interface ProposedChanges {
   hp?: number;
+  /** Рассудок: потеря — отрицательное число. Только в мирах с рассудком. */
+  sanity?: number;
   gold?: number;
   addItems?: string[];
   removeItems?: string[];
@@ -15,6 +17,7 @@ export interface ProposedChanges {
 
 export interface AppliedChanges {
   hp: number;
+  sanity: number;
   gold: number;
   added: string[];
   removed: string[];
@@ -34,13 +37,16 @@ export const LIMITS = {
   itemsPerTurn: 3,
   inventoryMax: 30,
   itemNameMax: 40,
+  /** Рассудок за один ход: потерять — не больше 4 (встреча с тварью целиком), вернуть — не больше 1. */
+  sanityLossPerTurn: 4,
+  sanityGainPerTurn: 1,
 } as const;
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/ё/g, "е");
 
 /** Применяет изменения к герою и кампании (мутирует их) и возвращает, что реально применилось. */
 export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedChanges): AppliedChanges {
-  const out: AppliedChanges = { hp: 0, gold: 0, added: [], removed: [], questDone: [], questComplete: false, rejected: [], notes: [] };
+  const out: AppliedChanges = { hp: 0, sanity: 0, gold: 0, added: [], removed: [], questDone: [], questComplete: false, rejected: [], notes: [] };
 
   // Цели квеста — первыми: от них зависит лимит золота.
   for (const id of p.questDone ?? []) {
@@ -69,6 +75,20 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
     c.hp = clamp(c.hp + delta, 0, c.hpMax);
     out.hp = c.hp - before;
     if (out.hp) out.notes.push(out.hp > 0 ? `+${out.hp} здоровья` : `${out.hp} здоровья`);
+  }
+
+  if (Number.isFinite(p.sanity) && p.sanity) {
+    if (c.sanity === undefined || c.sanityMax === undefined) out.rejected.push("sanity: в этом мире нет рассудка");
+    else {
+      let delta = Math.round(p.sanity!);
+      const capped = clamp(delta, -LIMITS.sanityLossPerTurn, LIMITS.sanityGainPerTurn);
+      if (capped !== delta) out.rejected.push(`sanity: ${delta} урезано до ${capped}`);
+      delta = capped;
+      const before = c.sanity;
+      c.sanity = clamp(c.sanity + delta, 0, c.sanityMax);
+      out.sanity = c.sanity - before;
+      if (out.sanity) out.notes.push(out.sanity > 0 ? `+${out.sanity} рассудка` : `${out.sanity} рассудка`);
+    }
   }
 
   if (Number.isFinite(p.gold) && p.gold) {
@@ -111,6 +131,16 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
   }
 
   return out;
+}
+
+/**
+ * Срыв: рассудок кончился. Герой не сходит с ума навсегда — приходит в себя (обычно в Лечебнице на Холме)
+ * с половиной рассудка; время потеряно.
+ */
+export function breakDown(c: Character): { restored: number } {
+  const restored = Math.ceil((c.sanityMax ?? 0) / 2);
+  c.sanity = restored;
+  return { restored };
 }
 
 /** Поражение не убивает: герой приходит в себя с 1 HP и теряет половину золота. */

@@ -22,7 +22,7 @@ export type TurnInput =
   /** Дело: ответы на вопросы по id вопроса. */
   | { kind: "close"; answers: Record<string, string> };
 
-export type TurnKind = TurnInput["kind"] | "knockout";
+export type TurnKind = TurnInput["kind"] | "knockout" | "breakdown";
 
 /** Одна запись в журнале кампании = одна строка таблицы turns. */
 export interface TurnRecord {

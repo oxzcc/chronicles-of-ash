@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyChanges, createCharacter, layoutCampaign, mulberry32, neighbors, normalizeEnemies, playerMove, pointsSpent,
-  rollExpr, scriptedRng, skillCheck, startCombat, travel, validateDraft, knockOut, isDiceExpr,
+  rollExpr, scriptedRng, skillCheck, startCombat, travel, validateDraft, knockOut, isDiceExpr, sheetText, isUnhinged, breakDown,
   type CharacterDraft, type QuestSeed,
 } from "../src/index";
 // Движок проверяется на правилах настоящего мира: так тесты ловят и ошибки в данных мира.
@@ -172,7 +172,7 @@ describe("мир Аркхэма", () => {
   const A = getWorld("arkham").rules;
   const sleuth = (over: Partial<CharacterDraft> = {}): CharacterDraft => ({
     world: "arkham", name: "Уолтер", gender: "m", race: "human", cls: "detective",
-    base: { ...A.recommended.detective! }, skills: ["Внимательность", "Психология"], ...over,
+    base: { ...A.recommended.detective! }, skills: ["Внимательность", "Психология"], phobia: "Темнота", ...over,
   });
   it("сыщик: без доспеха, доллары, аптечка, навыки своего мира", () => {
     const c = createCharacter(A, sleuth(), mulberry32(1));
@@ -201,5 +201,41 @@ describe("мир Аркхэма", () => {
     const w = layoutCampaign(A, { ...getWorld("arkham").fallbackQuest, locations: (getWorld("arkham").fallbackQuest.locations as any[]).map((l) => ({ ...l, type: "tavern" })) }, "s");
     expect(w.locations[0]!.type).toBe("office");
     expect(w.locations[1]!.type).toBe("street");
+  });
+});
+
+describe("рассудок", () => {
+  const A = getWorld("arkham").rules;
+  const draft = (over: Partial<CharacterDraft> = {}): CharacterDraft => ({
+    world: "arkham", name: "Эдит", gender: "f", race: "human", cls: "professor",
+    base: { ...A.recommended.professor! }, skills: ["Оккультизм", "Психология"], phobia: "Глубокая вода", ...over,
+  });
+  it("герой Аркхэма: рассудок от Мудрости, фобия обязательна и из списка", () => {
+    const c = createCharacter(A, draft(), mulberry32(1));
+    expect(c).toMatchObject({ sanity: 14, sanityMax: 14, phobia: "Глубокая вода" }); // МДР 15 (+2): 10 + 4
+    expect(validateDraft(A, draft({ phobia: undefined }))).toContain("Выбери фобию героя.");
+    expect(validateDraft(A, draft({ phobia: "Пауки-великаны" }))).toContain("Выбери фобию героя.");
+    expect(sheetText(A, c)).toContain("Рассудок 14/14. Фобия: Глубокая вода.");
+    expect(createCharacter(R, { ...draft(), world: "fantasy", race: "human", cls: "wizard", base: { ...R.recommended.wizard! }, skills: ["История", "Природа"] }, mulberry32(1)).sanity).toBeUndefined();
+  });
+  it("потеря за ход — не больше 4, прибавка — не больше 1; в фэнтези рассудка нет", () => {
+    const c = createCharacter(A, draft(), mulberry32(1));
+    const w = layoutCampaign(A, getWorld("arkham").fallbackQuest, "s");
+    const r = applyChanges(A, c, w, { sanity: -9 });
+    expect(r.sanity).toBe(-4);
+    expect(r.notes).toContain("-4 рассудка");
+    expect(applyChanges(A, c, w, { sanity: 5 }).sanity).toBe(1);
+    const f = createCharacter(R, { name: "Бран", gender: "m", race: "human", cls: "fighter", base: { ...R.recommended.fighter! }, skills: ["Внимательность", "Запугивание"] }, mulberry32(1));
+    expect(applyChanges(R, f, layoutCampaign(R, quest, "s"), { sanity: -2 }).rejected.join()).toMatch(/нет рассудка/);
+  });
+  it("на грани — треть и меньше; срыв возвращает половину", () => {
+    const c = createCharacter(A, draft(), mulberry32(1));
+    c.sanity = 5;
+    expect(isUnhinged(c)).toBe(false);
+    c.sanity = 4;
+    expect(isUnhinged(c)).toBe(true);
+    c.sanity = 0;
+    expect(breakDown(c).restored).toBe(7);
+    expect(c.sanity).toBe(7);
   });
 });

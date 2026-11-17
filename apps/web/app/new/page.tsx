@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
-  abilityMod, CHOSEN_SKILLS, classKeys, finalStats, POINT_BUY_BUDGET, POINT_BUY_COST, pointsSpent, raceKeys,
+  abilityMod, CHOSEN_SKILLS, classKeys, finalStats, POINT_BUY_BUDGET, POINT_BUY_COST, pointsSpent, raceKeys, sanityMaxFor,
   skillNames, STATS, STAT_KEYS, validateDraft,
   type CharacterDraft, type ClassKey, type Gender, type RaceKey, type SkillName, type StatKey,
 } from "@ash/engine";
@@ -31,6 +31,7 @@ export default function NewHero() {
   const [base, setBase] = useState({ ...R.recommended[firstClass(world)]! });
   const [skills, setSkills] = useState<SkillName[]>([]);
   const [backstory, setBackstory] = useState("");
+  const [phobia, setPhobia] = useState("");
   const [busy, setBusy] = useState<"" | "story" | "create" | "faces">("");
   const [look, setLook] = useState("");
   const [faces, setFaces] = useState<{ id: string; label: string; status: string; url: string | null }[]>([]);
@@ -49,6 +50,7 @@ export default function NewHero() {
     setFaces([]);
     setFace(null);
     setBackstory("");
+    setPhobia("");
   };
   // Мир из ссылки с главной (/new?world=arkham) и случайное имя — после загрузки.
   useEffect(() => {
@@ -57,8 +59,8 @@ export default function NewHero() {
     else setName(randomName(world, firstRace(world), "m"));
   }, []);
 
-  const draft: CharacterDraft = { world: world.id, name, gender, race, cls, base, skills, backstory };
-  const errors = useMemo(() => validateDraft(R, draft), [worldId, name, gender, race, cls, base, skills, backstory]);
+  const draft: CharacterDraft = { world: world.id, name, gender, race, cls, base, skills, backstory, ...(R.sanity ? { phobia } : {}) };
+  const errors = useMemo(() => validateDraft(R, draft), [worldId, name, gender, race, cls, base, skills, backstory, phobia]);
   const left = POINT_BUY_BUDGET - pointsSpent(base);
   const stats = finalStats(R, race, base);
   const classSkills = R.classes[cls]?.skills ?? [];
@@ -235,6 +237,23 @@ export default function NewHero() {
           })}
         </div>
       </div>
+
+      {R.sanity && (
+        <div className="section">
+          <h2>Фобия</h2>
+          <p className="small muted">
+            У каждого сыщика есть страх, с которым он не справляется. В такой ситуации проверки идут с помехой. Рассудок героя — {sanityMaxFor(stats.wis)}: он тает от встреч с
+            непостижимым и не возвращается отдыхом.
+          </p>
+          <div className="chips">
+            {R.sanity.phobias.map((p) => (
+              <button key={p} className={`chip ${phobia === p ? "on" : ""}`} onClick={() => setPhobia(p)}>
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="section">
         <h2>Облик</h2>

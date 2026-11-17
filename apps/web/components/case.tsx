@@ -35,6 +35,7 @@ export function CaseFile({ w, busy, onReconstruct, onClose }: { w: PublicCampaig
         <p className={`case-visits ${left <= 2 && !c.result ? "late" : ""}`}>
           Визиты: {c.visits} из {c.limit}
           {!c.result && (left > 0 ? ` · осталось ${left}` : " · время вышло")}
+          {c.sanityLost ? ` · рассудка потеряно: ${c.sanityLost}` : ""}
         </p>
       </div>
 
@@ -107,7 +108,8 @@ export function CaseResultView({ c }: { c: PublicCase }) {
       <p className="small muted">
         Ответы: {r.points} из {r.max}. Визиты: {c.visits}
         {c.reveal ? ` при пути наставника в ${c.reveal.par}` : ""}
-        {r.penalty ? ` — штраф ${r.penalty}` : ""}.{r.timeUp ? " Время вышло." : ""} {beat ? "Наставник снимает шляпу." : ""}
+        {r.penalty ? ` — штраф ${r.penalty}` : ""}.{r.sanityPenalty ? ` Потеряно рассудка: ${c.sanityLost} — штраф ${r.sanityPenalty}.` : ""}
+        {r.timeUp ? " Время вышло." : ""} {beat ? "Наставник снимает шляпу." : ""}
       </p>
       {c.questions.map((q, i) => {
         const a = r.answers[i];

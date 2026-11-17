@@ -295,3 +295,7 @@ textarea { resize: vertical; }
 .dir-entry { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-family: var(--ui); font-size: 15px; }
 .dir-entry.here { border-color: var(--ember); }
 .vn-case-done { align-self: center; margin: 4px 0 8px; }
+.bar.sanity > div { background: linear-gradient(90deg, #4f6b5a, #8fb59a); }
+.vn-sanity { margin-top: 0; }
+.vn-sanity > span { background: linear-gradient(90deg, #4f6b5a, #8fb59a); }
+.vn-sanity.low > span { background: linear-gradient(90deg, #4b3a5e, #8a6fae); animation: vnPulse 1.6s ease-in-out infinite; }

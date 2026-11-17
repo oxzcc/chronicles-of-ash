@@ -52,6 +52,8 @@ export interface CaseResult {
   max: number;
   /** Штраф за лишние визиты сверх пути наставника. */
   penalty: number;
+  /** Штраф за рассудок, потерянный в этом деле (как в Mythos Tales: риск для рассудка стоит очков). */
+  sanityPenalty: number;
   score: number;
   /** Счёт наставника: все ответы верны, визитов ровно par. */
   mentor: number;
@@ -73,6 +75,8 @@ export interface CaseState {
   par: number;
   /** После стольких визитов время выходит. */
   limit: number;
+  /** Сколько рассудка герой потерял в этом деле (срывы тоже на счету). */
+  sanityLost: number;
   result: CaseResult | null;
 }
 
@@ -100,6 +104,10 @@ export const CASE_LIMITS = {
   otherPoints: 10,
   /** Штраф за каждый визит сверх пути наставника. */
   visitPenalty: 3,
+  /** Штраф за каждое очко потерянного рассудка. */
+  sanityPenalty: 2,
+  /** Срыв на дело: два визита потеряны в лечебнице. */
+  breakdownVisits: 2,
   /** Запас визитов сверх пути наставника, после которого время выходит. */
   extraVisits: 6,
 };
@@ -183,6 +191,7 @@ export function layoutCase(r: Ruleset, seed: CaseSeed, layoutSeed: string): Camp
     visits: 0,
     par,
     limit: par + CASE_LIMITS.extraVisits,
+    sanityLost: 0,
     result: null,
   };
   // В деле нет «финальной локации»: развязку открывает сам игрок, закрывая дело.
@@ -325,7 +334,8 @@ export function closeCase(w: Campaign, answers: { id: string; answer: string; ve
   const max = c.questions.reduce((s, q) => s + q.points, 0);
   const points = Math.round(c.questions.reduce((s, q, i) => s + q.points * mult[graded[i]!.verdict], 0));
   const penalty = CASE_LIMITS.visitPenalty * Math.max(0, c.visits - c.par);
-  const result: CaseResult = { answers: graded, points, max, penalty, score: Math.max(0, points - penalty), mentor: max, timeUp: timeIsUp(w) };
+  const sanityPenalty = CASE_LIMITS.sanityPenalty * (c.sanityLost ?? 0);
+  const result: CaseResult = { answers: graded, points, max, penalty, sanityPenalty, score: Math.max(0, points - penalty - sanityPenalty), mentor: max, timeUp: timeIsUp(w) };
   c.result = result;
   w.complete = true;
   for (const o of w.objectives) o.done = true;
@@ -340,6 +350,7 @@ export interface PublicCase {
   known: string[];
   visits: number;
   limit: number;
+  sanityLost: number;
   questions: Pick<CaseQuestion, "id" | "text" | "points">[];
   /** Сколько выводов можно сделать прямо сейчас (для кнопки реконструкции). */
   canDeduce: number;
@@ -366,6 +377,7 @@ export function publicCampaign(w: Campaign): PublicCampaign {
     known: c.known,
     visits: c.visits,
     limit: c.limit,
+    sanityLost: c.sanityLost ?? 0,
     questions: c.questions.map(({ id, text, points }) => ({ id, text, points })),
     canDeduce: deductionCandidates(w).length,
     result: c.result,
