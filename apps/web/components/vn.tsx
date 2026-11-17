@@ -126,4 +126,18 @@ export const Icon = {
       <path d="M5 10v10h14V10" />
     </svg>
   ),
+  newspaper: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 5h13v14H6a2 2 0 0 1-2-2z" />
+      <path d="M17 9h3v8a2 2 0 0 1-2 2" />
+      <path d="M7 9h7M7 12h7M7 15h4" />
+    </svg>
+  ),
+  directory: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="10.5" cy="10.5" r="6" />
+      <path d="M15 15l5 5" />
+      <path d="M8 9h5M8 12h3" />
+    </svg>
+  ),
 };

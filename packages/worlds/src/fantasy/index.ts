@@ -39,5 +39,6 @@ export const fantasy: World = {
     ],
     target: 7,
   },
+  features: {},
   art: fantasyArt,
 };

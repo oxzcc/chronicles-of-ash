@@ -2,7 +2,7 @@
 
 import {
   abilityMod, isHealing, locationTypeName, neighbors, proficiency, resolveSkill, STATS,
-  type Campaign, type Character, type CheckResult, type CombatMove, type DiceShow, type Ruleset,
+  type Character, type CheckResult, type CombatMove, type DiceShow, type PublicCampaign, type Ruleset,
 } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
 import type { Beat, Suggestion, TurnView } from "@/lib/client";
@@ -179,7 +179,7 @@ export function Sheet({ c }: { c: Character }) {
   );
 }
 
-export function Quest({ w, doneText = "Квест выполнен." }: { w: Campaign; doneText?: string }) {
+export function Quest({ w, doneText = "Квест выполнен." }: { w: PublicCampaign; doneText?: string }) {
   return (
     <div className="card">
       <h3>{w.questTitle}</h3>
@@ -193,8 +193,10 @@ export function Quest({ w, doneText = "Квест выполнен." }: { w: Cam
   );
 }
 
-export function WorldMap({ w, rules, disabled, onTravel, onRest }: { w: Campaign; rules: Ruleset; disabled: boolean; onTravel: (id: string) => void; onRest: () => void }) {
-  const near = new Set(neighbors(w, w.current).map((l) => l.id));
+export function WorldMap({ w, rules, disabled, onTravel, onRest }: { w: PublicCampaign; rules: Ruleset; disabled: boolean; onTravel: (id: string) => void; onRest: () => void }) {
+  // В деле дорог нет: можно пойти по любому известному адресу (клиент и так видит только известные).
+  const isCase = !!w.case;
+  const near = new Set(isCase ? w.locations.filter((l) => l.id !== w.current).map((l) => l.id) : neighbors(w, w.current).map((l) => l.id));
   const W = 300;
   const H = 200;
   // Поля по краям, чтобы подписи крайних точек не обрезались.
@@ -208,7 +210,7 @@ export function WorldMap({ w, rules, disabled, onTravel, onRest }: { w: Campaign
     <div className="card">
       <h3>Карта</h3>
       <svg className="map" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Карта локаций">
-        {w.edges.map(([a, b]) => {
+        {!isCase && w.edges.map(([a, b]) => {
           const [x1, y1] = pos(a);
           const [x2, y2] = pos(b);
           const active = (a === w.current && near.has(b)) || (b === w.current && near.has(a));
@@ -231,7 +233,7 @@ export function WorldMap({ w, rules, disabled, onTravel, onRest }: { w: Campaign
         })}
       </svg>
       <div className="small muted" style={{ marginTop: 8 }}>
-        Здесь: {w.locations.find((l) => l.id === w.current)?.name}. Дороги ведут в: {[...near].map((id) => w.locations.find((l) => l.id === id)?.name).join(", ")}.
+        Здесь: {w.locations.find((l) => l.id === w.current)?.name}. {isCase ? "Известные адреса" : "Дороги ведут в"}: {[...near].map((id) => w.locations.find((l) => l.id === id)?.name).join(", ")}.
       </div>
       <div className="row" style={{ marginTop: 10 }}>
         {[...near].map((id) => (
@@ -255,7 +257,7 @@ const MOVES: { move: CombatMove; label: string }[] = [
   { move: "flee", label: "Бежать" },
 ];
 
-export function CombatPanel({ w, c, disabled, onMove }: { w: Campaign; c: Character; disabled: boolean; onMove: (m: CombatMove, target?: number) => void }) {
+export function CombatPanel({ w, c, disabled, onMove }: { w: PublicCampaign; c: Character; disabled: boolean; onMove: (m: CombatMove, target?: number) => void }) {
   const R = worldOf(c).rules;
   const cb = w.combat!;
   return (

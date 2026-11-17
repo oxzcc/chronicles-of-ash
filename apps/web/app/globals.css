@@ -262,3 +262,36 @@ textarea { resize: vertical; }
 .face img { position: absolute; left: 50%; bottom: 0; height: 94%; transform: translateX(-50%); filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.7)); }
 .face-wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-family: var(--sans); animation: vnPulse 1.6s infinite; }
 .face-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 8px; background: linear-gradient(0deg, rgba(10, 7, 5, 0.95), transparent); font-family: var(--sans); font-size: 13px; color: var(--ink); }
+
+/* ===== Дело (мир Аркхэма) ===== */
+.case textarea, .case-close textarea { width: 100%; box-sizing: border-box; }
+.case-h { margin: 18px 0 8px; font-family: var(--display); font-size: 22px; font-weight: 700; }
+.case-visits { font-family: var(--ui); font-size: 14px; margin: 10px 0 0; color: var(--gold); }
+.case-visits.late { color: var(--ember); }
+.case-clues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.case-clues li { font-family: var(--ui); font-size: 14px; line-height: 1.45; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: 6px; padding: 8px 10px; }
+.case-clues.deductions li { border-left-color: var(--ember); font-style: italic; }
+.case-where { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+.case-score { display: flex; gap: 28px; margin: 6px 0 10px; }
+.case-score .n { font-family: var(--display); font-size: 44px; font-weight: 700; line-height: 1; color: var(--gold-hi); }
+.case-score .n.mentor { color: var(--muted); }
+.case-answer { border-top: 1px solid var(--line); padding: 10px 0; }
+.case-answer .q { font-family: var(--display); font-size: 18px; margin-bottom: 4px; }
+.verdict { font-family: var(--ui); font-size: 12px; padding: 1px 7px; border-radius: 3px; margin-left: 6px; }
+.verdict.ok { background: #2e4a2e; color: var(--ok); }
+.verdict.half { background: #4a3d20; color: var(--gold); }
+.verdict.bad { background: #4a2420; color: #e09080; }
+.case-close { display: flex; flex-direction: column; gap: 14px; }
+.case-q { display: flex; flex-direction: column; gap: 6px; font-family: var(--display); font-size: 18px; }
+.paper { background: #e9e0cc; color: #231b12; padding: 18px 20px; border-radius: 2px; font-family: Georgia, "Times New Roman", serif; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); }
+.paper-head { text-align: center; border-bottom: 3px double #231b12; padding-bottom: 8px; margin-bottom: 12px; }
+.paper-title { font-family: var(--display); font-size: 30px; font-weight: 700; letter-spacing: 0.02em; }
+.paper-date { font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; }
+.paper article { border-bottom: 1px solid rgba(35, 27, 18, 0.3); padding: 8px 0 10px; }
+.paper article:last-child { border-bottom: 0; }
+.paper h4 { margin: 0 0 4px; font-size: 17px; }
+.paper p { margin: 0; font-size: 14px; line-height: 1.5; }
+.directory { display: flex; flex-direction: column; gap: 10px; }
+.dir-entry { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-family: var(--ui); font-size: 15px; }
+.dir-entry.here { border-color: var(--ember); }
+.vn-case-done { align-self: center; margin: 4px 0 8px; }

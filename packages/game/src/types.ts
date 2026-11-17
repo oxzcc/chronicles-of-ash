@@ -14,7 +14,13 @@ export type TurnInput =
   | { kind: "choice"; index: number }
   | { kind: "travel"; to: string }
   | { kind: "rest" }
-  | { kind: "combat"; move: CombatMove; target?: number };
+  | { kind: "combat"; move: CombatMove; target?: number }
+  /** Дело: найти имя или место в справочнике — без модели. */
+  | { kind: "lookup"; query: string }
+  /** Дело: версия событий по найденным уликам. */
+  | { kind: "reconstruct"; text: string }
+  /** Дело: ответы на вопросы по id вопроса. */
+  | { kind: "close"; answers: Record<string, string> };
 
 export type TurnKind = TurnInput["kind"] | "knockout";
 

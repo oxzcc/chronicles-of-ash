@@ -99,6 +99,9 @@ const rawResponseSchema = (r: Ruleset) => z.object({
     .default(null),
   questDone: strList(4, 8).default([]),
   questComplete: z.boolean().catch(false).default(false),
+  /** Дело (Аркхэм): найденные улики и открытые адреса — id; проверяет движок. */
+  clues: strList(4, 8).default([]),
+  reveal: strList(4, 8).default([]),
   suggestions: z.array(z.unknown()).catch([]).default([]),
 });
 
@@ -123,6 +126,8 @@ function buildGmResponseSchema(rules: Ruleset) {
       combat: r.combat,
       questDone: r.questDone,
       questComplete: r.questComplete,
+      clues: r.clues,
+      reveal: r.reveal,
       suggestions,
     };
   });

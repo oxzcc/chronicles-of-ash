@@ -7,6 +7,7 @@ import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
 import { beatsOf, Bust, Drawer, Icon, Pips, TextFrame } from "@/components/vn";
+import { CaseFile, CloseCase, Directory, Newspaper } from "@/components/case";
 
 type Input =
   | { kind: "start" }
@@ -14,7 +15,10 @@ type Input =
   | { kind: "choice"; index: number }
   | { kind: "travel"; to: string }
   | { kind: "rest" }
-  | { kind: "combat"; move: CombatMove; target?: number };
+  | { kind: "combat"; move: CombatMove; target?: number }
+  | { kind: "lookup"; query: string }
+  | { kind: "reconstruct"; text: string }
+  | { kind: "close"; answers: Record<string, string> };
 
 interface Live {
   label: string;
@@ -26,7 +30,7 @@ interface Live {
   done?: boolean;
 }
 
-type Panel = null | "history" | "quest" | "map" | "hero";
+type Panel = null | "history" | "quest" | "map" | "hero" | "paper" | "directory" | "close";
 
 /**
  * Вход в локацию: заставка с названием → голос рассказчика → через NPC_DELAY_MS появляется NPC.
@@ -91,6 +95,9 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       if (kind === "travel") return "Дорога ведёт дальше";
       if (kind === "rest") return "Привал";
       if (kind === "start") return "История начинается";
+      if (kind === "lookup") return "Листаю справочник";
+      if (kind === "reconstruct") return "Улики складываются в картину";
+      if (kind === "close") return "Дело закрывается";
       return "Пыль оседает";
     },
     [view?.campaign.npc?.name],
@@ -290,6 +297,16 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
             <button className="vn-icon" onClick={() => setPanel("map")} aria-label="Карта" disabled={!!w.combat}>
               {Icon.map}
             </button>
+            {w.case && (
+              <>
+                <button className="vn-icon" onClick={() => setPanel("paper")} aria-label="Газета">
+                  {Icon.newspaper}
+                </button>
+                <button className="vn-icon" onClick={() => setPanel("directory")} aria-label="Справочник" disabled={!!w.combat}>
+                  {Icon.directory}
+                </button>
+              </>
+            )}
             <Link className="vn-icon" href="/" aria-label="Все герои">
               {Icon.home}
             </Link>
@@ -309,6 +326,16 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
 
         {w.combat && atEnd && !streaming && !enter && <CombatPanel w={w} c={c} disabled={busy} onMove={(move, target) => send({ kind: "combat", move, target }, move)} />}
 
+        {showChoices && w.case?.result && (
+          <button className="btn vn-case-done" onClick={() => setPanel("quest")}>
+            Итоги дела: {w.case.result.score} из {w.case.result.mentor} →
+          </button>
+        )}
+        {showChoices && !w.case?.result && w.case && w.case.visits >= w.case.limit && (
+          <button className="btn vn-case-done" onClick={() => setPanel("close")}>
+            Время вышло — закрыть дело
+          </button>
+        )}
         {showChoices && (
           <div className="vn-choices">
             {suggestions.length > 0 && (
@@ -367,11 +394,37 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         </Drawer>
       )}
       {panel === "quest" && (
-        <Drawer title="Журнал" onClose={() => setPanel(null)}>
-          <Quest w={w} doneText={worldOf(c).ui.questDone} />
-          <p className="small muted" style={{ marginTop: 12 }}>
-            {w.hook}
-          </p>
+        <Drawer title={w.case ? "Досье" : "Журнал"} onClose={() => setPanel(null)}>
+          {w.case ? (
+            <CaseFile w={w} busy={busy} onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)} onClose={() => setPanel("close")} />
+          ) : (
+            <>
+              <Quest w={w} doneText={worldOf(c).ui.questDone} />
+              <p className="small muted" style={{ marginTop: 12 }}>
+                {w.hook}
+              </p>
+            </>
+          )}
+        </Drawer>
+      )}
+      {panel === "close" && w.case && (
+        <Drawer title="Закрыть дело" onClose={() => setPanel("quest")}>
+          <CloseCase c={w.case} busy={busy} onCancel={() => setPanel("quest")} onSubmit={(answers) => send({ kind: "close", answers }, "Дело закрыто")} />
+        </Drawer>
+      )}
+      {panel === "paper" && w.case && (
+        <Drawer title="Газета" onClose={() => setPanel(null)}>
+          <Newspaper c={w.case} />
+        </Drawer>
+      )}
+      {panel === "directory" && w.case && (
+        <Drawer title="Справочник" onClose={() => setPanel(null)}>
+          <Directory
+            w={w}
+            busy={busy}
+            onLookup={(q) => send({ kind: "lookup", query: q }, `Справочник: «${q}»`)}
+            onTravel={(to) => send({ kind: "travel", to }, `Путь в «${locationById(w, to)?.name}»`)}
+          />
         </Drawer>
       )}
       {panel === "map" && (

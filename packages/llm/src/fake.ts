@@ -1,3 +1,5 @@
+import { getWorld } from "@ash/worlds";
+import { roughVerdict } from "./prompts/case";
 import { emptyUsage, type CompletionRequest, type CompletionResult, type LlmProvider } from "./types";
 
 /**
@@ -80,6 +82,20 @@ export class FakeProvider implements LlmProvider {
     const prompt = last?.role === "user" ? last.content : "";
     const system = req.messages[0]?.role === "system" ? req.messages[0].content : "";
     const fake = worldOfPrompt(system + prompt);
+    // Дело (Аркхэм): запасное дело мира — тот же формат, что просит промпт.
+    if (prompt.includes('"truth"') && prompt.includes('"clues"')) return this.plain(JSON.stringify(getWorld("arkham").fallbackCase));
+    // Закрытие дела: грубая проверка по словам правильного ответа.
+    if (prompt.startsWith("Ты проверяешь ответы игрока")) {
+      const verdicts: Record<string, string> = {};
+      for (const m of prompt.matchAll(/\[(\w+)\] Вопрос: .*\nПравильный ответ: (.*)\nОтвет игрока: (.*)/g)) verdicts[m[1]!] = roughVerdict(m[3]!, m[2]!);
+      return this.plain(JSON.stringify(verdicts));
+    }
+    // Реконструкция: развёрнутая версия совпадает с первым доступным выводом.
+    if (prompt.includes("восстанавливает картину событий")) {
+      const first = /\n\[(c\d+)\] /.exec(prompt.slice(prompt.indexOf("Выводы:")))?.[1] ?? null;
+      const version = /Версия игрока: (.*)/.exec(prompt)?.[1] ?? "";
+      return this.plain(JSON.stringify({ match: version.length > 20 ? first : null }));
+    }
     if (prompt.includes('"questTitle"')) return this.plain(JSON.stringify(fake === FAKE_SCENES.arkham ? FAKE_ARKHAM_QUEST : FAKE_QUEST));
     if (prompt.includes("предысторию")) return this.plain(fake.bio);
     const wantsRoll = (this.opts.askRoll ?? true) && !!req.tools?.length && last?.role === "user" && !prompt.includes("[Проверка уже брошена игрой]");

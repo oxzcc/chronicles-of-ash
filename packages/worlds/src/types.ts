@@ -1,4 +1,4 @@
-import type { Gender, LocationType, QuestSeed, RaceKey, Ruleset } from "@ash/engine";
+import type { CaseSeed, Gender, LocationType, QuestSeed, RaceKey, Ruleset } from "@ash/engine";
 
 /**
  * Мир игры — всё, что отличает одно приключение от другого: правила (расы, классы, навыки, места),
@@ -31,6 +31,13 @@ export interface World {
   };
   /** Запасной квест — если модель дважды не вернула годный JSON. */
   fallbackQuest: QuestSeed;
+  /** Механики мира сверх общего цикла. */
+  features: {
+    /** Детективное дело вместо квеста: улики, справочник, газета, закрытие дела. */
+    case?: boolean;
+  };
+  /** Запасное дело (для features.case). */
+  fallbackCase?: CaseSeed;
   art: ArtStyle;
 }
 
@@ -47,7 +54,7 @@ export interface GmText {
   suggestionExample: { text: string; skill: string; dc: number };
   /** Дополнительные разделы правил мира — идут перед формой ответа. */
   extra?: string[];
-  /** Версия кусков мира: пишется к PROMPT_VERSION в каждый ход («gm-3+arkham-1»). Поднимать при правке. */
+  /** Версия кусков мира: пишется к PROMPT_VERSION в каждый ход («gm-3+arkham-2»). Поднимать при правке. */
   version?: string;
 }
 

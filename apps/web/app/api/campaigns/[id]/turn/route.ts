@@ -1,4 +1,4 @@
-import { secureRng, type CombatMove } from "@ash/engine";
+import { publicCampaign, secureRng, type CombatMove } from "@ash/engine";
 import { arrivalView, ensureBackground, ensureNpc, GameError, loadCampaign, playTurn, prepareVisuals, saveTurn, sceneView, type TurnInput } from "@ash/game";
 import { worldOf } from "@ash/worlds";
 import { currentUser, errorResponse, getDb, getRouter, getWorldBible, sseStream, withCampaignLock } from "@/lib/server";
@@ -24,6 +24,15 @@ function parseInput(body: any): TurnInput {
     case "combat":
       if (!MOVES.includes(body.move)) throw new GameError("Неизвестное действие в бою.");
       return { kind: "combat", move: body.move, target: Number.isInteger(body.target) ? body.target : undefined };
+    case "lookup":
+      return { kind: "lookup", query: String(body.query ?? "") };
+    case "reconstruct":
+      return { kind: "reconstruct", text: String(body.text ?? "") };
+    case "close": {
+      const raw = body.answers && typeof body.answers === "object" ? body.answers : {};
+      const answers = Object.fromEntries(Object.entries(raw).slice(0, 6).map(([k, v]) => [String(k).slice(0, 8), String(v ?? "")]));
+      return { kind: "close", answers };
+    }
     default:
       throw new GameError("Неизвестный тип хода.");
   }
@@ -70,7 +79,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await prepareVisuals(db, c.id, out.state, out.records).catch((e) => console.error("[images] prepare", e));
       const turnNo = await saveTurn(db, c, out.state, out.records);
       send("done", {
-        turnNo, character: out.state.character, campaign: out.state.campaign,
+        // Клиенту — без разгадки, ответов и ненайденных улик.
+        turnNo, character: out.state.character, campaign: publicCampaign(out.state.campaign),
         turns: out.records.map((r, i) => ({
           turnNo: c.turnNo + i + 1, kind: r.kind, action: r.action, narration: r.narration, beats: r.beats, speaker: r.speaker, line: r.line,
           rolls: r.rolls, suggestions: r.suggestions, combatEvents: r.combatEvents,
