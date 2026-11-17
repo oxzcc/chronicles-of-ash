@@ -3,7 +3,8 @@
  * Такая LoRA работает только на 9B — в игре её рисует fal-ai/flux-2/klein/9b/lora (FAL_LORA_MODEL).
  *
  *   pnpm lora:train -- --world arkham                 загрузить датасет и обучить (спросит подтверждение)
- *   pnpm lora:train -- --world arkham --steps 1500     другое число шагов (по умолчанию 1000, как у fal)
+ *   pnpm lora:train -- --world arkham --steps 1500 --lr 0.0002   больше шагов и выше learning rate
+ *     (по умолчанию 1000 шагов и 5e-5, как у fal; на 58 картинках стиля этого не хватило — LoRA почти не меняла картинку)
  *   pnpm lora:train -- --world arkham --resume <id>    дождаться уже запущенного обучения
  *
  * Датасет — data/lora/<мир>_dataset.zip (pnpm lora:dataset). Ключ — FAL_KEY из .env, в вывод не попадает.
