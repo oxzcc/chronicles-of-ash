@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { createCharacter, layoutCampaign, mulberry32, RECOMMENDED_STATS, scriptedRng } from "@ash/engine";
+import { createCharacter, layoutCampaign, mulberry32, scriptedRng } from "@ash/engine";
+import { getWorld } from "@ash/worlds";
 import {
   FakeProvider, OpenRouterProvider, parseGmResponse, parsePartialJson, partialBeats, runNarratorTurn, toWireMessages,
   type CompletionRequest, type CompletionResult, type LlmProvider,
 } from "../src/index";
 
+const world = getWorld("fantasy");
+const R = world.rules;
 const character = () =>
-  createCharacter({ name: "Мирена", gender: "f", race: "elf", cls: "rogue", base: { ...RECOMMENDED_STATS.rogue }, skills: ["Обман", "Внимательность"] }, mulberry32(1));
+  createCharacter(R, { name: "Мирена", gender: "f", race: "elf", cls: "rogue", base: { ...R.recommended.rogue! }, skills: ["Обман", "Внимательность"] }, mulberry32(1));
 const campaign = () =>
-  layoutCampaign({
+  layoutCampaign(R, {
     questTitle: "Пепел", hook: "Пропадают люди.", objectives: ["А", "Б", "В"],
     locations: ["tavern", "village", "road", "forest", "cave", "ruins"].map((type, i) => ({ name: `Место ${i}`, type, desc: "…" })),
     target: 5,
@@ -29,7 +32,7 @@ class Scripted implements LlmProvider {
 
 describe("разбор ответа мастера", () => {
   it("достаёт JSON из мусора и чинит поля", () => {
-    const r = parseGmResponse('Вот ответ:\n```json\n{"beats":[{"speaker":null,"text":"Тьма."},{"speaker":"Бран","text":"«Кто здесь?»"},{"speaker":"Рассказчик","text":"Тишина."}],"speaker":{"name":"Бран","race":"goblin"},"changes":{"gold":"12"},"suggestions":[1,"Иду",{"text":"Лгу","skill":"Обман","dc":40},{"text":"Колдую","skill":"Некромантия","dc":12}]}\n```');
+    const r = parseGmResponse('Вот ответ:\n```json\n{"beats":[{"speaker":null,"text":"Тьма."},{"speaker":"Бран","text":"«Кто здесь?»"},{"speaker":"Рассказчик","text":"Тишина."}],"speaker":{"name":"Бран","race":"goblin"},"changes":{"gold":"12"},"suggestions":[1,"Иду",{"text":"Лгу","skill":"Обман","dc":40},{"text":"Колдую","skill":"Некромантия","dc":12}]}\n```', R);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.beats).toEqual([{ speaker: null, text: "Тьма." }, { speaker: "Бран", text: "Кто здесь?" }, { speaker: null, text: "Тишина." }]);
@@ -40,18 +43,18 @@ describe("разбор ответа мастера", () => {
     expect(r.value.combat).toBeNull();
   });
   it("старый формат narration + line превращается в реплики", () => {
-    const r = parseGmResponse('{"narration":"Дверь скрипит.\\n\\nВходит стражник.","speaker":{"name":"Вейл"},"line":"Бумаги!"}');
+    const r = parseGmResponse('{"narration":"Дверь скрипит.\\n\\nВходит стражник.","speaker":{"name":"Вейл"},"line":"Бумаги!"}', R);
     expect(r.ok && r.value.beats).toEqual([{ speaker: null, text: "Дверь скрипит." }, { speaker: null, text: "Входит стражник." }, { speaker: "Вейл", text: "Бумаги!" }]);
   });
   it("иероглифы — повод для повтора, в запасном тексте вычищены", () => {
-    const r = parseGmResponse('{"beats":[{"speaker":null,"text":"Он смотрит 突然 на тебя."}]}');
+    const r = parseGmResponse('{"beats":[{"speaker":null,"text":"Он смотрит 突然 на тебя."}]}', R);
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).toMatch(/иероглиф/);
     expect(r.fallback.beats[0]!.text).toBe("Он смотрит  на тебя.");
   });
   it("битый JSON — запасные реплики", () => {
-    const r = parseGmResponse('{"beats":[{"speaker":null,"text":"Дверь скрипит\\nи открывается');
+    const r = parseGmResponse('{"beats":[{"speaker":null,"text":"Дверь скрипит\\nи открывается', R);
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.fallback.beats[0]!.text).toBe("Дверь скрипит\nи открывается");
@@ -80,7 +83,7 @@ describe("ход рассказчика", () => {
       { text: '{"beats":[{"speaker":null,"text":"Стражник верит тебе."}],"suggestions":["Иду дальше"]}' },
     ]);
     const rolls: number[] = [];
-    const r = await runNarratorTurn({ provider: p, model: "m", worldBible: "", scene: scene(), rng: scriptedRng([15]), onRoll: (x) => void rolls.push(x.d20) });
+    const r = await runNarratorTurn({ world, provider: p, model: "m", worldBible: "", scene: scene(), rng: scriptedRng([15]), onRoll: (x) => void rolls.push(x.d20) });
     expect(rolls).toEqual([15]);
     expect(r.rolls[0]!.success).toBe(true); // 15 + ХАР 12(+1) + мастерство 2 = 18
     expect(r.requests).toBe(2);
@@ -93,25 +96,25 @@ describe("ход рассказчика", () => {
   it("не больше двух проверок, третья отклоняется", async () => {
     const call = (id: string) => ({ toolCalls: [{ id, name: "roll_check", arguments: '{"skill":"Атлетика","dc":10}' }] });
     const p = new Scripted([call("1"), call("2"), { text: '{"beats":[{"speaker":null,"text":"Готово."}]}' }]);
-    const r = await runNarratorTurn({ provider: p, model: "m", worldBible: "", scene: scene(), rng: mulberry32(1) });
+    const r = await runNarratorTurn({ world, provider: p, model: "m", worldBible: "", scene: scene(), rng: mulberry32(1) });
     expect(r.rolls).toHaveLength(2);
     expect(p.calls[2]!.tools).toBeUndefined();
   });
   it("один повтор при битом JSON", async () => {
     const p = new Scripted([{ text: "просто текст" }, { text: '{"beats":[{"speaker":null,"text":"Теперь правильно."}]}' }]);
-    const r = await runNarratorTurn({ provider: p, model: "m", worldBible: "", scene: scene(), rng: mulberry32(1) });
+    const r = await runNarratorTurn({ world, provider: p, model: "m", worldBible: "", scene: scene(), rng: mulberry32(1) });
     expect(r.degraded).toBe(false);
     expect(r.requests).toBe(2);
   });
   it("после второго провала — деградация, но ход не падает", async () => {
     const p = new Scripted([{ text: "раз" }, { text: "два" }]);
-    const r = await runNarratorTurn({ provider: p, model: "m", worldBible: "", scene: scene(), rng: mulberry32(1) });
+    const r = await runNarratorTurn({ world, provider: p, model: "m", worldBible: "", scene: scene(), rng: mulberry32(1) });
     expect(r.degraded).toBe(true);
     expect(r.response.beats[0]!.text).toBe("два");
   });
   it("системный промпт кэшируемый, описание мира внутри", async () => {
     const p = new Scripted([{ text: '{"beats":[{"speaker":null,"text":"Ок."}]}' }]);
-    await runNarratorTurn({ provider: p, model: "m", worldBible: "Мир Пепла.", scene: scene(), rng: mulberry32(1) });
+    await runNarratorTurn({ world, provider: p, model: "m", worldBible: "Мир Пепла.", scene: scene(), rng: mulberry32(1) });
     const sys = p.calls[0]!.messages[0]!;
     expect(sys).toMatchObject({ role: "system", cache: true });
     expect((sys as any).content).toContain("Мир Пепла.");
@@ -119,7 +122,7 @@ describe("ход рассказчика", () => {
   });
   it("фейковая модель проходит полный цикл со стримингом", async () => {
     const seen: number[] = [];
-    const r = await runNarratorTurn({ provider: new FakeProvider(), model: "fake", worldBible: "", scene: scene(), rng: mulberry32(2), onBeats: (b) => seen.push(b.length) });
+    const r = await runNarratorTurn({ world, provider: new FakeProvider(), model: "fake", worldBible: "", scene: scene(), rng: mulberry32(2), onBeats: (b) => seen.push(b.length) });
     expect(r.rolls).toHaveLength(1);
     expect(r.response.speaker?.name).toBe("Старый Ведун");
     expect(r.response.beats.at(-1)).toEqual({ speaker: "Старый Ведун", text: "Ты не первый, кто спрашивает. Те, кто спрашивал, не вернулись." });
@@ -127,7 +130,7 @@ describe("ход рассказчика", () => {
     expect(Math.max(...seen)).toBe(3);
   });
   it("без allowChecks инструмент не даётся", async () => {
-    const r = await runNarratorTurn({ provider: new FakeProvider(), model: "fake", worldBible: "", scene: scene(), rng: mulberry32(2), allowChecks: false });
+    const r = await runNarratorTurn({ world, provider: new FakeProvider(), model: "fake", worldBible: "", scene: scene(), rng: mulberry32(2), allowChecks: false });
     expect(r.rolls).toHaveLength(0);
     expect(r.requests).toBe(1);
   });

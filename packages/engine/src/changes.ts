@@ -1,5 +1,6 @@
 import type { Character } from "./character";
 import { clamp } from "./dice";
+import type { Ruleset } from "./rules";
 import type { Campaign } from "./world";
 
 /** Изменения, которые предлагает модель. Код применяет их с ограничениями. */
@@ -38,7 +39,7 @@ export const LIMITS = {
 const norm = (s: string) => s.trim().toLowerCase().replace(/ё/g, "е");
 
 /** Применяет изменения к герою и кампании (мутирует их) и возвращает, что реально применилось. */
-export function applyChanges(c: Character, w: Campaign, p: ProposedChanges): AppliedChanges {
+export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedChanges): AppliedChanges {
   const out: AppliedChanges = { hp: 0, gold: 0, added: [], removed: [], questDone: [], questComplete: false, rejected: [], notes: [] };
 
   // Цели квеста — первыми: от них зависит лимит золота.
@@ -81,7 +82,7 @@ export function applyChanges(c: Character, w: Campaign, p: ProposedChanges): App
     const before = c.gold;
     c.gold = Math.max(0, c.gold + delta);
     out.gold = c.gold - before;
-    if (out.gold) out.notes.push(out.gold > 0 ? `+${out.gold} золота` : `${out.gold} золота`);
+    if (out.gold) out.notes.push(`${out.gold > 0 ? "+" : "-"}${r.money.amount(Math.abs(out.gold))}`);
   }
 
   for (const raw of p.removeItems ?? []) {

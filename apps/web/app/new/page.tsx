@@ -3,26 +3,33 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
-  abilityMod, CHOSEN_SKILLS, CLASSES, CLASS_KEYS, finalStats, NAMES, POINT_BUY_BUDGET, POINT_BUY_COST, pointsSpent,
-  RACES, RACE_KEYS, RECOMMENDED_STATS, SKILL_NAMES, SKILLS, STATS, STAT_KEYS, validateDraft,
+  abilityMod, CHOSEN_SKILLS, classKeys, finalStats, POINT_BUY_BUDGET, POINT_BUY_COST, pointsSpent, raceKeys,
+  skillNames, STATS, STAT_KEYS, validateDraft,
   type CharacterDraft, type ClassKey, type Gender, type RaceKey, type SkillName, type StatKey,
 } from "@ash/engine";
+import { getWorld, DEFAULT_WORLD } from "@ash/worlds";
 import { api } from "@/lib/client";
 
+// Выбор мира появится на этом экране отдельной задачей; пока герой создаётся в мире по умолчанию.
+const world = getWorld(DEFAULT_WORLD);
+const R = world.rules;
+const FIRST_RACE = raceKeys(R)[0]!;
+const FIRST_CLASS = classKeys(R)[0]!;
+
 const randomName = (race: RaceKey, g: Gender) => {
-  const list = NAMES[race][g];
-  return list[Math.floor(Math.random() * list.length)]!;
+  const list = R.names[race]?.[g] ?? [];
+  return list[Math.floor(Math.random() * list.length)] ?? "";
 };
 
 export default function NewHero() {
   const router = useRouter();
-  const [race, setRace] = useState<RaceKey>("human");
-  const [cls, setCls] = useState<ClassKey>("fighter");
+  const [race, setRace] = useState<RaceKey>(FIRST_RACE);
+  const [cls, setCls] = useState<ClassKey>(FIRST_CLASS);
   const [gender, setGender] = useState<Gender>("m");
   // Случайное имя — только на клиенте, иначе разметка сервера и браузера разойдётся.
-  const [name, setName] = useState(NAMES.human.m[0]!);
-  useEffect(() => setName(randomName("human", "m")), []);
-  const [base, setBase] = useState({ ...RECOMMENDED_STATS.fighter });
+  const [name, setName] = useState(R.names[FIRST_RACE]?.m[0] ?? "");
+  useEffect(() => setName(randomName(FIRST_RACE, "m")), []);
+  const [base, setBase] = useState({ ...R.recommended[FIRST_CLASS]! });
   const [skills, setSkills] = useState<SkillName[]>([]);
   const [backstory, setBackstory] = useState("");
   const [busy, setBusy] = useState<"" | "story" | "create" | "faces">("");
@@ -31,16 +38,16 @@ export default function NewHero() {
   const [face, setFace] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const draft: CharacterDraft = { name, gender, race, cls, base, skills, backstory };
-  const errors = useMemo(() => validateDraft(draft), [name, gender, race, cls, base, skills, backstory]);
+  const draft: CharacterDraft = { world: world.id, name, gender, race, cls, base, skills, backstory };
+  const errors = useMemo(() => validateDraft(R, draft), [name, gender, race, cls, base, skills, backstory]);
   const left = POINT_BUY_BUDGET - pointsSpent(base);
-  const stats = finalStats(race, base);
-  const classSkills = CLASSES[cls].skills;
+  const stats = finalStats(R, race, base);
+  const classSkills = R.classes[cls]?.skills ?? [];
 
   const pickClass = (k: ClassKey) => {
     setCls(k);
-    setBase({ ...RECOMMENDED_STATS[k] });
-    setSkills((s) => s.filter((x) => !CLASSES[k].skills.includes(x)));
+    setBase({ ...R.recommended[k]! });
+    setSkills((s) => s.filter((x) => !R.classes[k]!.skills.includes(x)));
   };
   const bump = (k: StatKey, d: number) => {
     const v = base[k] + d;
@@ -109,10 +116,10 @@ export default function NewHero() {
       <div className="section">
         <h2>Раса</h2>
         <div className="choices">
-          {RACE_KEYS.map((k) => (
+          {raceKeys(R).map((k) => (
             <button key={k} className={`choice ${race === k ? "on" : ""}`} onClick={() => (setRace(k), setName(randomName(k, gender)))}>
-              <b>{RACES[k].name}</b>
-              <span>{RACES[k].desc}</span>
+              <b>{R.races[k]!.name}</b>
+              <span>{R.races[k]!.desc}</span>
             </button>
           ))}
         </div>
@@ -121,11 +128,11 @@ export default function NewHero() {
       <div className="section">
         <h2>Класс</h2>
         <div className="choices">
-          {CLASS_KEYS.map((k) => (
+          {classKeys(R).map((k) => (
             <button key={k} className={`choice ${cls === k ? "on" : ""}`} onClick={() => pickClass(k)}>
-              <b>{CLASSES[k].name}</b>
+              <b>{R.classes[k]!.name}</b>
               <span>
-                {CLASSES[k].desc} Умение: {CLASSES[k].ability.name} — {CLASSES[k].ability.desc}.
+                {R.classes[k]!.desc} Умение: {R.classes[k]!.ability.name} — {R.classes[k]!.ability.desc}.
               </span>
             </button>
           ))}
@@ -182,11 +189,11 @@ export default function NewHero() {
         <h2>Навыки</h2>
         <p className="small muted">Класс даёт «{classSkills.join(", ")}». Выбери ещё {CHOSEN_SKILLS}.</p>
         <div className="chips">
-          {SKILL_NAMES.map((s) => {
+          {skillNames(R).map((s) => {
             const fixed = classSkills.includes(s);
             return (
               <button key={s} disabled={fixed} className={`chip ${fixed ? "fixed on" : skills.includes(s) ? "on" : ""}`} onClick={() => toggleSkill(s)}>
-                {s} <span className="muted">{STATS[SKILLS[s]].short}</span>
+                {s} <span className="muted">{STATS[R.skills[s]!].short}</span>
               </button>
             );
           })}
@@ -235,7 +242,7 @@ export default function NewHero() {
         <div className="row" style={{ justifyContent: "space-between" }}>
           <div>
             <div style={{ fontSize: 20 }}>
-              {name || "Безымянный"} — {RACES[race].name}, {CLASSES[cls].name}
+              {name || "Безымянный"} — {R.races[race]?.name}, {R.classes[cls]?.name}
             </div>
             <div className="small muted">Мастер придумает квест под героя и его предысторию.</div>
           </div>

@@ -39,6 +39,7 @@
   "dependencies": {
     "@ash/engine": "workspace:^",
     "@ash/game": "workspace:^",
-    "@ash/llm": "workspace:^"
+    "@ash/llm": "workspace:^",
+    "@ash/worlds": "workspace:^"
   }
 }

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { createDb, type Db } from "@ash/db";
 import { ensureUser, GameError } from "@ash/game";
 import { configFromEnv, createRouter, type ModelRouter, type Tier } from "@ash/llm";
+import type { World } from "@ash/worlds";
 
 let router: ModelRouter | null = null;
 export function getRouter(): ModelRouter {
@@ -17,17 +18,21 @@ export function getDbHandle() {
 }
 export const getDb = (): Db => getDbHandle().db;
 
-let world: string | null = null;
-/** Описание мира из docs/world.md — неизменная часть промпта мастера. */
-export function getWorldBible(): string {
-  if (world !== null) return world;
+const bibles = new Map<string, string>();
+/** Описание мира из world.md в папке мира — неизменная часть промпта мастера. */
+export function getWorldBible(world: World): string {
+  const cached = bibles.get(world.id);
+  if (cached !== undefined) return cached;
+  let text = "";
   for (const dir of [process.cwd(), join(process.cwd(), "..", "..")]) {
     try {
-      world = readFileSync(join(dir, "docs", "world.md"), "utf8");
-      return world;
+      // Путь расписан по частям (как worldBiblePath), чтобы сборка Next знала папку и не тащила весь проект.
+      text = readFileSync(join(dir, "packages", "worlds", "src", world.id, "world.md"), "utf8");
+      break;
     } catch {}
   }
-  return (world = "");
+  bibles.set(world.id, text);
+  return text;
 }
 
 const COOKIE = "ash_uid";

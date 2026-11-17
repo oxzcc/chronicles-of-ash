@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { mulberry32, neighbors, RECOMMENDED_STATS, type CharacterDraft } from "@ash/engine";
+import { mulberry32, neighbors, type CharacterDraft } from "@ash/engine";
+import { getWorld } from "@ash/worlds";
 import { createRouter, type CompletionRequest, type CompletionResult, type LlmProvider } from "@ash/llm";
 import { createDb } from "@ash/db";
 import {
@@ -7,7 +8,7 @@ import {
   type GameEvent, type TurnDeps,
 } from "../src/index";
 
-const draft: CharacterDraft = { name: "Альдрик", gender: "m", race: "human", cls: "fighter", base: { ...RECOMMENDED_STATS.fighter }, skills: ["Внимательность", "Убеждение"] };
+const draft: CharacterDraft = { name: "Альдрик", gender: "m", race: "human", cls: "fighter", base: { ...getWorld("fantasy").rules.recommended.fighter! }, skills: ["Внимательность", "Убеждение"] };
 const fakeRouter = () => createRouter({ fake: true, models: { narratorPaid: "p", narratorFree: "f", utility: "u" } });
 
 /** Провайдер с заготовленными ответами — для сценариев, которые фейковая модель не покрывает. */
@@ -45,6 +46,11 @@ describe("новая игра", () => {
   });
   it("неверный черновик — понятная ошибка", async () => {
     await expect(newGame({ router: fakeRouter(), tier: "free", draft: { ...draft, name: "" }, rng: mulberry32(1), seed: "x" })).rejects.toBeInstanceOf(GameError);
+  });
+  it("неизвестный мир — понятная ошибка; герой помнит свой мир", async () => {
+    await expect(newGame({ router: fakeRouter(), tier: "free", draft: { ...draft, world: "mars" }, rng: mulberry32(1), seed: "x" })).rejects.toBeInstanceOf(GameError);
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: { ...draft, world: "fantasy" }, rng: mulberry32(1), seed: "x" });
+    expect(g.character.world).toBe("fantasy");
   });
 });
 

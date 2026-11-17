@@ -1,9 +1,10 @@
 "use client";
 
 import {
-  abilityMod, CLASSES, LOCATION_TYPES, neighbors, proficiency, RACES, isPotion, resolveSkill, STATS,
-  type Campaign, type Character, type CheckResult, type CombatMove, type DiceShow,
+  abilityMod, isHealing, locationTypeName, neighbors, proficiency, resolveSkill, STATS,
+  type Campaign, type Character, type CheckResult, type CombatMove, type DiceShow, type Ruleset,
 } from "@ash/engine";
+import { worldOf } from "@ash/worlds";
 import type { Beat, Suggestion, TurnView } from "@/lib/client";
 
 /** Кубик на экране — из проверки навыка или из боя. */
@@ -84,7 +85,7 @@ export function Entry({ t }: { t: Pick<TurnView, "kind" | "action" | "beats" | "
 
 /** Модификатор и шанс успеха проверки — игрок видит их до броска, как в BG3. */
 export function checkOdds(c: Character, skill: string, dc: number) {
-  const r = resolveSkill(skill) ?? { stat: "wis" as const, skill: null };
+  const r = resolveSkill(worldOf(c).rules, skill) ?? { stat: "wis" as const, skill: null };
   const mod = abilityMod(c.stats[r.stat]) + (r.skill && c.skills.includes(r.skill) ? proficiency(c.level) : 0);
   let wins = 0;
   for (let d = 1; d <= 20; d++) if (d === 20 || (d !== 1 && d + mod >= dc)) wins++;
@@ -138,13 +139,16 @@ export function CheckDialog({ s, c, onRoll, onCancel }: { s: Suggestion & { chec
   );
 }
 
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export function Sheet({ c }: { c: Character }) {
-  const ab = CLASSES[c.cls].ability;
+  const R = worldOf(c).rules;
+  const ab = R.classes[c.cls]!.ability;
   return (
     <div className="card">
       <h3>{c.name}</h3>
       <div className="small muted">
-        {RACES[c.race].name}, {CLASSES[c.cls].name} {c.level} уровня
+        {R.races[c.race]?.name}, {R.classes[c.cls]?.name} {c.level} уровня
       </div>
       <div className="bar" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
         <div style={{ width: `${(100 * c.hp) / c.hpMax}%` }} />
@@ -154,13 +158,15 @@ export function Sheet({ c }: { c: Character }) {
           Здоровье {c.hp}/{c.hpMax}
         </span>
         <span>КД {c.ac}</span>
-        <span>Золото {c.gold}</span>
+        <span>{capitalize(R.money.sheet(c.gold))}</span>
       </div>
       <div className="kv" style={{ marginTop: 6 }}>
         <span>
           {ab.name}: {c.abilityUses}/{ab.uses}
         </span>
-        <span>Зелий: {c.items.filter(isPotion).length}</span>
+        <span>
+          {R.healing.countLabel}: {c.items.filter((x) => isHealing(R, x)).length}
+        </span>
       </div>
       <h3 style={{ marginTop: 14 }}>Снаряжение</h3>
       <ul className="items">
@@ -186,7 +192,7 @@ export function Quest({ w }: { w: Campaign }) {
   );
 }
 
-export function WorldMap({ w, disabled, onTravel, onRest }: { w: Campaign; disabled: boolean; onTravel: (id: string) => void; onRest: () => void }) {
+export function WorldMap({ w, rules, disabled, onTravel, onRest }: { w: Campaign; rules: Ruleset; disabled: boolean; onTravel: (id: string) => void; onRest: () => void }) {
   const near = new Set(neighbors(w, w.current).map((l) => l.id));
   const W = 300;
   const H = 200;
@@ -214,7 +220,7 @@ export function WorldMap({ w, disabled, onTravel, onRest }: { w: Campaign; disab
           const can = near.has(l.id) && !disabled;
           return (
             <g key={l.id} className={`node ${can ? "near" : ""}`} onClick={() => can && onTravel(l.id)}>
-              <title>{`${l.name} — ${LOCATION_TYPES[l.type]}. ${l.desc}${can ? " Нажми, чтобы отправиться." : ""}`}</title>
+              <title>{`${l.name} — ${locationTypeName(rules, l.type)}. ${l.desc}${can ? " Нажми, чтобы отправиться." : ""}`}</title>
               <circle cx={x} cy={y} r={here ? 7 : 5.5} fill={here ? "#d9773a" : l.visited ? "#6b5640" : "#2b2119"} stroke={l.id === w.target ? "#d9b25c" : "#5a4630"} strokeWidth={l.id === w.target ? 2 : 1} />
               <text x={anchor === "start" ? x - 8 : anchor === "end" ? x + 8 : x} y={y + 15} textAnchor={anchor}>
                 {l.name.length > 18 ? l.name.slice(0, 17) + "…" : l.name}
@@ -249,6 +255,7 @@ const MOVES: { move: CombatMove; label: string }[] = [
 ];
 
 export function CombatPanel({ w, c, disabled, onMove }: { w: Campaign; c: Character; disabled: boolean; onMove: (m: CombatMove, target?: number) => void }) {
+  const R = worldOf(c).rules;
   const cb = w.combat!;
   return (
     <div className="composer">
@@ -267,10 +274,10 @@ export function CombatPanel({ w, c, disabled, onMove }: { w: Campaign; c: Charac
           <button
             key={m.move}
             className={m.move === "attack" ? "btn" : "btn ghost"}
-            disabled={disabled || (m.move === "ability" && c.abilityUses <= 0) || (m.move === "potion" && !c.items.some(isPotion))}
+            disabled={disabled || (m.move === "ability" && c.abilityUses <= 0) || (m.move === "potion" && !c.items.some((x) => isHealing(R, x)))}
             onClick={() => onMove(m.move, cb.target)}
           >
-            {m.move === "ability" ? CLASSES[c.cls].ability.name : m.label}
+            {m.move === "ability" ? R.classes[c.cls]?.ability.name : m.move === "potion" ? R.healing.label : m.label}
           </button>
         ))}
       </div>

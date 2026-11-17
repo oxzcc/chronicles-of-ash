@@ -2,6 +2,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { campaigns, characters, turns, users, type Db } from "@ash/db";
 import type { Campaign, Character } from "@ash/engine";
 import type { Tier } from "@ash/llm";
+import { DEFAULT_WORLD } from "@ash/worlds";
 import { HISTORY_WINDOW } from "./history";
 import { GameError, type GameState, type TurnRecord } from "./types";
 
@@ -61,7 +62,9 @@ export async function loadCampaign(db: Db, userId: string, id: string, limit = H
     .where(and(eq(campaigns.id, id), eq(campaigns.userId, userId)));
   if (!row) throw new GameError("Кампания не найдена.", 404);
   const recent = (await db.select().from(turns).where(eq(turns.campaignId, id)).orderBy(desc(turns.turnNo)).limit(limit)).reverse().map(toRow);
-  return { id: row.id, characterId: row.characterId, turnNo: row.turnNo, state: { character: row.sheet, campaign: row.state }, recent };
+  // Листы до миров: поля world нет — это фэнтези.
+  const character: Character = { ...row.sheet, world: row.sheet.world || DEFAULT_WORLD };
+  return { id: row.id, characterId: row.characterId, turnNo: row.turnNo, state: { character, campaign: row.state }, recent };
 }
 
 export async function listCampaigns(db: Db, userId: string) {

@@ -1,7 +1,7 @@
 import { proficiency, type Character } from "./character";
 import { abilityMod, clamp, die, signed } from "./dice";
 import type { Rng } from "./rng";
-import { DC_MAX, DC_MIN, SKILLS, STATS, STAT_KEYS, type SkillName, type StatKey } from "./rules";
+import { DC_MAX, DC_MIN, STATS, STAT_KEYS, type Ruleset, type SkillName, type StatKey } from "./rules";
 
 export type Edge = "none" | "advantage" | "disadvantage";
 
@@ -30,8 +30,9 @@ export interface CheckResult {
 }
 
 /** Навык или характеристика → характеристика броска и признак владения. */
-export function resolveSkill(name: string): { stat: StatKey; skill: SkillName | null } | null {
-  if (name in SKILLS) return { stat: SKILLS[name as SkillName], skill: name as SkillName };
+export function resolveSkill(r: Ruleset, name: string): { stat: StatKey; skill: SkillName | null } | null {
+  const stat0 = r.skills[name];
+  if (stat0) return { stat: stat0, skill: name };
   const stat = STAT_KEYS.find((k) => STATS[k].full.toLowerCase() === name.trim().toLowerCase());
   return stat ? { stat, skill: null } : null;
 }
@@ -40,8 +41,8 @@ export function resolveSkill(name: string): { stat: StatKey; skill: SkillName | 
  * Проверка навыка. Бросает только сервер; модель лишь просит проверку через roll_check.
  * 20 — всегда успех, 1 — всегда провал.
  */
-export function skillCheck(c: Character, req: CheckRequest, rng: Rng): CheckResult {
-  const resolved = resolveSkill(req.skill) ?? { stat: "wis" as StatKey, skill: null };
+export function skillCheck(r: Ruleset, c: Character, req: CheckRequest, rng: Rng): CheckResult {
+  const resolved = resolveSkill(r, req.skill) ?? { stat: "wis" as StatKey, skill: null };
   const label = resolved.skill ?? (STAT_KEYS.includes(resolved.stat) ? STATS[resolved.stat].full : req.skill);
   const dc = clamp(Math.round(Number(req.dc) || 13), DC_MIN, DC_MAX);
   const prof = resolved.skill && c.skills.includes(resolved.skill) ? proficiency(c.level) : 0;

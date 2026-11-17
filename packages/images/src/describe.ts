@@ -1,6 +1,7 @@
-import { CLASSES, RACES, type CharacterDraft, type Gender, type LocationType, type RaceKey } from "@ash/engine";
+import { raceKeys, type CharacterDraft, type Gender, type LocationType, type RaceKey } from "@ash/engine";
 import { extractJson, type ModelRouter } from "@ash/llm";
-import { CLASS_EN, INTERIOR_TYPES, LOCATION_EN, raceEn } from "./style";
+import type { World } from "@ash/worlds";
+import { isInterior, raceEn } from "./style";
 
 /**
  * Служебная модель переводит русское описание в короткий английский промпт для FLUX.
@@ -42,19 +43,20 @@ export interface NpcCard {
  */
 export async function guessNpc(
   router: ModelRouter,
+  world: World,
   o: { name: string; lines: string[]; scene: string },
   signal?: AbortSignal,
 ): Promise<{ card: NpcCard; description: string }> {
-  let card: NpcCard = { name: o.name, race: "human", gender: "m", role: "" };
+  let card: NpcCard = { name: o.name, race: raceKeys(world.rules)[0]!, gender: "m", role: "" };
   let look = "";
   try {
     const raw = await ask(
       router,
-      `A character in a Russian dark fantasy story speaks, but nobody described them. Guess who they are from the name, their lines and the scene.
+      `A character in a Russian ${world.art.genreEn} story speaks, but nobody described them. Guess who they are from the name, their lines and the scene.
 Name: ${o.name}
 Their lines (Russian): ${o.lines.map((l) => `«${l}»`).join(" ").slice(0, 600)}
 Scene (Russian): ${o.scene.slice(0, 600)}
-Return JSON only: {"race":"human|elf|dwarf|halfling|tiefling|halforc","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 15-30 words: age, build, face, hair, clothing, one distinctive detail, expression; no names, no style words"}`,
+Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 15-30 words: age, build, face, hair, clothing, one distinctive detail, expression; no names, no style words"}`,
       signal,
     );
     const j = extractJson(raw) as Record<string, unknown> | null;
@@ -62,7 +64,7 @@ Return JSON only: {"race":"human|elf|dwarf|halfling|tiefling|halforc","gender":"
       const race = String(j.race) as RaceKey;
       card = {
         name: o.name,
-        race: race in RACES ? race : "human",
+        race: race in world.rules.races ? race : raceKeys(world.rules)[0]!,
         gender: j.gender === "f" ? "f" : "m",
         role: String(j.role ?? "").trim().slice(0, 60),
       };
@@ -70,37 +72,38 @@ Return JSON only: {"race":"human|elf|dwarf|halfling|tiefling|halforc","gender":"
       if (l && !CYR.test(l)) look = l;
     }
   } catch {}
-  const description = `${genderEn(card.gender)}, ${raceEn(card.race, card.gender)}, ${look || "a stranger of a dark fantasy village, weathered face, period clothing"}`;
+  const description = `${genderEn(card.gender)}, ${raceEn(world, card.race, card.gender)}, ${look || world.art.strangerEn}`;
   return { card, description };
 }
 
-export async function describeNpc(router: ModelRouter, npc: NpcCard, signal?: AbortSignal): Promise<string> {
-  const fallback = `${genderEn(npc.gender)}, ${raceEn(npc.race, npc.gender)}, ${npc.role ? "a local of a dark fantasy village" : "a traveller"}, weathered face, period clothing`;
+export async function describeNpc(router: ModelRouter, world: World, npc: NpcCard, signal?: AbortSignal): Promise<string> {
+  const fallback = `${genderEn(npc.gender)}, ${raceEn(world, npc.race, npc.gender)}, ${npc.role ? world.art.localEn : "a traveller"}, weathered face, period clothing`;
   try {
     const text = oneLine(
       await ask(
         router,
-        `Write an English image prompt fragment (15-35 words, no style words, no names) describing how this dark fantasy character looks: age, build, face, hair, clothing, one distinctive detail, expression.\nCharacter: ${npc.name}, ${RACES[npc.race].name} (${raceEn(npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
+        `Write an English image prompt fragment (15-35 words, no style words, no names) describing how this ${world.art.genreEn} character looks: age, build, face, hair, clothing, one distinctive detail, expression.\nCharacter: ${npc.name}, ${world.rules.races[npc.race]?.name ?? npc.race} (${raceEn(world, npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
         signal,
       ),
     );
-    return text && !CYR.test(text) ? `${genderEn(npc.gender)}, ${raceEn(npc.race, npc.gender)}, ${text}` : fallback;
+    return text && !CYR.test(text) ? `${genderEn(npc.gender)}, ${raceEn(world, npc.race, npc.gender)}, ${text}` : fallback;
   } catch {
     return fallback;
   }
 }
 
-export async function describeLocation(router: ModelRouter, loc: { name: string; type: LocationType; desc: string }, signal?: AbortSignal): Promise<string> {
-  const fallback = LOCATION_EN[loc.type];
+export async function describeLocation(router: ModelRouter, world: World, loc: { name: string; type: LocationType; desc: string }, signal?: AbortSignal): Promise<string> {
+  const base = world.art.locationEn[loc.type] ?? world.art.locationEn[world.rules.defaultLocationType] ?? "";
+  const fallback = base;
   try {
     const text = oneLine(
       await ask(
         router,
-        `Write an English image prompt fragment (15-35 words, no style words, no people) describing this medieval dark fantasy location as a wide establishing shot${INTERIOR_TYPES.includes(loc.type) ? ", seen from the INSIDE (interior view)" : ""}. Only medieval objects: no ships with engines, no machines, no modern items.\nPlace: ${loc.name} (${loc.type}). Description (Russian): ${loc.desc}\nAnswer with the fragment only.`,
+        `Write an English image prompt fragment (15-35 words, no style words, no people) describing this ${world.art.locationNounEn} as a wide establishing shot${isInterior(world, loc.type) ? ", seen from the INSIDE (interior view)" : ""}. ${world.art.eraRuleEn}\nPlace: ${loc.name} (${loc.type}). Description (Russian): ${loc.desc}\nAnswer with the fragment only.`,
         signal,
       ),
     );
-    return text && !CYR.test(text) ? `${LOCATION_EN[loc.type]}, ${text}` : fallback;
+    return text && !CYR.test(text) ? `${base}, ${text}` : fallback;
   } catch {
     return fallback;
   }
@@ -121,19 +124,19 @@ const VARIETY = [
   { label: "Светлые волосы, суровый взгляд", prompt: "ash-blond hair tied back, sharp cheekbones, wind-burned skin, cold determined gaze" },
 ];
 
-export function baseHero(d: Pick<CharacterDraft, "race" | "cls" | "gender">): string {
-  return `${genderEn(d.gender)}, ${raceEn(d.race, d.gender)}, ${CLASS_EN[d.cls]}`;
+export function baseHero(world: World, d: Pick<CharacterDraft, "race" | "cls" | "gender">): string {
+  return `${genderEn(d.gender)}, ${raceEn(world, d.race, d.gender)}, ${world.art.classEn[d.cls] ?? ""}`;
 }
 
 /**
  * Четыре заметно разных облика по выбору игрока: общая основа (раса, класс, пол, заметки игрока)
  * плюс разные возраст, волосы, черты лица, детали одежды и выражение.
  */
-export async function heroVariants(router: ModelRouter, d: Pick<CharacterDraft, "race" | "cls" | "gender">, notes: string, signal?: AbortSignal): Promise<LookVariant[]> {
+export async function heroVariants(router: ModelRouter, world: World, d: Pick<CharacterDraft, "race" | "cls" | "gender">, notes: string, signal?: AbortSignal): Promise<LookVariant[]> {
   try {
     const raw = await ask(
       router,
-      `You design 4 clearly DIFFERENT looks for a dark fantasy player character. Base: ${baseHero(d)} (${RACES[d.race].name}, ${CLASSES[d.cls].name}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
+      `You design 4 clearly DIFFERENT looks for a ${world.art.genreEn} player character. Base: ${baseHero(world, d)} (${world.rules.races[d.race]?.name ?? d.race}, ${world.rules.classes[d.cls]?.name ?? d.cls}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
 Vary age, hair colour and style, face shape, scars or marks, a clothing detail and expression so that the 4 people are easy to tell apart.
 Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and an age.
 Return JSON only: [{"label":"4-7 слов по-русски","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,

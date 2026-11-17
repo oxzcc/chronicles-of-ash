@@ -1,6 +1,6 @@
 # Визуальный стиль
 
-Утверждён по макетам (ноябрь 2026): https://claude.ai/artifact/Kgi8qrhf44CxBxVfPaaRe3. Код стиля — `packages/images/src/style.ts`; при правке промпта обновляй и этот файл.
+Утверждён по макетам (ноябрь 2026): https://claude.ai/artifact/Kgi8qrhf44CxBxVfPaaRe3. Код стиля — `art.ts` рядом (стиль, словарь рас, классов и мест) и `packages/images/src/style.ts` (кадр портрета, общий для всех миров); при правке промпта обновляй и этот файл.
 
 ## Стилевой префикс
 

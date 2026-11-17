@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CLASSES, LOCATION_TYPES, locationById, RACES, type CheckResult, type CombatEvent, type CombatMove, type LocationType } from "@ash/engine";
+import { locationById, locationTypeName, type CheckResult, type CombatEvent, type CombatMove, type LocationType } from "@ash/engine";
+import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
 import { beatsOf, Bust, Drawer, Icon, Pips, TextFrame } from "@/components/vn";
@@ -248,7 +249,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const suggestions = !w.combat && lastWithSuggestions ? lastWithSuggestions.suggestions : [];
   const showChoices = !busy && !enter && atEnd && !w.combat;
   const submit = () => text.trim() && send({ kind: "action", text: text.trim() }, text.trim());
-  const ab = CLASSES[c.cls].ability;
+  const R = worldOf(c).rules;
+  const ab = R.classes[c.cls]!.ability;
 
   return (
     <div className="vn">
@@ -266,7 +268,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       <header className="vn-hud">
         <div className="vn-place">
           <div className="name">{place.name}</div>
-          <div className="sub">{LOCATION_TYPES[place.type]}</div>
+          <div className="sub">{locationTypeName(R, place.type)}</div>
         </div>
         <div className="vn-hud-right">
           <button className="vn-hero" onClick={() => setPanel("hero")} aria-label="Лист героя">
@@ -353,7 +355,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
             <span />
           </div>
           <div className="title">{enter.name}</div>
-          <div className="sub">{LOCATION_TYPES[enter.type]}</div>
+          <div className="sub">{locationTypeName(R, enter.type)}</div>
         </div>
       )}
 
@@ -376,6 +378,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         <Drawer title="Карта" onClose={() => setPanel(null)}>
           <WorldMap
             w={w}
+            rules={R}
             disabled={busy || !!w.combat}
             onTravel={(to) => send({ kind: "travel", to }, `Путь в «${locationById(w, to)?.name}»`)}
             onRest={() => send({ kind: "rest" }, "Привал")}
@@ -387,7 +390,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           {scene?.hero?.url && <img className="vn-sheet-portrait" src={scene.hero.url} alt={c.name} />}
           <Sheet c={c} />
           <p className="small muted" style={{ marginTop: 10 }}>
-            {RACES[c.race].name}, {CLASSES[c.cls].name}. {ab.name}: {ab.desc}. {c.backstory}
+            {R.races[c.race]?.name}, {R.classes[c.cls]?.name}. {ab.name}: {ab.desc}. {c.backstory}
           </p>
           <p className="small muted">
             Ходов: {view.turnNo} · расход: ${view.costUsd.toFixed(3)}

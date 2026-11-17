@@ -2,11 +2,14 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
+import { getWorld } from "@ash/worlds";
 import { describe, expect, it } from "vitest";
 import { createRouter } from "@ash/llm";
 import {
   FakeImageProvider, FalImageProvider, heroVariants, LocalStorage, renderBackground, renderPortrait, describeNpc, portraitPrompt,
 } from "../src/index";
+
+const world = getWorld("fantasy");
 
 const fakeRouter = () => createRouter({ fake: true, models: { narratorPaid: "p", narratorFree: "f", utility: "u" } });
 
@@ -14,7 +17,7 @@ describe("конвейер картинок", () => {
   it("портрет: фон вырезан, целый квадратный холст, webp с прозрачностью", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ash-img-"));
     const storage = new LocalStorage(dir);
-    const r = await renderPortrait({ provider: new FakeImageProvider(), storage, description: "man, human, tavern keeper", key: "npc/test-godric" });
+    const r = await renderPortrait({ world, provider: new FakeImageProvider(), storage, description: "man, human, tavern keeper", key: "npc/test-godric" });
     expect(r.url).toBe("/api/images/npc/test-godric.webp");
     const bytes = (await storage.read("npc/test-godric.webp"))!;
     const meta = await sharp(bytes).metadata();
@@ -28,7 +31,7 @@ describe("конвейер картинок", () => {
   });
   it("фон: webp, приглушён", async () => {
     const storage = new LocalStorage(await mkdtemp(join(tmpdir(), "ash-img-")));
-    const r = await renderBackground({ provider: new FakeImageProvider(), storage, description: "a tavern", time: "night", key: "bg/tavern-1" });
+    const r = await renderBackground({ world, provider: new FakeImageProvider(), storage, description: "a tavern", time: "night", key: "bg/tavern-1" });
     expect(r.width).toBe(1344);
     expect(r.prompt).toMatch(/no people.*night/);
   });
@@ -41,14 +44,14 @@ describe("конвейер картинок", () => {
 
 describe("описания для FLUX", () => {
   it("без ответа служебной модели — 4 заметно разных облика из запаса", async () => {
-    const v = await heroVariants(fakeRouter(), { race: "human", cls: "ranger", gender: "f" }, "");
+    const v = await heroVariants(fakeRouter(), world, { race: "human", cls: "ranger", gender: "f" }, "");
     expect(v).toHaveLength(4);
     expect(new Set(v.map((x) => x.prompt)).size).toBe(4);
   });
   it("NPC без ответа модели — английский промпт из данных", async () => {
-    const d = await describeNpc(fakeRouter(), { name: "Годрик", race: "dwarf", gender: "m", role: "трактирщик" });
+    const d = await describeNpc(fakeRouter(), world, { name: "Годрик", race: "dwarf", gender: "m", role: "трактирщик" });
     expect(d).toMatch(/^a man, male character, stocky dwarf/);
-    expect(/[а-я]/i.test(portraitPrompt(d))).toBe(false);
+    expect(/[а-я]/i.test(portraitPrompt(world, d))).toBe(false);
   });
 });
 
@@ -76,9 +79,9 @@ describe("fal", () => {
 describe("raceEn", () => {
   it("дварфийка без бороды, дварф с бородой", async () => {
     const { raceEn } = await import("../src/style");
-    expect(raceEn("dwarf", "f")).toContain("beardless");
-    expect(raceEn("dwarf", "m")).toContain("beard");
-    expect(raceEn("elf", "f")).toBe("elf with pointed ears");
+    expect(raceEn(world, "dwarf", "f")).toContain("beardless");
+    expect(raceEn(world, "dwarf", "m")).toContain("beard");
+    expect(raceEn(world, "elf", "f")).toBe("elf with pointed ears");
   });
 });
 

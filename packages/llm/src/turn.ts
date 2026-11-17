@@ -1,5 +1,6 @@
 import { skillCheck, type CheckResult, type Edge, type Rng } from "@ash/engine";
-import { narratorSystemPrompt, narratorUserPrompt, rollCheckTool, PROMPT_VERSION, type SceneContext } from "./prompts/gm";
+import type { World } from "@ash/worlds";
+import { narratorSystemPrompt, narratorUserPrompt, rollCheckTool, PROMPT_VERSION, ROLL_CHECK, type SceneContext } from "./prompts/gm";
 import { parseGmResponse, partialBeats, partialSpeaker, type Beat, type GmResponse, type Speaker } from "./schema";
 import { addUsage, emptyUsage, type ChatMessage, type LlmProvider, type Usage } from "./types";
 
@@ -8,6 +9,7 @@ export const MAX_CHECKS_PER_TURN = 2;
 export interface NarratorTurnOptions {
   provider: LlmProvider;
   model: string;
+  world: World;
   worldBible: string;
   scene: SceneContext;
   rng: Rng;
@@ -50,9 +52,11 @@ function parseArgs(s: string): Record<string, unknown> {
  */
 export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorTurnResult> {
   const messages: ChatMessage[] = [
-    { role: "system", content: narratorSystemPrompt(o.worldBible), cache: true },
-    { role: "user", content: narratorUserPrompt(o.scene) },
+    { role: "system", content: narratorSystemPrompt(o.world, o.worldBible), cache: true },
+    { role: "user", content: narratorUserPrompt(o.world, o.scene) },
   ];
+  const rules = o.world.rules;
+  const tool = rollCheckTool(rules);
   const rolls: CheckResult[] = [];
   let usage = emptyUsage();
   let requests = 0;
@@ -62,7 +66,7 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
   let speakerSent = false;
   const onText = (_d: string, full: string) => {
     if (o.onSpeaker && !speakerSent) {
-      const s = partialSpeaker(full);
+      const s = partialSpeaker(full, rules);
       if (s !== undefined) {
         speakerSent = true;
         if (s) o.onSpeaker(s);
@@ -81,7 +85,7 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
     const res = await o.provider.complete({
       model: o.model,
       messages,
-      tools: allowTools ? [rollCheckTool] : undefined,
+      tools: allowTools ? [tool] : undefined,
       maxTokens: 2000,
       signal: o.signal,
       onText,
@@ -90,7 +94,7 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
     usage = addUsage(usage, res.usage);
     model = res.model;
 
-    const calls = allowTools ? res.toolCalls.filter((c) => c.name === rollCheckTool.name) : [];
+    const calls = allowTools ? res.toolCalls.filter((c) => c.name === ROLL_CHECK) : [];
     if (calls.length) {
       messages.push({ role: "assistant", content: res.text, toolCalls: calls });
       for (const call of calls) {
@@ -100,7 +104,7 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
         }
         const a = parseArgs(call.arguments);
         const edge = (["advantage", "disadvantage"].includes(String(a.edge)) ? a.edge : "none") as Edge;
-        const roll = skillCheck(o.scene.character, { skill: String(a.skill ?? "Внимательность"), dc: Number(a.dc), reason: String(a.reason ?? ""), edge }, o.rng);
+        const roll = skillCheck(rules, o.scene.character, { skill: String(a.skill ?? "Внимательность"), dc: Number(a.dc), reason: String(a.reason ?? ""), edge }, o.rng);
         rolls.push(roll);
         await o.onRoll?.(roll);
         messages.push({ role: "tool", toolCallId: call.id, content: roll.summary });
@@ -108,7 +112,7 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
       continue;
     }
 
-    const parsed = parseGmResponse(res.text);
+    const parsed = parseGmResponse(res.text, rules);
     if (parsed.ok) {
       return { response: parsed.value, rolls, usage, model, promptVersion: PROMPT_VERSION, requests, degraded: false, rawText: res.text };
     }

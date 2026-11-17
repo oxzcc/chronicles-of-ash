@@ -15,6 +15,7 @@
     "@ash/game": "workspace:^",
     "@ash/images": "workspace:^",
     "@ash/llm": "workspace:^",
+    "@ash/worlds": "workspace:^",
     "next": "16.4.6",
     "react": "19",
     "react-dom": "19",
