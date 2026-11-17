@@ -56,7 +56,7 @@ function timeFor(type: LocationType, seed: number): TimeOfDay {
 }
 
 /** Фон текущей локации: ключевым местам — свой, остальным — из общей библиотеки по типу. */
-async function ensureBackground(db: Db, campaignId: string, w: Campaign) {
+export async function ensureBackground(db: Db, campaignId: string, w: Campaign) {
   const loc = locationById(w, w.current);
   if (!loc || loc.imageId) return;
   const seed = hashStr(campaignId + loc.id);
@@ -133,6 +133,27 @@ async function ensureNpcs(db: Db, campaignId: string, records: TurnRecord[], her
 export async function prepareVisuals(db: Db, campaignId: string, state: GameState, records: TurnRecord[]) {
   await ensureNpcs(db, campaignId, records, state.character.name);
   await ensureBackground(db, campaignId, state.campaign);
+}
+
+/** Фон текущей локации для клиента — сразу при входе, ещё до рассказа мастера. */
+export async function arrivalView(db: Db, w: Campaign): Promise<{ location: string; imageId: string | null; image: ImageView | null }> {
+  const loc = locationById(w, w.current);
+  if (!loc?.imageId) return { location: w.current, imageId: null, image: null };
+  const [row] = await db.select({ status: images.status, url: images.url }).from(images).where(eq(images.id, loc.imageId));
+  return { location: loc.id, imageId: loc.imageId, image: row ?? null };
+}
+
+/**
+ * Статус фона, который ещё не сохранён в состоянии кампании (ход идёт).
+ * Только фоны: свои ключевые или общие из библиотеки.
+ */
+export async function backgroundStatus(db: Db, campaignId: string, imageId: string): Promise<ImageView | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(imageId)) return null;
+  const [row] = await db
+    .select({ status: images.status, url: images.url })
+    .from(images)
+    .where(and(eq(images.id, imageId), eq(images.kind, "background"), sql`(${images.campaignId} IS NULL OR ${images.campaignId} = ${campaignId})`));
+  return row ?? null;
 }
 
 export interface ImageView {

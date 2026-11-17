@@ -56,6 +56,8 @@ export interface TurnDeps {
   emit?: (e: GameEvent) => void;
   /** Рассказчик назвал NPC (ещё идёт ход) — для раннего старта портрета. */
   onSpeaker?: (speaker: Speaker) => void;
+  /** Герой оказался в локации (начало, переход) — ещё до рассказа: фон начинает рисоваться сразу. */
+  onArrive?: () => Promise<void>;
 }
 
 export interface TurnOutcome {

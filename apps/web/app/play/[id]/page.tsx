@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CLASSES, LOCATION_TYPES, locationById, RACES, type CheckResult, type CombatEvent, type CombatMove } from "@ash/engine";
+import { CLASSES, LOCATION_TYPES, locationById, RACES, type CheckResult, type CombatEvent, type CombatMove, type LocationType } from "@ash/engine";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
 import { beatsOf, Bust, Drawer, Icon, Pips, TextFrame } from "@/components/vn";
@@ -27,6 +27,22 @@ interface Live {
 
 type Panel = null | "history" | "quest" | "map" | "hero";
 
+/**
+ * Вход в локацию: заставка с названием → голос рассказчика → через NPC_DELAY_MS появляется NPC.
+ * title — только заставка и фон; story — реплики рассказчика, NPC ещё не на сцене; open — всё как обычно.
+ */
+interface Enter {
+  to: string;
+  name: string;
+  type: LocationType;
+  phase: "title" | "story" | "open";
+  /** Фон, который рисуется для этой локации, пока ход не сохранён. */
+  imageId: string | null;
+}
+
+const ARRIVAL_MS = 2600;
+const NPC_DELAY_MS = 4000;
+
 const key = (name: string) => name.trim().toLowerCase().replace(/ё/g, "е");
 
 export default function Play({ params }: { params: Promise<{ id: string }> }) {
@@ -39,7 +55,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const [dice, setDice] = useState<DiceView | null>(null);
   const [asking, setAsking] = useState<{ index: number; s: Suggestion & { check: { skill: string; dc: number } } } | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
-  const [arrival, setArrival] = useState<string | null>(null);
+  const [enter, setEnter] = useState<Enter | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const busy = live !== null;
@@ -85,10 +101,18 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       setError("");
       setPanel(null);
       setCursor(0);
-      const before = view?.campaign.current;
+      // Начало и переход: заставка сразу, ещё до ответа сервера.
+      const dest = input.kind === "travel" ? input.to : input.kind === "start" ? view?.campaign.current : undefined;
+      const loc = dest && view ? locationById(view.campaign, dest) : undefined;
+      setEnter(loc ? { to: loc.id, name: loc.name, type: loc.type, phase: "title", imageId: null } : null);
       setLive({ label, kind: input.kind, beats: [], waiting: waitingLabel(input.kind), rolls: [], combatEvents: [] });
       await streamTurn(`/api/campaigns/${id}/turn`, input, (e) => {
         if (e.type === "beats") setLive((l) => l && { ...l, beats: e.beats });
+        else if (e.type === "arrive") {
+          setEnter((x) => x && x.to === e.location ? { ...x, imageId: e.imageId } : x);
+          const img = e.image;
+          if (img) setView((v) => v && { ...v, scene: { ...v.scene, locations: { ...v.scene.locations, [e.location]: img } } });
+        }
         else if (e.type === "roll") {
           showDice(diceFromCheck(e.roll));
           setLive((l) => l && { ...l, rolls: [...l.rolls, e.roll] });
@@ -102,16 +126,18 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           setBatch(e.turns);
           setView((v) => v && { ...v, turnNo: e.turnNo, character: e.character, campaign: e.campaign, turns: [...v.turns, ...e.turns], costUsd: v.costUsd + e.costUsd, scene: e.scene });
           if (input.kind === "action") setText("");
-          // Заставка с названием места — при входе в новую локацию и в начале приключения.
-          if (input.kind === "start" || (input.kind === "travel" && e.campaign.current !== before)) {
-            setArrival(locationById(e.campaign, e.campaign.current)?.name ?? null);
-          }
-        } else if (e.type === "error") setError(e.message);
-      }).catch((err) => setError((err as Error).message));
+        } else if (e.type === "error") {
+          setError(e.message);
+          setEnter(null);
+        }
+      }).catch((err) => {
+        setError((err as Error).message);
+        setEnter(null);
+      });
       await diceQueue.current;
       setLive(null);
     },
-    [id, live, view?.campaign.current, waitingLabel],
+    [id, live, view, waitingLabel],
   );
 
   // Новая кампания — мастер сразу рассказывает завязку.
@@ -122,20 +148,44 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     }
   }, [view, send]);
 
-  // Заставка новой локации гаснет сама.
-  useEffect(() => {
-    if (!arrival) return;
-    const t = setTimeout(() => setArrival(null), 2600);
-    return () => clearTimeout(t);
-  }, [arrival]);
-
-  // Реплики, которые листает игрок: пока ход идёт — потоковые, после — сохранённые.
-  const beats: Beat[] = useMemo(() => {
+  // Реплики хода: пока ход идёт — потоковые, после — сохранённые.
+  const all: Beat[] = useMemo(() => {
     if (live && !live.done) return [...live.beats, ...live.combatEvents.map((e) => ({ speaker: null, text: e.text }))];
     return batch.flatMap(beatsOf);
   }, [live, batch]);
+  const firstSpeaker = all.findIndex((b) => b.speaker);
+  // При входе в локацию: во время заставки реплик нет, потом — только рассказчик, пока NPC не вышел.
+  const gate = !enter || enter.phase === "open" ? all.length : enter.phase === "title" ? 0 : firstSpeaker < 0 ? all.length : firstSpeaker;
+  const beats = useMemo(() => all.slice(0, gate), [all, gate]);
   const atEnd = cursor >= beats.length - 1;
   const streaming = !!live && !live.done;
+
+  // Заставка → рассказчик.
+  useEffect(() => {
+    if (enter?.phase !== "title") return;
+    const t = setTimeout(() => setEnter((x) => x && { ...x, phase: "story" }), ARRIVAL_MS);
+    return () => clearTimeout(t);
+  }, [enter?.phase]);
+
+  // Рассказчик → NPC: через NPC_DELAY_MS после первой реплики; сразу, если рассказчик молчит или NPC в ходе нет.
+  const storyShown = enter?.phase === "story" && all.length > 0;
+  const npcFirst = firstSpeaker === 0;
+  const noNpc = firstSpeaker < 0 && !live;
+  useEffect(() => {
+    if (!storyShown) return;
+    const t = setTimeout(() => setEnter((x) => x && { ...x, phase: "open" }), npcFirst || noNpc ? 0 : NPC_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [storyShown, npcFirst, noNpc]);
+
+  // NPC вышел: если игрок дочитал рассказчика — сразу его реплика. Ход сохранён — вход окончен.
+  const firstSpeakerRef = useRef(firstSpeaker);
+  firstSpeakerRef.current = firstSpeaker;
+  useEffect(() => {
+    if (enter?.phase !== "open") return;
+    const f = firstSpeakerRef.current;
+    if (f > 0) setCursor((c) => (c === f - 1 ? f : c));
+    if (!live) setEnter(null);
+  }, [enter?.phase, live]);
 
   const advance = useCallback(() => {
     setCursor((c) => (c < beats.length - 1 ? c + 1 : c));
@@ -159,36 +209,44 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const scene: SceneView | undefined = view?.scene;
   const pending = useMemo(() => {
     if (!view || !scene) return false;
-    const bg = scene.locations[view.campaign.current];
+    const bg = scene.locations[enter?.to ?? view.campaign.current];
     const npc = view.campaign.npc ? scene.npcs[key(view.campaign.npc.name)] : undefined;
     // Все, кто говорит в текущих репликах, — их портреты тоже ждём.
-    const speakers = beats.flatMap((b) => (b.speaker ? [scene.npcs[key(b.speaker)]] : []));
+    const speakers = all.flatMap((b) => (b.speaker ? [scene.npcs[key(b.speaker)]] : []));
     return [bg, npc, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"));
-  }, [view, scene, beats]);
+  }, [view, scene, all, enter?.to]);
+  // Пока ход не сохранён, сервер не знает фон новой локации — передаём его явно.
+  const sceneUrl = `/api/campaigns/${id}/scene` + (enter?.imageId ? `?loc=${encodeURIComponent(enter.to)}&bg=${enter.imageId}` : "");
   useEffect(() => {
     if (!pending) return;
     const t = setInterval(() => {
-      api<SceneView>(`/api/campaigns/${id}/scene`)
-        .then((s) => setView((v) => v && { ...v, scene: s }))
+      api<SceneView>(sceneUrl)
+        // Фоны не пропадают: ответ без ещё не сохранённой локации не должен затереть её.
+        .then((s) => setView((v) => v && { ...v, scene: { ...s, locations: { ...v.scene.locations, ...s.locations } } }))
         .catch(() => undefined);
     }, 1000);
     return () => clearInterval(t);
-  }, [pending, id]);
+  }, [pending, sceneUrl]);
 
   if (!view) return <main className="wrap">{error ? <p className="error">{error}</p> : <p className="muted">Открываю летопись…</p>}</main>;
 
   const { character: c, campaign: w } = view;
   const here = locationById(w, w.current)!;
-  const bgUrl = scene?.locations[w.current]?.url;
+  // Во время входа — уже новое место, даже пока ход не сохранён.
+  const place = enter ? { name: enter.name, type: enter.type } : here;
+  const bgUrl = scene?.locations[enter?.to ?? w.current]?.url;
+  const titleCard = enter?.phase === "title";
   const beat = beats[Math.min(cursor, beats.length - 1)];
   const speakerName = beat?.speaker ?? null;
   // На сцене — тот, кто говорит; когда звучит голос рассказчика — последний собеседник, приглушённо.
-  const onStage = speakerName ?? (w.combat ? null : (w.npc?.name ?? null));
+  // При входе в локацию прежний собеседник остался позади: до выхода NPC сцена пуста, потом — тот, кто заговорит.
+  const nextNpc = all.find((b) => b.speaker)?.speaker ?? null;
+  const onStage = enter ? (enter.phase === "open" ? (speakerName ?? nextNpc) : null) : (speakerName ?? (w.combat ? null : (w.npc?.name ?? null)));
   const stage = onStage ? scene?.npcs[key(onStage)] : undefined;
   const role = speakerName && w.npc && key(w.npc.name) === key(speakerName) ? w.npc.role : undefined;
   const lastWithSuggestions = [...view.turns].reverse().find((t) => t.suggestions.length);
   const suggestions = !w.combat && lastWithSuggestions ? lastWithSuggestions.suggestions : [];
-  const showChoices = !busy && atEnd && !w.combat;
+  const showChoices = !busy && !enter && atEnd && !w.combat;
   const submit = () => text.trim() && send({ kind: "action", text: text.trim() }, text.trim());
   const ab = CLASSES[c.cls].ability;
 
@@ -196,7 +254,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     <div className="vn">
       {bgUrl ? <img className="vn-bg" key={bgUrl} src={bgUrl} alt="" /> : <div className="vn-bg vn-bg-empty" />}
       <div className="vn-shade" />
-      {w.combat ? (
+      {titleCard ? null : w.combat ? (
         <>
           <Bust url={scene?.hero?.url} name={c.name} side="left" />
           <Bust url={null} name="Противник" side="right" />
@@ -207,8 +265,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
 
       <header className="vn-hud">
         <div className="vn-place">
-          <div className="name">{here.name}</div>
-          <div className="sub">{LOCATION_TYPES[here.type]}</div>
+          <div className="name">{place.name}</div>
+          <div className="sub">{LOCATION_TYPES[place.type]}</div>
         </div>
         <div className="vn-hud-right">
           <button className="vn-hero" onClick={() => setPanel("hero")} aria-label="Лист героя">
@@ -237,7 +295,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </header>
 
-      <section className="vn-dock">
+      <section className="vn-dock" hidden={titleCard}>
         {(beat || streaming) && (
           <TextFrame speaker={speakerName} role={role} onAdvance={!atEnd ? advance : undefined} hint={!atEnd ? "Пробел" : undefined}>
             {beat ? beat.text : <span className="vn-writing">{live?.waiting}</span>}
@@ -247,7 +305,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         <Pips total={beats.length} at={cursor} />
         {error && <p className="error small">{error}</p>}
 
-        {w.combat && atEnd && !streaming && <CombatPanel w={w} c={c} disabled={busy} onMove={(move, target) => send({ kind: "combat", move, target }, move)} />}
+        {w.combat && atEnd && !streaming && !enter && <CombatPanel w={w} c={c} disabled={busy} onMove={(move, target) => send({ kind: "combat", move, target }, move)} />}
 
         {showChoices && (
           <div className="vn-choices">
@@ -287,15 +345,15 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         История
       </button>
 
-      {arrival && (
+      {enter && titleCard && (
         <div className="vn-arrival" aria-live="polite">
           <div className="rule">
             <span />
             Новое место
             <span />
           </div>
-          <div className="title">{arrival}</div>
-          <div className="sub">{LOCATION_TYPES[here.type]}</div>
+          <div className="title">{enter.name}</div>
+          <div className="sub">{LOCATION_TYPES[enter.type]}</div>
         </div>
       )}
 
