@@ -65,16 +65,27 @@ if (!requestId) {
 }
 
 let seen = 0;
+let quietSince = Date.now();
 const t0 = Date.now();
+const mins = () => `${Math.round((Date.now() - t0) / 60000)} мин`;
+// Опрос раз в 15 с (а не поток событий): так видно, что скрипт жив, даже если fal молчит.
 await fal.queue.subscribeToStatus(TRAINER, {
   requestId,
   logs: true,
-  pollInterval: 10_000,
+  mode: "polling",
+  pollInterval: 15_000,
   onQueueUpdate: (u) => {
     const logs = "logs" in u && Array.isArray(u.logs) ? u.logs : [];
     for (const l of logs.slice(seen)) console.log(`  ${l.message}`);
+    if (logs.length > seen) quietSince = Date.now();
     seen = Math.max(seen, logs.length);
-    if (u.status === "IN_QUEUE") console.log(`  в очереди (${Math.round((Date.now() - t0) / 1000)} с)`);
+    if (u.status === "IN_QUEUE") {
+      const pos = "queue_position" in u ? ` позиция ${u.queue_position}` : "";
+      console.log(`  в очереди${pos} (${mins()})`);
+    } else if (u.status === "IN_PROGRESS" && Date.now() - quietSince > 60_000) {
+      console.log(`  обучается… (${mins()})`);
+      quietSince = Date.now();
+    }
   },
 });
 const { data } = (await fal.queue.result(TRAINER, { requestId })) as { data: { diffusers_lora_file?: { url: string }; config_file?: { url: string } } };
