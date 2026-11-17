@@ -36,7 +36,10 @@ export interface ClassAbility {
   kind: AbilityKind;
   expr: string;
   desc: string;
-  /** Для kind "auto": чем бьёт умение, например «три сияющих снаряда бьют». */
+  /**
+   * Как звучит умение в журнале боя. kind "auto": чем бьёт («три сияющих снаряда бьют»);
+   * kind "mark": что помечено («добыча помечена»).
+   */
   hitText?: string;
 }
 
@@ -47,7 +50,13 @@ export interface ClassDef {
   baseAc: number;
   attackStat: StatKey;
   damage: string;
+  /** Творительный падеж: «длинным мечом» — «Ты бьёшь длинным мечом по цели». */
   weapon: string;
+  /** Свои строки журнала атаки (огнестрел не «бьёт»). Без них — «Ты бьёшь {weapon}…». */
+  attackText?: {
+    miss: (target: string) => string;
+    hit: (target: string, dmg: number) => string;
+  };
   skills: SkillName[];
   items: string[];
   ability: ClassAbility;
@@ -83,6 +92,8 @@ export interface Money {
   amount: (n: number) => string;
   /** Строка листа персонажа: «золото 12». */
   sheet: (n: number) => string;
+  /** Коротко, для плашки героя: «12 зол.», «$12». */
+  short: (n: number) => string;
 }
 
 /** Всё, что движку нужно знать о мире. Неизменяемые данные, без состояния. */

@@ -124,7 +124,7 @@ function attackRoll(r: Ruleset, cb: CombatState, c: Character, target: Enemy, rn
     tone: crit ? "crit" : hit ? "ok" : "bad",
   };
   if (!hit) {
-    push(cb, { text: `Ты бьёшь ${cls.weapon} по цели «${target.name}» — промах.`, tone: "miss", dice }, out);
+    push(cb, { text: cls.attackText?.miss(target.name) ?? `Ты бьёшь ${cls.weapon} по цели «${target.name}» — промах.`, tone: "miss", dice }, out);
     return;
   }
   let dmg = rollExpr(cls.damage, rng, crit).total + statMod;
@@ -133,7 +133,7 @@ function attackRoll(r: Ruleset, cb: CombatState, c: Character, target: Enemy, rn
   dmg = Math.max(1, dmg);
   target.hp -= dmg;
   push(cb, {
-    text: `${crit ? "Сокрушительный удар! " : ""}Ты поражаешь «${target.name}» ${cls.weapon}: ${dmg} урона.${target.hp <= 0 ? " Враг повержен." : ""}`,
+    text: `${crit ? "Сокрушительный удар! " : ""}${cls.attackText?.hit(target.name, dmg) ?? `Ты поражаешь «${target.name}» ${cls.weapon}: ${dmg} урона.`}${target.hp <= 0 ? " Враг повержен." : ""}`,
     tone: "hit",
     dice,
   }, out);
@@ -189,7 +189,7 @@ export function playerMove(r: Ruleset, cb: CombatState, c: Character, move: Comb
       } else if (ab.kind === "strike") attackRoll(r, cb, c, target, rng, events, ab.expr, `${ab.name}: ${target.name}`);
       else if (ab.kind === "mark") {
         cb.mark = true;
-        push(cb, { text: `${ab.name}: добыча помечена, каждое попадание наносит +1к6.`, tone: "hit" }, events);
+        push(cb, { text: `${ab.name}: ${ab.hitText ?? "добыча помечена"}, каждое попадание наносит +1к6.`, tone: "hit" }, events);
         attackRoll(r, cb, c, target, rng, events);
       } else {
         const v = rollExpr(ab.expr, rng).total;

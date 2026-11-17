@@ -19,6 +19,58 @@ const FAKE_QUEST = {
   target: 5,
 };
 
+/** Тот же цикл для мира Аркхэма: фейковая модель узнаёт мир по тексту промпта. */
+const FAKE_ARKHAM_QUEST = {
+  questTitle: "Последний сеанс миссис Вейл",
+  hook: "Вдова Вейл умерла во время спиритического сеанса, и полиция записала это в сердечный приступ.",
+  objectives: ["Узнать, кто был на сеансе", "Найти пропавшую книгу", "Остановить того, кто продолжает сеансы"],
+  locations: [
+    { name: "Кабинет доктора Уэйкфилда", type: "office", desc: "Тесный кабинет, заваленный папками." },
+    { name: "Дом Вейлов", type: "mansion", desc: "Задёрнутые шторы и остановленные часы." },
+    { name: "Полицейский участок", type: "police", desc: "Сержант не любит открывать закрытые дела." },
+    { name: "Библиотека Мискатоника", type: "library", desc: "Зелёные лампы и закрытый фонд." },
+    { name: "Кладбище Святого Варфоломея", type: "cemetery", desc: "Свежая могила и следы у ограды." },
+    { name: "Подвал под мельницей", type: "cellar", desc: "Круг, начерченный мелом." },
+  ],
+  target: 5,
+};
+
+const FAKE_SCENES = {
+  fantasy: {
+    beats: [
+      { speaker: null, text: "Ветер гонит пепел по пустой улице. Где-то хлопает ставня, и в тишине слышно, как капает вода с карниза." },
+      { speaker: null, text: "Старик у колодца поднимает на тебя мутные глаза." },
+      { speaker: "Старый Ведун", text: "Ты не первый, кто спрашивает. Те, кто спрашивал, не вернулись." },
+    ],
+    speaker: { name: "Старый Ведун", race: "human", gender: "m", role: "деревенский знахарь" },
+    enemy: { name: "Культист в сером", hp: 9, ac: 12, attack: 3, damage: "1d6+1" },
+    suggestions: [
+      { text: "Спрашиваю, кто пропал первым" },
+      { text: "Убеждаю его рассказать правду", skill: "Убеждение", dc: 13 },
+      { text: "Осматриваю колодец", skill: "Внимательность", dc: 12 },
+    ],
+    bio: "Бывший стражник, изгнанный за то, что отпустил пеплорождённую девочку. Теперь он ищет её — и ответ, почему она смотрела на него так, будто знала его имя.",
+  },
+  arkham: {
+    beats: [
+      { speaker: null, text: "С реки тянет туманом, газовый фонарь шипит и мигает. На мокрой мостовой — следы, которые обрываются у стены." },
+      { speaker: null, text: "Сержант в мокром плаще прикуривает и смотрит на тебя без особой радости." },
+      { speaker: "Сержант Маллой", text: "Опять вы. Дело закрыто, сердце у старушки встало. Если хотите копать — копайте тихо." },
+    ],
+    speaker: { name: "Сержант Маллой", race: "human", gender: "m", role: "полицейский сержант" },
+    enemy: { name: "Громила из Нижнего города", hp: 9, ac: 11, attack: 3, damage: "1d6+1" },
+    suggestions: [
+      { text: "Спрашиваю, кто нашёл тело" },
+      { text: "Убеждаю его показать протокол", skill: "Убеждение", dc: 13 },
+      { text: "Осматриваю следы у стены", skill: "Внимательность", dc: 12 },
+    ],
+    bio: "Бывший полицейский из Бостона, ушедший со службы после дела, которое закрыли слишком быстро. В Аркхэм он приехал за ответом, который ему так и не дали.",
+  },
+} as const;
+
+/** Мир по тексту промпта: в промптах Аркхэма всегда есть его название. */
+const worldOfPrompt = (text: string) => (/Аркхэм/.test(text) ? FAKE_SCENES.arkham : FAKE_SCENES.fantasy);
+
 export class FakeProvider implements LlmProvider {
   readonly name = "fake";
   constructor(private readonly opts: { askRoll?: boolean; delayMs?: number } = {}) {}
@@ -26,8 +78,10 @@ export class FakeProvider implements LlmProvider {
   async complete(req: CompletionRequest): Promise<CompletionResult> {
     const last = req.messages.at(-1);
     const prompt = last?.role === "user" ? last.content : "";
-    if (prompt.includes('"questTitle"')) return this.plain(JSON.stringify(FAKE_QUEST));
-    if (prompt.includes("предысторию")) return this.plain("Бывший стражник, изгнанный за то, что отпустил пеплорождённую девочку. Теперь он ищет её — и ответ, почему она смотрела на него так, будто знала его имя.");
+    const system = req.messages[0]?.role === "system" ? req.messages[0].content : "";
+    const fake = worldOfPrompt(system + prompt);
+    if (prompt.includes('"questTitle"')) return this.plain(JSON.stringify(fake === FAKE_SCENES.arkham ? FAKE_ARKHAM_QUEST : FAKE_QUEST));
+    if (prompt.includes("предысторию")) return this.plain(fake.bio);
     const wantsRoll = (this.opts.askRoll ?? true) && !!req.tools?.length && last?.role === "user" && !prompt.includes("[Проверка уже брошена игрой]");
     if (wantsRoll) {
       return {
@@ -44,21 +98,13 @@ export class FakeProvider implements LlmProvider {
     const fight = /напада|атаку/i.test(playerAction);
     const rollNote = last?.role === "tool" ? ` Бросок: ${last.content}.` : "";
     const json = JSON.stringify({
-      beats: [
-        { speaker: null, text: `Ветер гонит пепел по пустой улице. Где-то хлопает ставня, и в тишине слышно, как капает вода с карниза.${rollNote}` },
-        { speaker: null, text: "Старик у колодца поднимает на тебя мутные глаза." },
-        { speaker: "Старый Ведун", text: "Ты не первый, кто спрашивает. Те, кто спрашивал, не вернулись." },
-      ],
-      speaker: { name: "Старый Ведун", race: "human", gender: "m", role: "деревенский знахарь" },
+      beats: fake.beats.map((b, i) => (i === 0 ? { ...b, text: b.text + rollNote } : b)),
+      speaker: fake.speaker,
       changes: { hp: 0, gold: 0, addItems: [], removeItems: [] },
-      combat: fight ? { enemies: [{ name: "Культист в сером", hp: 9, ac: 12, attack: 3, damage: "1d6+1" }] } : null,
+      combat: fight ? { enemies: [fake.enemy] } : null,
       questDone: [],
       questComplete: false,
-      suggestions: [
-        { text: "Спрашиваю, кто пропал первым" },
-        { text: "Убеждаю его рассказать правду", skill: "Убеждение", dc: 13 },
-        { text: "Осматриваю колодец", skill: "Внимательность", dc: 12 },
-      ],
+      suggestions: fake.suggestions,
     });
     let text = "";
     for (const piece of json.match(/.{1,40}/gs) ?? []) {

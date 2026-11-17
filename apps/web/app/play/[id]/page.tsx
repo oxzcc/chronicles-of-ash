@@ -279,12 +279,12 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
                 <span style={{ width: `${(100 * c.hp) / c.hpMax}%` }} />
               </span>
               <span className="vn-stat">
-                {c.hp}/{c.hpMax} · КД {c.ac} · {c.gold} зол.
+                {c.hp}/{c.hpMax} · КД {c.ac} · {R.money.short(c.gold)}
               </span>
             </span>
           </button>
           <nav className="vn-tools" aria-label="Панели">
-            <button className="vn-icon" onClick={() => setPanel("quest")} aria-label="Журнал квеста">
+            <button className="vn-icon" onClick={() => setPanel("quest")} aria-label={`Журнал: ${worldOf(c).ui.quest.toLowerCase()}`}>
               {Icon.journal}
             </button>
             <button className="vn-icon" onClick={() => setPanel("map")} aria-label="Карта" disabled={!!w.combat}>
@@ -368,7 +368,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       )}
       {panel === "quest" && (
         <Drawer title="Журнал" onClose={() => setPanel(null)}>
-          <Quest w={w} />
+          <Quest w={w} doneText={worldOf(c).ui.questDone} />
           <p className="small muted" style={{ marginTop: 12 }}>
             {w.hook}
           </p>
@@ -390,7 +390,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           {scene?.hero?.url && <img className="vn-sheet-portrait" src={scene.hero.url} alt={c.name} />}
           <Sheet c={c} />
           <p className="small muted" style={{ marginTop: 10 }}>
-            {R.races[c.race]?.name}, {R.classes[c.cls]?.name}. {ab.name}: {ab.desc}. {c.backstory}
+            {Object.keys(R.races).length > 1 ? `${R.races[c.race]?.name}, ` : ""}
+            {R.classes[c.cls]?.name}. {ab.name}: {ab.desc}. {c.backstory}
           </p>
           <p className="small muted">
             Ходов: {view.turnNo} · расход: ${view.costUsd.toFixed(3)}

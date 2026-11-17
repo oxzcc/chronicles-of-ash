@@ -54,6 +54,27 @@ describe("новая игра", () => {
   });
 });
 
+describe("мир Аркхэма", () => {
+  const arkhamDraft: CharacterDraft = { world: "arkham", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...getWorld("arkham").rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
+  it("дело от фейковой модели, ход и бой по правилам Аркхэма", async () => {
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "a" });
+    expect(g.usedFallback).toBe(false);
+    expect(g.character.world).toBe("arkham");
+    expect(g.campaign.locations[0]!.type).toBe("office");
+    const a = await playTurn(deps(), g, [], { kind: "start" });
+    expect(a.records[0]!.promptVersion).toBe("gm-3+arkham-1");
+    expect(g.campaign.npc?.name).toBe("Сержант Маллой");
+    const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
+    expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
+    expect(b.records.some((r) => r.kind === "combat")).toBe(true);
+  });
+  it("фоны Аркхэма — в своей библиотеке, фэнтези — в старой", async () => {
+    const { libraryTag } = await import("../src/visuals");
+    expect(libraryTag(getWorld("fantasy"), "city")).toBe("bg:city");
+    expect(libraryTag(getWorld("arkham"), "street")).toBe("bg:arkham:street");
+  });
+});
+
 describe("ход", () => {
   it("начало, затем действие: события, броски, журнал", async () => {
     const g = await freshGame();
