@@ -223,7 +223,11 @@ describe("промпты по мирам", () => {
     expect(a).toContain('"race":"human"');
     expect(a).not.toMatch(/Baldur|тёмно-фэнтезийн|золот/);
     expect(gmRules(world)).not.toContain("РАССЛЕДОВАНИЕ:");
-    expect(promptVersion(arkham)).toBe("gm-4+arkham-4");
+    // Постоянные лица: одна внешность во всех делах; у фэнтези их нет.
+    expect(a).toContain("ПОСТОЯННЫЕ ЛИЦА:");
+    expect(a).toContain(`доктор Сайлас Уэйкфилд (наставник, отставной профессор антропологии): ${arkham.cast!.mentor.look}.`);
+    expect(gmRules(world)).not.toContain("ПОСТОЯННЫЕ ЛИЦА");
+    expect(promptVersion(arkham)).toBe("gm-4+arkham-5");
     expect(promptVersion(world)).toBe("gm-4");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
@@ -242,7 +246,7 @@ describe("промпты по мирам", () => {
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-4+arkham-4");
+    expect(r.promptVersion).toBe("gm-4+arkham-5");
   });
 });
 

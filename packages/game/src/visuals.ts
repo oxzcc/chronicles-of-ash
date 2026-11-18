@@ -6,7 +6,7 @@ import {
   type ImageProvider, type ImageStorage, type NpcCard, type TimeOfDay,
 } from "@ash/images";
 import type { ModelRouter, Speaker } from "@ash/llm";
-import { DEFAULT_WORLD, getWorld, isWorldId, worldOf, type World } from "@ash/worlds";
+import { DEFAULT_WORLD, getWorld, isWorldId, worldOf, type CastMember, type World } from "@ash/worlds";
 import { GameError, type GameState, type TurnRecord } from "./types";
 
 /**
@@ -21,6 +21,8 @@ type Job = { world?: string } & (
   | { type: "npc-guess"; npcId: string; name: string; lines: string[]; scene: string }
   | { type: "background"; locType: LocationType; name: string; desc: string; time: TimeOfDay }
   | { type: "hero"; description: string; label: string; seed: number }
+  /** Готовое описание портрета (постоянные лица мира): без служебной модели. */
+  | { type: "portrait"; description: string; seed: number }
 );
 
 export interface VisualDeps {
@@ -207,7 +209,39 @@ async function ensureNpcs(db: Db, campaignId: string, world: World, records: Tur
 }
 
 /**
- * Про запас: фоны мест, куда герой может пойти сразу, и портреты жителей дела, которых там можно встретить.
+ * Тег портрета постоянного лица в общей библиотеке. В теге — отпечаток описания:
+ * поменяли внешность в данных мира — портрет нарисуется заново, старый перестанет выдаваться.
+ */
+export const castTag = (world: World, m: CastMember) => `cast:${world.id}:${m.id}:${hashStr(m.portrait).toString(36)}`;
+
+/**
+ * Наставник и союзники — в каждой кампании мира, с одним общим портретом на мир (рисуется один раз).
+ * Если в кампании уже есть свой NPC с таким именем (до постоянных портретов), его не трогаем.
+ */
+async function ensureCast(db: Db, campaignId: string, world: World, rows: NpcRow[]) {
+  if (!world.cast) return;
+  const race = Object.keys(world.rules.races)[0]!;
+  for (const m of [world.cast.mentor, ...world.cast.allies]) {
+    if (knownNpc(rows, m.name)) continue;
+    const tag = castTag(world, m);
+    const [lib] = await db
+      .select({ id: images.id })
+      .from(images)
+      .where(and(eq(images.kind, "npc"), sql`${images.tags} @> ARRAY[${tag}]::text[]`, inArray(images.status, ["queued", "working", "ready"])))
+      .orderBy(images.createdAt)
+      .limit(1);
+    const imageId = lib?.id ?? (await enqueue(db, { kind: "npc", tags: [tag], prefetch: true, job: { world: world.id, type: "portrait", description: m.portrait, seed: hashStr(m.id) % 1_000_000 } }));
+    const [row] = await db
+      .insert(npcs)
+      .values({ campaignId, name: m.name, nameKey: npcKey(m.name), race, gender: m.gender, role: m.role, appearance: m.look, portraitImageId: imageId })
+      .onConflictDoNothing()
+      .returning({ id: npcs.id });
+    if (row) rows.push({ id: row.id, name: m.name, img: imageId });
+  }
+}
+
+/**
+ * Про запас: фоны мест, куда герой может пойти сразу, постоянные лица мира и портреты жителей дела, которых там можно встретить.
  * Зовётся при создании кампании (пока рассказчик пишет завязку) и после каждого хода — для новых адресов.
  * Все задачи — с низким приоритетом: срочные портреты и фоны идут первыми.
  * Возвращает true, если в состояние кампании записаны новые фоны.
@@ -216,8 +250,10 @@ export async function prefetchVisuals(db: Db, campaignId: string, world: World, 
   const before = w.locations.filter((l) => l.imageId).length;
   const places = new Set<string>([w.current, ...(w.case ? w.case.known : neighbors(w, w.current).map((l) => l.id))]);
   for (const id of places) await ensureBackground(db, campaignId, world, w, { locId: id, prefetch: id !== w.current });
+  const rows = await npcRows(db, campaignId);
+  // Свои — раньше жителей дела: житель с тем же именем («Деннис Маллой») получит их общий портрет.
+  await ensureCast(db, campaignId, world, rows);
   if (w.case) {
-    const rows = await npcRows(db, campaignId);
     // Сначала те, кто здесь, потом — по известным адресам; про неизвестные адреса рисовать рано.
     const people = w.case.people.filter((p) => p.gender && p.look && places.has(p.at)).sort((a, b) => Number(b.at === w.current) - Number(a.at === w.current));
     const race = Object.keys(world.rules.races)[0]!;
@@ -341,6 +377,8 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
       const g = await guessNpc(d.router, world, j, signal);
       await d.db.update(npcs).set({ race: g.card.race, gender: g.card.gender, role: g.card.role }).where(eq(npcs.id, j.npcId));
       r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: g.description, key: `npc/${row.id}`, signal });
+    } else if (j.type === "portrait") {
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `npc/${row.id}`, seed: j.seed, signal });
     } else if (j.type === "hero") {
       r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `hero/${row.id}`, seed: j.seed, signal });
     } else {

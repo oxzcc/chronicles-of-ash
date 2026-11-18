@@ -16,6 +16,9 @@ export const sameWord = (a: string, b: string) => {
   return stem.length >= 4 && l.startsWith(stem) && l.length - stem.length <= 3;
 };
 
+/** Должности и звания без пола: в коротком имени их можно опустить. */
+const TITLES = new Set(["доктор", "доктора", "профессор", "профессора", "сержант", "сержанта", "офицер", "детектив", "коронер", "коронера", "инспектор", "капитан", "судья"]);
+
 const words = (s: string) => normName(s).split(" ").filter((w) => w.length >= 3);
 
 /**
@@ -29,7 +32,10 @@ export function sameName(a: string, b: string): boolean {
   const nb = normName(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
-  const [short, long] = words(a).length <= words(b).length ? [words(a), words(b)] : [words(b), words(a)];
+  const [rawShort, long] = words(a).length <= words(b).length ? [words(a), words(b)] : [words(b), words(a)];
+  // «Доктор Хоу» = «Арчибальд Хоу»: должность без пола не мешает. «Миссис», «мистер» — мешают: это уже про пол.
+  const bare = rawShort.filter((w) => !TITLES.has(w));
+  const short = bare.length ? bare : rawShort;
   return short.length > 0 && short.every((w) => long.some((x) => sameWord(w, x)));
 }
 

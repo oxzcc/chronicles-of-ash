@@ -67,3 +67,23 @@ describe.each(WORLDS.map((w) => [w.id, w] as const))("мир %s", (_id, w) => {
     expect(existsSync(join(root, worldBiblePath(w.id)))).toBe(true);
   });
 });
+
+describe("постоянные лица мира", () => {
+  it("у Аркхэма: уникальные id и имена, внешность по-русски, описание портрета по-английски с полом", async () => {
+    const { getWorld } = await import("../src/index");
+    const cast = getWorld("arkham").cast!;
+    const all = [cast.mentor, ...cast.allies];
+    expect(all).toHaveLength(7);
+    expect(new Set(all.map((m) => m.id)).size).toBe(all.length);
+    expect(new Set(all.map((m) => m.name)).size).toBe(all.length);
+    for (const m of all) {
+      expect(m.id, m.name).toMatch(/^[a-z]+$/);
+      expect(m.look, m.name).toMatch(/[а-я]/);
+      expect(m.portrait, m.name).not.toMatch(/[а-яё]/i);
+      expect(m.portrait.startsWith(m.gender === "f" ? "female," : "male,"), m.name).toBe(true);
+      expect(m.label, m.name).toContain(m.name.split(" ").at(-1)!);
+    }
+    expect(getWorld("fantasy").cast).toBeUndefined();
+  });
+});
+
