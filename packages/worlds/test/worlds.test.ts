@@ -80,7 +80,8 @@ describe("постоянные лица мира", () => {
       expect(m.id, m.name).toMatch(/^[a-z]+$/);
       expect(m.look, m.name).toMatch(/[а-я]/);
       expect(m.portrait, m.name).not.toMatch(/[а-яё]/i);
-      expect(m.portrait.startsWith(m.gender === "f" ? "female," : "male,"), m.name).toBe(true);
+      // Пол — прямо в существительном, как в подписях датасета LoRA («a woman newspaper reporter»).
+      expect(m.portrait, m.name).toMatch(m.gender === "f" ? /^an? [^,]*\bwoman\b/ : /^an? [^,]*\bman\b/);
       expect(m.label, m.name).toContain(m.name.split(" ").at(-1)!);
     }
     expect(getWorld("fantasy").cast).toBeUndefined();

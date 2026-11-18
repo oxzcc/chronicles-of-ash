@@ -15,6 +15,18 @@ const CYR = /[а-яё]/i;
 const genderEn = (g: Gender) => (g === "f" ? "a woman, female character" : "a man, male character");
 
 /**
+ * Мир с LoRA описывает людей языком подписей своего датасета: «a young woman newspaper reporter, curvy build, …».
+ * Пол — прямо в существительном (woman/man), иначе FLUX путает пол у «пожилого библиотекаря».
+ */
+const captionStyle = (world: World) => !!world.art.lora;
+const GENDER_WORD = /\b(woman|women|man|men|girl|boy|lady|gentleman|widow|widower|mother|father|wife|husband|nun|priest|monk)\b/i;
+/** Текст модели — в середину подписи: без точки в конце и без заглавной «A» в начале. */
+const withGender = (raw: string, g: Gender) => {
+  const text = raw.replace(/[.\s]+$/, "").replace(/^(An?|The)\b/, (w) => w.toLowerCase());
+  return GENDER_WORD.test(text) ? text : `${g === "f" ? "a woman" : "a man"}, ${text}`;
+};
+
+/**
  * Без скрытых рассуждений: описание для картинки не стоит 5 секунд ожидания.
  * Лимит с запасом — если модель всё же «думает», ответ не обрежется до пустого.
  */
@@ -44,6 +56,9 @@ export interface NpcCard {
  * («thin frail build», «stout sturdy build», «voluptuous hourglass figure»), поза рук, ракурс для властных
  * и выражение лица. Без этого модель пишет «friendly smile», и все портреты улыбаются одинаково.
  */
+/** Начало описания в стиле подписей датасета: кто это — одним существительным с возрастом и полом. */
+const CAPTION_START =
+  "start with who they are as one noun phrase with age, gender and role (e.g. 'a middle-aged woman housekeeper', 'an elderly bald man priest', 'a young woman newspaper reporter'); then ";
 const LOOK_PARTS =
   "age; build in plain body-type words that fit the role (e.g. thin frail, wiry, stout sturdy, heavyset, muscular, curvy, voluptuous hourglass); face with one telling feature (wrinkles, scar, freckles, dark circles); hair; clothing; one distinctive detail or object in hand; pose of the hands or body (arms crossed, hands on hips, looking over the shoulder, hugging oneself); add 'low angle' only for imposing or powerful people; expression that fits their mood (stern, haughty, wary, frightened, smug), a smile only if the role calls for one";
 
@@ -66,7 +81,7 @@ export async function guessNpc(
 Name: ${o.name}
 Their lines (Russian): ${o.lines.map((l) => `«${l}»`).join(" ").slice(0, 600)}
 Scene (Russian): ${o.scene.slice(0, 600)}
-Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 20-40 words: ${LOOK_PARTS}; no names, no style words"}`,
+Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 20-40 words: ${captionStyle(world) ? CAPTION_START : ""}${LOOK_PARTS}; no names, no style words"}`,
       signal,
     );
     const j = extractJson(raw) as Record<string, unknown> | null;
@@ -82,22 +97,25 @@ Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","r
       if (l && !CYR.test(l)) look = l;
     }
   } catch {}
-  const description = `${genderEn(card.gender)}, ${raceEn(world, card.race, card.gender)}, ${look || world.art.strangerEn}`;
+  const description =
+    captionStyle(world) && look ? withGender(look, card.gender) : `${genderEn(card.gender)}, ${raceEn(world, card.race, card.gender)}, ${look || world.art.strangerEn}`;
   return { card, description };
 }
 
 export async function describeNpc(router: ModelRouter, world: World, npc: NpcCard, signal?: AbortSignal): Promise<string> {
   if (npc.creature) return describeCreature(router, world, npc, signal);
   const fallback = `${genderEn(npc.gender)}, ${raceEn(world, npc.race, npc.gender)}, ${npc.role ? world.art.localEn : "a traveller"}, weathered face, period clothing`;
+  const caption = captionStyle(world);
   try {
     const text = oneLine(
       await ask(
         router,
-        `Write an English image prompt fragment (20-45 words, no style words, no names) describing how this ${world.art.genreEn} character looks: ${LOOK_PARTS}.\nCharacter: ${npc.name}, ${world.rules.races[npc.race]?.name ?? npc.race} (${raceEn(world, npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
+        `Write an English image prompt fragment (20-45 words, no style words, no names) describing how this ${world.art.genreEn} character looks: ${caption ? CAPTION_START : ""}${LOOK_PARTS}.\nCharacter: ${npc.name}, ${world.rules.races[npc.race]?.name ?? npc.race} (${raceEn(world, npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
         signal,
       ),
     );
-    return text && !CYR.test(text) ? `${genderEn(npc.gender)}, ${raceEn(world, npc.race, npc.gender)}, ${text}` : fallback;
+    if (!text || CYR.test(text)) return fallback;
+    return caption ? withGender(text, npc.gender) : `${genderEn(npc.gender)}, ${raceEn(world, npc.race, npc.gender)}, ${text}`;
   } catch {
     return fallback;
   }
@@ -153,6 +171,8 @@ const VARIETY = [
 ];
 
 export function baseHero(world: World, d: Pick<CharacterDraft, "race" | "cls" | "gender">): string {
+  // С LoRA — как в подписях датасета: «a woman private detective in a belted trench coat…».
+  if (captionStyle(world)) return `${d.gender === "f" ? "a woman" : "a man"} ${world.art.classEn[d.cls] ?? ""}`.trim();
   return `${genderEn(d.gender)}, ${raceEn(world, d.race, d.gender)}, ${world.art.classEn[d.cls] ?? ""}`;
 }
 

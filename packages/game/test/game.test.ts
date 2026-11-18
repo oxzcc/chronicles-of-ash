@@ -457,5 +457,5 @@ describe.skipIf(!url)("картинки", async () => {
     await v.restyleImages(db, "arkham");
     await drain(d);
     expect((await row(bgId)).url).toMatch(/-r2\.webp$/);
-  });
+  }, 20_000); // дважды прогоняет всю очередь мира — дольше 5 с по умолчанию
 });

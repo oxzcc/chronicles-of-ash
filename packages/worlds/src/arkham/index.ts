@@ -53,42 +53,43 @@ export const arkham: World = {
   fallbackCase: ARKHAM_FALLBACK_CASE,
   // Владелец: «союзники и доктор могут быть замешаны, но редко» — одно дело из десяти.
   // Внешность постоянная: рассказчик описывает их только так, портрет — один на мир (женщины — с формами, мужчины — суровые).
+  // portrait — в формате подписей датасета LoRA: «кто это одним существительным, телосложение, внешность, одежда, поза, выражение».
   cast: {
     mentor: {
       id: "wakefield", name: "доктор Сайлас Уэйкфилд", label: "доктор Сайлас Уэйкфилд", role: "наставник, отставной профессор антропологии", gender: "m",
       look: "высокий сухопарый старик под семьдесят, седые бакенбарды, пенсне на чёрном шнурке, поношенная твидовая тройка, трубка",
-      portrait: "male, ordinary 1920s American, tall gaunt man in his late sixties, stern deeply lined face, white mutton-chop whiskers, pince-nez on a black cord, worn tweed three-piece suit with a watch chain, briar pipe in hand, sharp knowing eyes",
+      portrait: "a tall elderly man professor in his late sixties, gaunt thin wiry build, stern deeply lined face, white mutton-chop whiskers, pince-nez on a black cord, worn tweed three-piece suit with a watch chain, holding a briar pipe, sharp knowing stare",
     },
     allies: [
       {
         id: "caldwell", name: "Хэтти Колдуэлл", label: "библиотекарь Хэтти Колдуэлл", role: "младший библиотекарь Мискатоника", gender: "f",
         look: "молодая женщина лет двадцати пяти, круглые очки, каштановые волосы волной, пышная фигура, приталенная блузка с камеей, стопка книг",
-        portrait: "female, ordinary 1920s American, young woman about twenty-five, curvy build with a full bust and wide hips, round tortoiseshell spectacles, chestnut finger-waved bob, pencil behind the ear, fitted cream blouse with a cameo brooch and a high-waisted skirt, hugging a stack of old books to her chest, shy clever sidelong glance",
+        portrait: "a young woman librarian about twenty-five, curvy build with a full bust and wide hips, round tortoiseshell spectacles, chestnut finger-waved bob, pencil behind the ear, fitted cream blouse with a cameo brooch, high-waisted skirt, hugging a stack of old books to her chest, shy clever sidelong glance",
       },
       {
         id: "malloy", name: "сержант Деннис Маллой", label: "сержант Деннис Маллой", role: "полицейский сержант", gender: "m",
         look: "грузный ирландец за пятьдесят, полицейская форма с медными пуговицами, рыжие с проседью усы, усталые суровые глаза",
-        portrait: "male, ordinary 1920s American, heavyset Irish police sergeant in his fifties, dark blue 1920s police uniform with brass buttons and a peaked cap, bushy ginger-grey moustache, broken-veined cheeks, tired stern eyes",
+        portrait: "a middle-aged Irish man police sergeant in his fifties, tall heavy burly build, bushy ginger-grey moustache, broken-veined cheeks, navy 1920s police uniform with brass buttons and a peaked cap, hand resting on his nightstick, tired stern look, low angle",
       },
       {
         id: "pike", name: "доктор Лоренс Пайк", label: "коронер Лоренс Пайк", role: "коронер городской больницы", gender: "m",
         look: "худой мужчина за пятьдесят, впалые щёки, круглые очки в стальной оправе, белый халат поверх жилета, пятна реактивов на пальцах",
-        portrait: "male, ordinary 1920s American, thin hollow-cheeked man in his fifties, round steel-rimmed glasses, thinning slicked grey hair, white coroner's coat over a waistcoat, chemical stains on his fingers, haunted sleepless eyes",
+        portrait: "a middle-aged man coroner in his fifties, thin gaunt build, hollow cheeks, round steel-rimmed glasses, thinning slicked grey hair, white coroner's coat over a waistcoat, chemical stains on his fingers, hands behind his back, haunted sleepless eyes",
       },
       {
         id: "ashworth", name: "Рут Эшворт", label: "репортёр Рут Эшворт", role: "репортёр «Вестника»", gender: "f",
         look: "женщина около тридцати, чёрное каре, алая помада, пышная фигура, шёлковая блуза с расстёгнутым воротом под мужским жилетом, блокнот",
-        portrait: "female, ordinary 1920s American, woman about thirty, curvy voluptuous build with a large bust and wide hips, sleek black bob, red lipstick, silk blouse open at the collar under a man's pinstripe waistcoat, small spiral reporter's notepad and a pencil in hand, hand on hip, confident sly smirk, low angle",
+        portrait: "a woman newspaper reporter about thirty, curvy voluptuous build with a large bust and wide hips, sleek black bob, red lipstick, silk blouse open at the collar under a man's pinstripe waistcoat, high-waisted trousers, small spiral notepad and a pencil in hand, hand on hip, confident sly smirk, low angle",
       },
       {
         id: "finnegan", name: "Тео Финнеган", label: "Тео Финнеган из бакалеи", role: "хозяин подпольного бара", gender: "m",
         look: "крепкий мужчина лет сорока, сломанный нос, закатанные рукава, фартук бакалейщика поверх жилета, хитрая улыбка",
-        portrait: "male, ordinary 1920s American, burly man about forty, broken nose, stubbled square jaw, shirt sleeves rolled up over thick forearms, grocer's apron over a waistcoat, flat cap, sly crooked smile",
+        portrait: "a burly man grocer and speakeasy owner about forty, broad stocky build, broken nose, stubbled square jaw, flat cap, shirt sleeves rolled up over thick forearms, grocer's apron over a waistcoat, arms crossed, sly crooked smile",
       },
       {
         id: "reznik", name: "мадам Иоланта Резник", label: "букинистка мадам Иоланта Резник", role: "букинистка и гадалка", gender: "f",
         look: "статная женщина за сорок, чёрные кудри с проседью, подведённые глаза, пышная фигура, бархатное платье с глубоким вырезом, шаль с бахромой, кольца",
-        portrait: "female, ordinary 1920s American, statuesque woman in her mid-forties, voluptuous curvy build with a very large bust, fine lines around the eyes, heavy black curls streaked with grey, kohl-rimmed dark eyes, dark velvet dress with a deep neckline under a fringed shawl, strings of beads and many rings, shuffling a deck of tarot cards, knowing enigmatic look",
+        portrait: "a statuesque woman fortune teller and bookseller in her mid-forties, voluptuous curvy build with a very large bust, fine lines around the eyes, heavy black curls streaked with grey, kohl-rimmed dark eyes, dark velvet dress with a deep neckline under a fringed shawl, strings of beads and many rings, holding tarot cards, knowing sultry look",
       },
     ],
     insiderChance: 0.1,

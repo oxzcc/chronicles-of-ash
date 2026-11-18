@@ -132,16 +132,31 @@ describe("LoRA стиля", () => {
     expect(new FalImageProvider(cfg).loraFor("fantasy")).toBeUndefined();
   });
 
-  it("промпт с LoRA: триггер первым, вместо техники — эпоха и запреты", async () => {
-    const { backgroundPrompt, stylePart } = await import("../src/index");
-    const p = portraitPrompt(arkham, "man", true);
-    expect(p.startsWith(`${arkham.art.lora!.trigger}, `)).toBe(true);
-    expect(p).toMatch(/1926/);
-    expect(p).not.toMatch(/gouache/);
-    expect(backgroundPrompt(arkham, "x", "night", true)).toMatch(/^mthnr style, /);
+  it("промпт с LoRA: портрет — строго в формате подписей датасета, фон — триггер, эпоха и запреты", async () => {
+    const { backgroundPrompt, stylePart, baseHero } = await import("../src/index");
+    const hero = baseHero(arkham, { race: "human", cls: "journalist", gender: "f" });
+    expect(hero).toMatch(/^a woman newspaper reporter/);
+    expect(portraitPrompt(arkham, hero, true)).toBe(`mthnr style, three-quarter portrait of ${hero}, plain light grey background`);
+    const bg = backgroundPrompt(arkham, "x", "night", true);
+    expect(bg).toMatch(/^mthnr style, /);
+    expect(bg).toMatch(/1926/);
+    expect(bg).not.toMatch(/gouache/);
     // Без LoRA и у мира без триггера — прежний префикс.
     expect(portraitPrompt(arkham, "man")).toMatch(/gouache/);
     expect(stylePart(world, true)).toBe(world.art.stylePrefix);
+  });
+
+  it("NPC мира с LoRA описывается как подпись датасета: пол в существительном, без точки и заглавной", async () => {
+    const { describeNpc } = await import("../src/index");
+    const asked: string[] = [];
+    const reply = (text: string): any => ({ route: () => ({ model: "m", provider: { complete: async (r: any) => (asked.push(r.messages[0].content), { text, toolCalls: [], usage: {}, model: "m" }) } }) });
+    const card = { name: "Лорейн Вейл", race: "human" as const, gender: "f" as const, role: "вдова" };
+    expect(await describeNpc(reply("A grieving young widow, slender, black veil, frightened."), arkham, card)).toBe("a grieving young widow, slender, black veil, frightened");
+    expect(asked[0]).toMatch(/one noun phrase with age, gender and role/);
+    // Пол не назван — ставим его первым словом.
+    expect(await describeNpc(reply("an elderly housekeeper, stout sturdy build"), arkham, card)).toBe("a woman, an elderly housekeeper, stout sturdy build");
+    // У мира без LoRA — прежний вид: пол и раса впереди.
+    expect(await describeNpc(reply("tall, scarred"), world, { ...card, race: "elf" })).toMatch(/^a woman, female character, .+, tall, scarred$/);
   });
 
   it("конвейер шлёт LoRA в fal только миру, для которого она задана", async () => {
@@ -172,5 +187,15 @@ describe("LoRA стиля", () => {
     expect(calls[0]!.url).toBe("https://fal.run/fal-ai/flux-2/klein/4b");
     expect(calls[0]!.body.loras).toBeUndefined();
     expect(f.prompt.startsWith(world.art.stylePrefix)).toBe(true);
+
+    // Портрет с LoRA — 2:3, как датасет; без LoRA — прежний квадрат.
+    calls.length = 0;
+    const { renderPortrait } = await import("../src/index");
+    const pa = await renderPortrait({ world: arkham, provider, storage, description: "a woman librarian", key: "npc/a", seed: 1 });
+    expect(calls[0]!.body.image_size).toEqual({ width: 1024, height: 1536 });
+    expect(pa.prompt).toBe("mthnr style, three-quarter portrait of a woman librarian, plain light grey background");
+    calls.length = 0;
+    await renderPortrait({ world, provider, storage, description: "a woman, female character, elf", key: "npc/f", seed: 1 });
+    expect(calls[0]!.body.image_size).toEqual({ width: 1024, height: 1024 });
   });
 });

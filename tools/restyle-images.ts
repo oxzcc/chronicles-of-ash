@@ -21,8 +21,8 @@ const world = arg("world") ?? "arkham";
 if (!isWorldId(world)) throw new Error(`Нет мира ${world}`);
 const heroes = process.argv.includes("--heroes");
 
-/** Примерная цена одной картинки с LoRA на klein 9B Base ($0.02 за Мп) и вырезанием фона. */
-const PRICE: Record<string, number> = { npc: 0.022, hero: 0.022, background: 0.042 };
+/** Примерная цена одной картинки с LoRA на klein 9B Base ($0.02 за Мп; портрет 2:3 — 1.57 Мп) с вырезанием фона и редкими перерисовками кадра. */
+const PRICE: Record<string, number> = { npc: 0.04, hero: 0.04, background: 0.042 };
 const NAMES: Record<string, string> = { npc: "портреты NPC", hero: "портреты героев", background: "фоны" };
 
 const { db, pool } = createDb();
