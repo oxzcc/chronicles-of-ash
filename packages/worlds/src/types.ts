@@ -100,8 +100,8 @@ export interface Figures {
   frail: string;
   /** Роли (по-русски), которым телосложение задано всегда: певица, светская дама… */
   roles?: { match: RegExp; f?: string; m?: string }[];
-  /** Четыре облика героя на выбор — четыре разных фигуры; ru — в подпись варианта. */
-  hero: { f: { en: string; ru: string }[]; m: { en: string; ru: string }[] };
+  /** Четыре облика героя на выбор — четыре заметно разных силуэта (в подпись не идут). */
+  hero: { f: string[]; m: string[] };
 }
 
 export interface ArtStyle {
@@ -122,6 +122,11 @@ export interface ArtStyle {
   eraRuleEn: string;
   raceEn: (race: RaceKey, gender: Gender) => string;
   classEn: Record<string, string>;
+  /**
+   * Четыре облика героя одного класса — четыре разных наряда и предмета в руках (первый — как в classEn).
+   * Без этого все варианты на выбор одеты одинаково.
+   */
+  heroOutfitsEn?: Record<string, string[]>;
   locationEn: Record<LocationType, string>;
   /** Места, которые рисуются изнутри (и ночью). */
   interiorTypes: LocationType[];

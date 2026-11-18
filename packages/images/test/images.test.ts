@@ -166,33 +166,75 @@ describe("LoRA стиля", () => {
     expect(await describeNpc(reply("tall, scarred"), world, { ...card, race: "elf" })).toMatch(/^a woman, female character, .+, tall, scarred$/);
   });
 
-  it("телосложение выбирает код: по имени всегда одно, доли мира, роковые роли и герои", async () => {
-    const { buildFor, heroVariants } = await import("../src/index");
+  it("телосложение NPC выбирает код: по имени всегда одно, доли мира, роковые роли", async () => {
+    const { buildFor } = await import("../src/index");
     const fig = arkham.art.figures!;
     const [curvy, hourglass] = [fig.young.f[0]!.en, fig.young.f[1]!.en];
     // Один и тот же NPC — всегда одна фигура.
     expect(buildFor(arkham, { name: "Мэри Хоббс", gender: "f" })).toEqual(buildFor(arkham, { name: "Мэри Хоббс", gender: "f" }));
-    // Доли: половина с формами, треть «песочные часы», остальные стройные.
+    // Доли: 4/9 с формами, 2/9 «песочные часы», треть стройные.
     const n = 3000;
     const picks = Array.from({ length: n }, (_, i) => buildFor(arkham, { name: `Жительница ${i}`, gender: "f" })!.young);
     const share = (x: string) => picks.filter((p) => p === x).length / n;
-    expect(share(curvy)).toBeCloseTo(1 / 2, 1);
-    expect(share(hourglass)).toBeCloseTo(1 / 3, 1);
-    expect(1 - share(curvy) - share(hourglass)).toBeCloseTo(1 / 6, 1);
+    expect(share(curvy)).toBeCloseTo(4 / 9, 1);
+    expect(share(hourglass)).toBeCloseTo(2 / 9, 1);
+    expect(1 - share(curvy) - share(hourglass)).toBeCloseTo(1 / 3, 1);
     // Пожилые — без утрирования.
     for (let i = 0; i < 50; i++) expect(buildFor(arkham, { name: `Старуха ${i}`, gender: "f" })!.elderly).not.toMatch(/bust/);
     // Певица — всегда «песочные часы»; у мира без правил выбора нет.
     for (let i = 0; i < 20; i++) expect(buildFor(arkham, { name: `Певица ${i}`, gender: "f", role: "певица в подпольном баре" })!.young).toBe(hourglass);
     expect(buildFor(world, { name: "x", gender: "f" })).toBeUndefined();
+  });
 
-    // Героиня: четыре облика — четыре разные фигуры, фигура видна в подписи; свои слова игрока о фигуре — важнее.
+  it("облики героя: разные фигуры, наряды и позы; фигуры нет в подписи; слова игрока важнее", async () => {
+    const { heroVariants, baseHero } = await import("../src/index");
+    const { mulberry32 } = await import("@ash/engine");
+    const fig = arkham.art.figures!;
     const failing: any = { route: () => ({ model: "m", provider: { complete: async () => { throw new Error("down"); } } }) };
     const d = { race: "human" as const, cls: "journalist", gender: "f" as const };
-    const v = await heroVariants(failing, arkham, d, "");
-    expect(v.map((x) => x.prompt.split(", ").slice(-1)[0])).toEqual(fig.hero.f.map((h) => h.en.split(", ").slice(-1)[0]));
-    expect(v[0]!.label).toMatch(/, с формами$/);
-    expect(v[2]!.label).toMatch(/, стройная$/);
-    expect((await heroVariants(failing, arkham, d, "худая, высокая")).every((x) => !/bust|slender|athletic/.test(x.prompt))).toBe(true);
+    const v = await heroVariants(failing, arkham, d, "", undefined, mulberry32(7));
+    // Фигуры — в порядке мира, по одной на облик.
+    v.forEach((x, i) => expect(x.prompt).toContain(fig.hero.f[i]!));
+    // Наряды — четыре разных из списка класса, и именно они идут в основу вместо classEn.
+    expect(new Set(v.map((x) => x.outfit)).size).toBe(4);
+    for (const x of v) expect(arkham.art.heroOutfitsEn!.journalist).toContain(x.outfit);
+    expect(baseHero(arkham, d, v[1]!.outfit)).toBe(`a woman ${v[1]!.outfit}`);
+    // Позы — четыре разные: последний кусок промпта.
+    expect(new Set(v.map((x) => x.prompt.split(", ").slice(-1)[0])).size).toBe(4);
+    // В подписи нет телосложения.
+    for (const x of v) expect(x.label).not.toMatch(/форм|пышн|строй|спортив/);
+    // Модель всё же вписала фигуру в подпись — убираем.
+    const chatty: any = { route: () => ({ model: "m", provider: { complete: async () => ({ text: JSON.stringify(Array.from({ length: 4 }, (_, i) => ({ label: `Молодая, рыжая ${i}, с формами`, prompt: `woman in her twenties, red hair ${i}` }))) }) } }) };
+    for (const x of await heroVariants(chatty, arkham, d, "", undefined, mulberry32(1))) expect(x.label).toMatch(/^Молодая, рыжая \d$/);
+    // Цвет волос и приметы раздаёт код: четыре разных цвета, примета у одного-двух; без «walking» в позах.
+    let asked = "";
+    const spy: any = { route: () => ({ model: "m", provider: { complete: async (r: any) => { asked = r.messages[0].content; throw new Error("down"); } } }) };
+    for (let seed = 1; seed <= 20; seed++) {
+      const vv = await heroVariants(spy, arkham, d, "", undefined, mulberry32(seed));
+      const hairs = [...asked.matchAll(/years old, ([a-z -]+?) hair/g)].map((m) => m[1]);
+      expect(new Set(hairs).size).toBe(4);
+      const marked = (asked.match(/one noticeable scar/g) ?? []).length;
+      expect(marked).toBeGreaterThanOrEqual(1);
+      expect(marked).toBeLessThanOrEqual(2);
+      for (const x of vv) expect(x.prompt).not.toMatch(/walking/);
+      // Возраст: четыре разных, кто-то моложе 32 и кто-то старше 45; облик с формами — не старше 45.
+      const ages = [...asked.matchAll(/(\d+) years old/g)].map((m) => Number(m[1]));
+      expect(ages).toHaveLength(4);
+      expect(Math.min(...ages)).toBeLessThan(32);
+      expect(Math.max(...ages)).toBeGreaterThan(45);
+      expect(ages[0]).toBeLessThanOrEqual(45);
+    }
+    // Свои слова игрока о волосах и приметах — важнее.
+    await heroVariants(spy, arkham, d, "рыжая, шрам через бровь", undefined, mulberry32(5));
+    expect(asked).not.toMatch(/[a-z-]+ hair(,|;|\.| streaked)|noticeable scar|clean face/);
+    await heroVariants(spy, arkham, d, "пожилая", undefined, mulberry32(6));
+    expect(asked).not.toMatch(/\d\) \d+ years old/);
+    // Игрок сам описал фигуру и одежду — их не навязываем.
+    const own = await heroVariants(failing, arkham, d, "худая, высокая, в потёртом кожаном плаще", undefined, mulberry32(3));
+    for (const x of own) {
+      expect(x.prompt).not.toMatch(/bust|slender|athletic|plump/);
+      expect(x.outfit).toBeUndefined();
+    }
   });
 
   it("конвейер шлёт LoRA в fal только миру, для которого она задана", async () => {

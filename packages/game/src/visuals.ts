@@ -328,11 +328,10 @@ export async function createHeroOptions(db: Db, router: ModelRouter, userId: str
   const world = worldOf(draft);
   if (!(draft.race in world.rules.races) || !(draft.cls in world.rules.classes)) throw new GameError("Сначала выбери расу и класс.");
   const variants = await heroVariants(router, world, draft, notes, signal);
-  const base = baseHero(world, draft);
   const extra = notes.trim() ? `, ${notes.trim().slice(0, 200)}` : "";
   return Promise.all(
     variants.map(async (v, i) => ({
-      id: await enqueue(db, { kind: "hero", userId, job: { world: world.id, type: "hero", description: `${base}, ${v.prompt}${extra}`, label: v.label, seed: 1000 + i } }),
+      id: await enqueue(db, { kind: "hero", userId, job: { world: world.id, type: "hero", description: `${baseHero(world, draft, v.outfit)}, ${v.prompt}${extra}`, label: v.label, seed: 1000 + i } }),
       label: v.label,
     })),
   );
