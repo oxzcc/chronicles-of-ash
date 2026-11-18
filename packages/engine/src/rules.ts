@@ -118,6 +118,11 @@ export interface Ruleset {
   healing: HealingItem;
   /** Навык, который помогает сбежать из боя. */
   fleeSkill: SkillName;
+  /** Рассудок и фобии (Аркхэм). Нет — в мире рассудка нет. */
+  sanity?: {
+    /** Фобии на выбор при создании героя. */
+    phobias: string[];
+  };
 }
 
 export const raceKeys = (r: Ruleset): RaceKey[] => Object.keys(r.races);

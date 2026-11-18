@@ -1,5 +1,5 @@
 import {
-  applyCaseChanges, applyChanges, closeCase, combatSummary, deductionCandidates, knockOut, locationById, lookup, markDeduction,
+  applyCaseChanges, applyChanges, breakDown, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
   playerMove, skillCheck, startCombat, travel, travelCase,
   type CombatEvent, type CombatOutcome, type Verdict,
 } from "@ash/engine";
@@ -29,7 +29,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const history = (): HistoryEntry[] => toHistory([...prior, ...records]);
 
   /** Ход рассказчика: промпт, проверки, применение изменений, бой, если модель его объявила. */
-  const narrate = async (kind: TurnRecord["kind"], label: string, action: string, opts: { keepHp?: boolean; preRolls?: TurnRecord["rolls"]; extraUsage?: Usage } = {}) => {
+  const narrate = async (kind: TurnRecord["kind"], label: string, action: string, opts: { keepHp?: boolean; keepSanity?: boolean; preRolls?: TurnRecord["rolls"]; extraUsage?: Usage } = {}) => {
     const { provider, model } = deps.router.route("narrator", deps.tier);
     const r = await runNarratorTurn({
       provider, model, world, worldBible: deps.worldBible, rng: deps.rng, signal: deps.signal,
@@ -43,6 +43,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     const applied = applyChanges(R, c, w, {
       ...resp.changes,
       hp: opts.keepHp ? 0 : resp.changes.hp,
+      sanity: opts.keepSanity ? 0 : resp.changes.sanity,
       questDone: resp.questDone,
       // Дело закрывает игрок, а не мастер.
       questComplete: w.case ? false : resp.questComplete,
@@ -51,12 +52,14 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const found = applyCaseChanges(w, { clues: resp.clues, reveal: resp.reveal });
       applied.notes.push(...found.notes);
       applied.rejected.push(...found.rejected);
+      if (applied.sanity < 0) w.case.sanityLost += -applied.sanity;
     }
     w.npc = resp.speaker;
     w.turn++;
     records.push({
       kind, action: label, narration: resp.narration, beats: resp.beats, speaker: resp.speaker?.name ?? null, line: "",
-      suggestions: resp.suggestions, response: resp, applied, rolls: [...(opts.preRolls ?? []), ...r.rolls], combatEvents: [],
+      // На грани безумия мысли путаются: вариантов меньше (как в Call of Cthulhu).
+      suggestions: isUnhinged(c) ? resp.suggestions.slice(0, 2) : resp.suggestions, response: resp, applied, rolls: [...(opts.preRolls ?? []), ...r.rolls], combatEvents: [],
       model: r.model, promptVersion: r.promptVersion, usage: opts.extraUsage ? addUsage(r.usage, opts.extraUsage) : r.usage, degraded: r.degraded,
       ...(r.degraded ? { raw: r.rawText.slice(0, 8000) } : {}),
     });
@@ -124,6 +127,18 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     if (c.hp <= 0 && !w.combat) await knockedOut();
   };
 
+  /** Рассудок кончился — срыв: половина рассудка возвращается, в деле теряется время. */
+  const checkBroken = async () => {
+    if (c.sanity !== 0 || w.combat) return;
+    breakDown(c);
+    let lost = 0;
+    if (w.case && !w.case.result) {
+      lost = Math.min(CASE_LIMITS.breakdownVisits, Math.max(0, w.case.limit - w.case.visits));
+      w.case.visits += lost;
+    }
+    await narrate("breakdown", "Срыв", systemActions.breakdown(lost), { keepHp: true, keepSanity: true });
+  };
+
   switch (input.kind) {
     case "start": {
       if (w.turn > 0) throw new GameError("Приключение уже началось.");
@@ -131,6 +146,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       await deps.onArrive?.();
       const { resp } = await narrate("start", "Начало приключения", systemActions.start(place.name));
       await maybeStartCombat(resp);
+      await checkBroken();
       break;
     }
     case "action": {
@@ -140,6 +156,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const { resp } = await narrate("action", text, text);
       await maybeStartCombat(resp);
       await checkDowned();
+      await checkBroken();
       break;
     }
     case "choice": {
@@ -159,6 +176,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const { resp } = await narrate("choice", pick.text, action, { preRolls });
       await maybeStartCombat(resp);
       await checkDowned();
+      await checkBroken();
       break;
     }
     case "travel": {
@@ -174,6 +192,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const { resp } = await narrate("travel", `Путь в «${t.to.name}»`, systemActions.travel(t.from.name, t.to.name, t.encounter) + late);
       await maybeStartCombat(resp);
       await checkDowned();
+      await checkBroken();
       break;
     }
     case "rest": {
@@ -183,6 +202,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       // Отдых удался, если мастер вернул здоровье (или его и так хватало) и не начался бой.
       if (!resp.combat && (applied.hp > 0 || missing === 0)) c.abilityUses = R.classes[c.cls]?.ability.uses ?? 0;
       await maybeStartCombat(resp);
+      await checkBroken();
       break;
     }
     case "lookup": {
@@ -210,6 +230,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const d = id ? markDeduction(w, id) : null;
       await narrate("reconstruct", `Реконструкция: ${text}`, caseActions.reconstruct(text, d?.text ?? null), { extraUsage: r.usage });
       if (d) records.at(-1)!.applied?.notes.unshift(`вывод: ${d.text}`);
+      await checkBroken();
       break;
     }
     case "close": {
@@ -231,7 +252,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const result = closeCase(w, cs.questions.map((q) => ({ id: q.id, answer: answers[q.id] ?? "", verdict: verdicts![q.id] ?? "wrong" })));
       const word = { right: "верно", partial: "отчасти верно", wrong: "неверно" } as const;
       const lines = cs.questions.map((q, i) => `${q.text} Ответ героя: «${answers[q.id] || "—"}» — ${word[result.answers[i]!.verdict]}.`);
-      await narrate("close", "Дело закрыто", caseActions.close(lines, timeUp), { extraUsage: extra });
+      await narrate("close", "Дело закрыто", caseActions.close(lines, timeUp, isUnhinged(c)), { extraUsage: extra, keepSanity: true });
       break;
     }
     case "combat": {
@@ -244,6 +265,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       }
       combatRecord(input.move === "potion" ? R.healing.label : MOVE_LABELS[input.move], step.events, step.outcome);
       await finishCombat(step.outcome);
+      await checkBroken();
       break;
     }
   }

@@ -285,6 +285,11 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
               <span className="vn-hp" role="img" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
                 <span style={{ width: `${(100 * c.hp) / c.hpMax}%` }} />
               </span>
+              {c.sanity !== undefined && c.sanityMax ? (
+                <span className={`vn-hp vn-sanity ${c.sanity * 3 <= c.sanityMax ? "low" : ""}`} role="img" aria-label={`Рассудок ${c.sanity} из ${c.sanityMax}`}>
+                  <span style={{ width: `${(100 * c.sanity) / c.sanityMax}%` }} />
+                </span>
+              ) : null}
               <span className="vn-stat">
                 {c.hp}/{c.hpMax} · КД {c.ac} · {R.money.short(c.gold)}
               </span>

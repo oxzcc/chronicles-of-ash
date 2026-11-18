@@ -199,11 +199,11 @@ describe("промпты по мирам", () => {
     expect(a).toContain('"race":"human"');
     expect(a).not.toMatch(/Baldur|тёмно-фэнтезийн|золот/);
     expect(gmRules(world)).not.toContain("РАССЛЕДОВАНИЕ:");
-    expect(promptVersion(arkham)).toBe("gm-3+arkham-2");
+    expect(promptVersion(arkham)).toBe("gm-3+arkham-3");
     expect(promptVersion(world)).toBe("gm-3");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
-    const hero = createCharacter(arkham.rules, { world: "arkham", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] }, mulberry32(1));
+    const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] }, mulberry32(1));
     const q = questPrompt(arkham, hero);
     expect(q).toContain("контора, гостиница, закусочная или полицейский участок");
     expect(q).toContain("деньги $");
@@ -214,11 +214,11 @@ describe("промпты по мирам", () => {
     expect(r.ok && r.value.suggestions).toEqual([{ text: "Читаю", check: { skill: "Оккультизм", dc: 13 } }, { text: "Колдую" }]);
   });
   it("фейковая модель узнаёт мир Аркхэма", async () => {
-    const hero = createCharacter(arkham.rules, { world: "arkham", name: "Уолтер", gender: "m", race: "human", cls: "detective", base: { ...arkham.rules.recommended.detective! }, skills: ["Внимательность", "Психология"] }, mulberry32(1));
+    const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Уолтер", gender: "m", race: "human", cls: "detective", base: { ...arkham.rules.recommended.detective! }, skills: ["Внимательность", "Психология"] }, mulberry32(1));
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-3+arkham-2");
+    expect(r.promptVersion).toBe("gm-3+arkham-3");
   });
 });
 
@@ -229,7 +229,10 @@ describe("дело в промптах", () => {
     expect(gmRules(arkham)).toContain("ДЕЛО:");
     expect(gmRules(arkham)).toContain('"clues":[],"reveal":[]');
     expect(gmRules(world)).not.toContain('"clues"');
-    const hero = createCharacter(arkham.rules, { world: "arkham", name: "Уолтер", gender: "m", race: "human", cls: "detective", base: { ...arkham.rules.recommended.detective! }, skills: ["Внимательность", "Психология"] }, mulberry32(1));
+    expect(gmRules(arkham)).toContain("РАССУДОК:");
+    expect(gmRules(arkham)).toContain('"changes":{"hp":0,"sanity":0,"gold":0');
+    expect(gmRules(world)).not.toMatch(/РАССУДОК|"sanity"/);
+    const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Уолтер", gender: "m", race: "human", cls: "detective", base: { ...arkham.rules.recommended.detective! }, skills: ["Внимательность", "Психология"] }, mulberry32(1));
     const w = layoutCase(arkham.rules, arkham.fallbackCase!, "s");
     const p = narratorUserPrompt(arkham, { character: hero, campaign: w, history: [], action: "Осматриваю" });
     expect(p).toContain("Разгадка: Корделию Вейл отравил");

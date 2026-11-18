@@ -19,6 +19,8 @@ export interface CharacterDraft {
   /** Навыки, выбранные игроком сверх навыка класса. */
   skills: SkillName[];
   backstory?: string;
+  /** Фобия героя — в мирах с рассудком, из списка мира. */
+  phobia?: string;
 }
 
 export interface Character {
@@ -39,7 +41,17 @@ export interface Character {
   items: string[];
   abilityUses: number;
   backstory: string;
+  /** Рассудок — только в мирах, где он есть (см. Ruleset.sanity). */
+  sanity?: number;
+  sanityMax?: number;
+  phobia?: string;
 }
+
+/** Запас рассудка: 10 и по 2 за каждый плюс Мудрости (от 6 до 16). */
+export const sanityMaxFor = (wis: number) => Math.max(6, 10 + 2 * abilityMod(wis));
+
+/** «На грани»: рассудка треть и меньше — мысли путаются, вариантов меньше, развязка мрачнее. */
+export const isUnhinged = (c: Pick<Character, "sanity" | "sanityMax">) => c.sanity !== undefined && !!c.sanityMax && c.sanity * 3 <= c.sanityMax;
 
 export const MAX_NAME = 24;
 export const MAX_BACKSTORY = 1200;
@@ -77,6 +89,7 @@ export function validateDraft(r: Ruleset, d: CharacterDraft): string[] {
     else if (classSkills.includes(s)) errors.push(`Навык «${s}» уже даёт класс.`);
   }
   if ((d.backstory ?? "").length > MAX_BACKSTORY) errors.push(`Предыстория не длиннее ${MAX_BACKSTORY} символов.`);
+  if (r.sanity && !r.sanity.phobias.includes(d.phobia ?? "")) errors.push("Выбери фобию героя.");
   return [...new Set(errors)];
 }
 
@@ -105,6 +118,7 @@ export function createCharacter(r: Ruleset, d: CharacterDraft, rng: Rng): Charac
     items: [...cls.items],
     abilityUses: cls.ability.uses,
     backstory: (d.backstory ?? "").trim(),
+    ...(r.sanity ? { sanity: sanityMaxFor(stats.wis), sanityMax: sanityMaxFor(stats.wis), phobia: d.phobia } : {}),
   };
 }
 
@@ -122,5 +136,6 @@ export function sheetText(r: Ruleset, c: Character): string {
     `Владеет навыками: ${c.skills.join(", ")}.`,
     `Снаряжение: ${c.items.join(", ") || "ничего"}.`,
     `Предыстория: ${c.backstory || "не указана"}`,
+    ...(c.sanity !== undefined ? [`Рассудок ${c.sanity}/${c.sanityMax}${isUnhinged(c) ? " — на грани" : ""}. Фобия: ${c.phobia || "нет"}.`] : []),
   ].join("\n");
 }

@@ -48,7 +48,7 @@ else {
   /** Герой-«игрок» для каждого мира. */
   const HEROES: Record<string, Omit<CharacterDraft, "base">> = {
     fantasy: { world: "fantasy", name: "Ровена", gender: "f", race: "human", cls: "ranger", skills: ["Внимательность", "Убеждение"], backstory: "Охотница с пограничья. Её брат ушёл с караваном на север и не вернулся." },
-    arkham: { world: "arkham", name: "Уолтер Грей", gender: "m", race: "human", cls: "detective", skills: ["Внимательность", "Психология"], backstory: "Бывший полицейский из Бостона. Ушёл со службы после дела, которое закрыли слишком быстро." },
+    arkham: { world: "arkham", phobia: "Темнота", name: "Уолтер Грей", gender: "m", race: "human", cls: "detective", skills: ["Внимательность", "Психология"], backstory: "Бывший полицейский из Бостона. Ушёл со службы после дела, которое закрыли слишком быстро." },
   };
   const hero = HEROES[worldId];
   if (!hero) throw new Error(`Нет героя для мира ${worldId}`);

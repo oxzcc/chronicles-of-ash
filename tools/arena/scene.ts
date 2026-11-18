@@ -39,7 +39,8 @@ export interface SceneSet {
 export function buildScene(set: SceneSet, s: Scene): { world: World; character: Character; campaign: Campaign; history: HistoryEntry[]; action: string } {
   const world = getWorld(set.world);
   const R = world.rules;
-  const draft: CharacterDraft = { world: world.id, ...s.hero, base: { ...R.recommended[s.hero.cls]! }, skills: [...s.hero.skills] };
+  // В мирах с рассудком у героя сцены — первая фобия из списка мира.
+  const draft: CharacterDraft = { world: world.id, ...s.hero, base: { ...R.recommended[s.hero.cls]! }, skills: [...s.hero.skills], ...(R.sanity ? { phobia: R.sanity.phobias[0] } : {}) };
   const character = createCharacter(R, draft, mulberry32(7));
   character.gold = 18;
   s.tweak?.(character);

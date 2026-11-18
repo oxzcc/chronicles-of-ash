@@ -86,12 +86,14 @@ const rawResponseSchema = (r: Ruleset) => z.object({
   changes: z
     .object({
       hp: int.default(0),
+      /** Рассудок — в мирах, где он есть; движок проверит. */
+      sanity: int.default(0),
       gold: int.default(0),
       addItems: strList(6, 40).default([]),
       removeItems: strList(6, 40).default([]),
     })
-    .catch({ hp: 0, gold: 0, addItems: [], removeItems: [] })
-    .default({ hp: 0, gold: 0, addItems: [], removeItems: [] }),
+    .catch({ hp: 0, sanity: 0, gold: 0, addItems: [], removeItems: [] })
+    .default({ hp: 0, sanity: 0, gold: 0, addItems: [], removeItems: [] }),
   combat: z
     .object({ enemies: z.array(EnemySchema).min(1) })
     .nullable()

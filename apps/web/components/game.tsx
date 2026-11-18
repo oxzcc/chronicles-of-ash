@@ -161,6 +161,20 @@ export function Sheet({ c }: { c: Character }) {
         <span>КД {c.ac}</span>
         <span>{capitalize(R.money.sheet(c.gold))}</span>
       </div>
+      {c.sanity !== undefined && c.sanityMax ? (
+        <>
+          <div className="bar sanity" aria-label={`Рассудок ${c.sanity} из ${c.sanityMax}`} style={{ marginTop: 6 }}>
+            <div style={{ width: `${(100 * c.sanity) / c.sanityMax}%` }} />
+          </div>
+          <div className="kv" style={{ marginTop: 4 }}>
+            <span>
+              Рассудок {c.sanity}/{c.sanityMax}
+              {c.sanity * 3 <= c.sanityMax ? " — на грани" : ""}
+            </span>
+            <span>Фобия: {c.phobia || "нет"}</span>
+          </div>
+        </>
+      ) : null}
       <div className="kv" style={{ marginTop: 6 }}>
         <span>
           {ab.name}: {c.abilityUses}/{ab.uses}

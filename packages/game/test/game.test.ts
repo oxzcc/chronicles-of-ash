@@ -55,14 +55,14 @@ describe("новая игра", () => {
 });
 
 describe("мир Аркхэма", () => {
-  const arkhamDraft: CharacterDraft = { world: "arkham", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...getWorld("arkham").rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
+  const arkhamDraft: CharacterDraft = { world: "arkham", phobia: "Мертвецы", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...getWorld("arkham").rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
   it("дело от фейковой модели, ход и бой по правилам Аркхэма", async () => {
     const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "a" });
     expect(g.usedFallback).toBe(false);
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-3+arkham-2");
+    expect(a.records[0]!.promptVersion).toBe("gm-3+arkham-3");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
@@ -104,6 +104,25 @@ describe("мир Аркхэма", () => {
     expect(res).toMatchObject({ points: 20, mentor: 40, penalty: 0, score: 20 });
     expect(w.complete).toBe(true);
     await expect(playTurn(deps(), g, recs, { kind: "close", answers: { a1: "x" } })).rejects.toThrow(/закрыто/);
+  });
+  it("рассудок: потеря в деле копится, на грани — два варианта, на нуле — срыв и потерянное время", async () => {
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "san" });
+    const c = g.character;
+    expect(c.sanity).toBe(c.sanityMax);
+    const three = [{ text: "А" }, { text: "Б" }, { text: "В" }];
+    let r = await playTurn(deps({ router: scriptedRouter([{ changes: { sanity: -3 }, suggestions: three }]) }), g, [], { kind: "action", text: "Читаю книгу" });
+    expect(c.sanity).toBe(c.sanityMax! - 3);
+    expect(g.campaign.case!.sanityLost).toBe(3);
+    expect(r.records[0]!.suggestions).toHaveLength(3);
+    c.sanity = 4;
+    r = await playTurn(deps({ router: scriptedRouter([{ changes: { sanity: 0 }, suggestions: three }]) }), g, [], { kind: "action", text: "Смотрю в окно" });
+    expect(r.records[0]!.suggestions).toHaveLength(2);
+    const visits = g.campaign.case!.visits;
+    r = await playTurn(deps({ router: scriptedRouter([{ changes: { sanity: -4 } }, { changes: { sanity: -2 } }]) }), g, [], { kind: "action", text: "Смотрю в круг" });
+    expect(r.records.map((x) => x.kind)).toEqual(["action", "breakdown"]);
+    expect(c.sanity).toBe(Math.ceil(c.sanityMax! / 2)); // мастер в срыве рассудок не трогает
+    expect(g.campaign.case!.visits).toBe(visits + 2);
+    expect(g.campaign.case!.sanityLost).toBe(7);
   });
   it("фоны Аркхэма — в своей библиотеке, фэнтези — в старой", async () => {
     const { libraryTag } = await import("../src/visuals");

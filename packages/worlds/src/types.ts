@@ -54,7 +54,7 @@ export interface GmText {
   suggestionExample: { text: string; skill: string; dc: number };
   /** Дополнительные разделы правил мира — идут перед формой ответа. */
   extra?: string[];
-  /** Версия кусков мира: пишется к PROMPT_VERSION в каждый ход («gm-3+arkham-2»). Поднимать при правке. */
+  /** Версия кусков мира: пишется к PROMPT_VERSION в каждый ход («gm-3+arkham-3»). Поднимать при правке. */
   version?: string;
 }
 
