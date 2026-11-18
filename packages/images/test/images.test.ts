@@ -211,16 +211,24 @@ describe("LoRA стиля", () => {
     const spy: any = { route: () => ({ model: "m", provider: { complete: async (r: any) => { asked = r.messages[0].content; throw new Error("down"); } } }) };
     for (let seed = 1; seed <= 20; seed++) {
       const vv = await heroVariants(spy, arkham, d, "", undefined, mulberry32(seed));
-      const hairs = [...asked.matchAll(/\d\) ([a-z -]+) hair/g)].map((m) => m[1]);
+      const hairs = [...asked.matchAll(/years old, ([a-z -]+?) hair/g)].map((m) => m[1]);
       expect(new Set(hairs).size).toBe(4);
       const marked = (asked.match(/one noticeable scar/g) ?? []).length;
       expect(marked).toBeGreaterThanOrEqual(1);
       expect(marked).toBeLessThanOrEqual(2);
       for (const x of vv) expect(x.prompt).not.toMatch(/walking/);
+      // Возраст: четыре разных, кто-то моложе 32 и кто-то старше 45; облик с формами — не старше 45.
+      const ages = [...asked.matchAll(/(\d+) years old/g)].map((m) => Number(m[1]));
+      expect(ages).toHaveLength(4);
+      expect(Math.min(...ages)).toBeLessThan(32);
+      expect(Math.max(...ages)).toBeGreaterThan(45);
+      expect(ages[0]).toBeLessThanOrEqual(45);
     }
     // Свои слова игрока о волосах и приметах — важнее.
     await heroVariants(spy, arkham, d, "рыжая, шрам через бровь", undefined, mulberry32(5));
-    expect(asked).not.toMatch(/ hair;|noticeable scar|clean face/);
+    expect(asked).not.toMatch(/[a-z-]+ hair(,|;|\.| streaked)|noticeable scar|clean face/);
+    await heroVariants(spy, arkham, d, "пожилая", undefined, mulberry32(6));
+    expect(asked).not.toMatch(/\d\) \d+ years old/);
     // Игрок сам описал фигуру и одежду — их не навязываем.
     const own = await heroVariants(failing, arkham, d, "худая, высокая, в потёртом кожаном плаще", undefined, mulberry32(3));
     for (const x of own) {

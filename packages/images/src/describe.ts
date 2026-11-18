@@ -234,6 +234,31 @@ const HAIR = [
 /** Игрок сам написал о волосах или приметах — не спорим. */
 const HAIR_NOTE = /рыж|блонд|светлов|темновол|тёмновол|черновол|чёрн|брюнет|шатен|сед|русы|русая|каштан|волос|лыс|кос[аыу]\b|косич|стриж|кудр|каре|пучок/i;
 const MARK_NOTE = /шрам|ожог|родинк|веснуш|татуир|отметин|оспин|рубц|порез/i;
+const AGE_NOTE = /\d+\s*(лет|год)|молод|юн[аыо]|стар|пожил|зрел|средн\S* лет|девушк|бабушк|дедушк|парень/i;
+
+/**
+ * Возраст тоже выбирает код: модель ставила полной героине всегда 40–50, стройной — 20–25.
+ * Четыре разных отрезка; среди четырёх обязательно кто-то моложе 32 и кто-то старше 45;
+ * облик с формами — не старше 45.
+ */
+const AGE_BANDS: [number, number][] = [[20, 25], [26, 31], [32, 38], [39, 45], [46, 53], [54, 65]];
+const CURVY = /curvy|voluptuous|hourglass/i;
+function pickAges(rng: Rng, builds?: readonly string[]): number[] {
+  const ok = (b: number[]) =>
+    b.some((x) => x <= 1) && b.some((x) => x >= 4) && b.every((x, i) => !(builds?.[i] && CURVY.test(builds[i]!)) || AGE_BANDS[x]![1] <= 45);
+  let bands = [0, 2, 3, 5];
+  for (let t = 0; t < 100; t++) {
+    const b = shuffled([0, 1, 2, 3, 4, 5], rng).slice(0, 4);
+    if (ok(b)) {
+      bands = b;
+      break;
+    }
+  }
+  return bands.map((x) => {
+    const [lo, hi] = AGE_BANDS[x]!;
+    return lo + Math.floor(rng() * (hi - lo + 1));
+  });
+}
 
 /** Первые n элементов в случайном порядке (без повторов). */
 const shuffled = <T>(arr: readonly T[], rng: Rng): T[] => {
@@ -280,6 +305,7 @@ export async function heroVariants(
   const outfits = outfitList && outfitList.length >= 4 && !CLOTHES_NOTE.test(notes) ? shuffled(outfitList, rng).slice(0, 4) : undefined;
   const poses = shuffled(POSES, rng).slice(0, 4);
   const hair = HAIR_NOTE.test(notes) ? undefined : shuffled(HAIR, rng).slice(0, 4);
+  const ages = AGE_NOTE.test(notes) ? undefined : pickAges(rng, builds);
   // Примета на лице — у одного-двух из четырёх, остальные с чистым лицом.
   const marks = MARK_NOTE.test(notes) ? undefined : (() => {
     const n = rng() < 0.5 ? 1 : 2;
@@ -288,8 +314,12 @@ export async function heroVariants(
   })();
   const specs = [0, 1, 2, 3]
     .map((i) => {
-      const parts = [hair && `${hair[i]} hair`, marks && (marks[i] ? "one noticeable scar, burn or mark on the face" : "a clean face without scars, burns or marks")].filter(Boolean);
-      return parts.length ? `${i + 1}) ${parts.join("; ")}` : "";
+      const parts = [
+        ages && `${ages[i]} years old`,
+        hair && `${hair[i]} hair${ages && ages[i]! >= 50 ? " streaked with grey" : ""}`,
+        marks && (marks[i] ? "one noticeable scar, burn or mark on the face" : "a clean face without scars, burns or marks"),
+      ].filter(Boolean);
+      return parts.length ? `${i + 1}) ${parts.join(", ")}` : "";
     })
     .filter(Boolean);
   const finish = (v: LookVariant[]) =>
@@ -303,10 +333,10 @@ export async function heroVariants(
   try {
     const raw = await ask(
       router,
-      `You design 4 clearly DIFFERENT looks for a ${world.art.genreEn} player character. Base: ${baseHero(world, d)} (${world.rules.races[d.race]?.name ?? d.race}, ${world.rules.classes[d.cls]?.name ?? d.cls}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
-Vary age, hair${hair ? " style (colour is set below)" : " colour and style"}, face shape${marks ? "" : ", scars or marks"}${outfits ? "" : ", a clothing detail"} and expression so that the 4 people are easy to tell apart.${specs.length ? `\nSet by the game, in this order: ${specs.join("; ")}.` : ""}
-${fixed} are set by the game — do not describe them.${builds ? ` Body builds, in this order: ${builds.map((b, i) => `${i + 1}) ${b}`).join("; ")}; pick ages that suit them: a curvy, voluptuous or hourglass look is 20 to 45 years old.` : ""}
-Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and an age.
+      `You design 4 clearly DIFFERENT looks for a ${world.art.genreEn} player character. Base: ${baseHero(world, d, outfits ? "" : undefined)} (${world.rules.races[d.race]?.name ?? d.race}, ${world.rules.classes[d.cls]?.name ?? d.cls}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
+Vary ${ages ? "" : "age, "}hair${hair ? " style (colour is set below)" : " colour and style"}, face shape${marks ? "" : ", scars or marks"}${outfits ? "" : ", a clothing detail"} and expression so that the 4 people are easy to tell apart.${specs.length ? `\nSet by the game, in this order: ${specs.join("; ")}.` : ""}
+${fixed[0]!.toUpperCase()}${fixed.slice(1)} are set by the game — do not describe them.${builds ? ` Body builds, in this order: ${builds.map((b, i) => `${i + 1}) ${b}`).join("; ")}${ages ? "" : "; pick ages that suit them: a curvy, voluptuous or hourglass look is 20 to 45 years old"}.` : ""}
+Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and ${ages ? "the age set above" : "an age"}.
 Return JSON only: [{"label":"3-6 слов по-русски: возраст, волосы и примета на лице, если она есть; без фигуры и одежды","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,
       signal,
     );
