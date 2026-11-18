@@ -12,19 +12,34 @@ export type { TimeOfDay } from "@ash/worlds";
 /**
  * Портреты рисуются на светлом ровном фоне и с ярким светом на лице:
  * так фон чисто вырезается, а персонаж потом читается на тёмной сцене.
- * Один кадр для всех: по пояс, голова в верхней трети с запасом сверху — тогда портреты одного масштаба и не обрезаны.
+ * Один кадр для всех: по пояс, голова в верхней трети и не касается края — тогда портреты одного масштаба и не обрезаны.
+ * Позу и ракурс («low angle», «looking over her shoulder») даёт описание персонажа, как в подписях датасета LoRA:
+ * без «centered» и пустоты над головой герои не стоят навытяжку, как в каталоге.
+ * Свет — тёплый и сбоку: лицо читается на тёмной сцене, но без глянца фронтального света.
  */
 const PORTRAIT_LIGHT =
-  "waist-up portrait of a single character, centered, three-quarter view, head in the upper third with empty space above it, shoulders and elbows fully inside the frame, cut at the waist, bright warm key light on the face, soft rim light, plain flat light grey studio background";
+  "waist-up portrait of a single character, head in the upper third not touching the top edge, shoulders and elbows fully inside the frame, cut at the waist, warm directional side light on the face, matte shading, plain flat light grey studio background";
 
 /**
- * Начало промпта: стиль мира. С LoRA — триггер из датасета и короткий префикс (эпоха и запреты),
- * технику и палитру держит сама LoRA; без LoRA — полный stylePrefix.
+ * Начало промпта фона: стиль мира. С LoRA — триггер из датасета и короткий префикс (эпоха и запреты),
+ * технику и палитру держит сама LoRA; без LoRA — полный stylePrefix. У портретов с LoRA префикса нет.
  */
 export const stylePart = (world: World, lora = false) =>
   lora && world.art.lora ? `${world.art.lora.trigger}, ${world.art.lora.stylePrefix}` : world.art.stylePrefix;
 
-export const portraitPrompt = (world: World, description: string, lora = false) => `${stylePart(world, lora)}, ${PORTRAIT_LIGHT}, ${description}`;
+/**
+ * Портрет с LoRA — строго по образцу подписей датасета: «<триггер>, three-quarter portrait of <кто это,
+ * телосложение, внешность, одежда, поза, выражение>, plain light grey background». Любые лишние слова
+ * (техника, свет, кадр) разбавляют триггер: на подписях из датасета LoRA повторяет оригиналы почти один в один,
+ * а с прежним префиксом рисовала сдержанно и «по каталогу» (data/lora/captest). Кадр — 2:3, как в датасете.
+ */
+export const LORA_PORTRAIT_FRAME = "three-quarter portrait of";
+export const LORA_PORTRAIT_BACKGROUND = "plain light grey background";
+
+export const portraitPrompt = (world: World, description: string, lora = false) =>
+  lora && world.art.lora
+    ? `${world.art.lora.trigger}, ${LORA_PORTRAIT_FRAME} ${description}, ${LORA_PORTRAIT_BACKGROUND}`
+    : `${stylePart(world, lora)}, ${PORTRAIT_LIGHT}, ${description}`;
 
 export const backgroundPrompt = (world: World, description: string, time: TimeOfDay, lora = false) =>
   `${stylePart(world, lora)}, ${world.art.backgroundLight}, ${description}, ${world.art.timeEn[time]}`;

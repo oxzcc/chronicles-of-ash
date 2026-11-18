@@ -92,6 +92,9 @@ describe("clippedShare", () => {
     const png = (svg: string) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300">${svg}</svg>`)).png().toBuffer();
     expect(await clippedShare(await png(`<rect x="50" y="40" width="100" height="260" fill="#800"/>`))).toBe(0);
     expect(await clippedShare(await png(`<rect x="20" y="0" width="160" height="300" fill="#800"/>`))).toBeGreaterThan(CLIP_LIMIT);
+    // Узкая срезанная шляпа сверху — уже перерисовка; локоть у бокового края — ещё нет.
+    expect(await clippedShare(await png(`<rect x="90" y="0" width="12" height="200" fill="#800"/>`))).toBeGreaterThan(CLIP_LIMIT);
+    expect(await clippedShare(await png(`<rect x="0" y="150" width="60" height="6" fill="#800"/>`))).toBeLessThanOrEqual(CLIP_LIMIT);
   });
 });
 
@@ -127,21 +130,69 @@ describe("LoRA стиля", () => {
     expect(lorasFromEnv({ FAL_LORA_ARKHAM_URL: "u", FAL_LORA_ARKHAM_SCALE: "9" }).arkham!.scale).toBe(2);
     expect(lorasFromEnv({ FAL_LORA_ARKHAM_URL: "u", FAL_LORA_ARKHAM_SCALE: "abc" }).arkham!.scale).toBe(1);
     const cfg = falConfigFromEnv({ FAL_KEY: "k", FAL_LORA_ARKHAM_URL: "u" })!;
-    expect(cfg.loraModel).toBe("fal-ai/flux-2/klein/9b/lora");
+    expect(cfg.loraModel).toBe("fal-ai/flux-2/klein/9b/base/lora");
     expect(new FalImageProvider(cfg).loraFor("arkham")).toEqual({ url: "u", scale: 1 });
     expect(new FalImageProvider(cfg).loraFor("fantasy")).toBeUndefined();
   });
 
-  it("промпт с LoRA: триггер первым, вместо техники — эпоха и запреты", async () => {
-    const { backgroundPrompt, stylePart } = await import("../src/index");
-    const p = portraitPrompt(arkham, "man", true);
-    expect(p.startsWith(`${arkham.art.lora!.trigger}, `)).toBe(true);
-    expect(p).toMatch(/1926/);
-    expect(p).not.toMatch(/gouache/);
-    expect(backgroundPrompt(arkham, "x", "night", true)).toMatch(/^mthnr style, /);
+  it("промпт с LoRA: портрет — строго в формате подписей датасета, фон — триггер, эпоха и запреты", async () => {
+    const { backgroundPrompt, stylePart, baseHero } = await import("../src/index");
+    const hero = baseHero(arkham, { race: "human", cls: "journalist", gender: "f" });
+    expect(hero).toMatch(/^a woman newspaper reporter/);
+    expect(portraitPrompt(arkham, hero, true)).toBe(`mthnr style, three-quarter portrait of ${hero}, plain light grey background`);
+    const bg = backgroundPrompt(arkham, "x", "night", true);
+    expect(bg).toMatch(/^mthnr style, /);
+    expect(bg).toMatch(/1926/);
+    expect(bg).not.toMatch(/gouache/);
     // Без LoRA и у мира без триггера — прежний префикс.
     expect(portraitPrompt(arkham, "man")).toMatch(/gouache/);
     expect(stylePart(world, true)).toBe(world.art.stylePrefix);
+  });
+
+  it("NPC мира с LoRA описывается как подпись датасета: пол в существительном, без точки и заглавной", async () => {
+    const { describeNpc, buildFor } = await import("../src/index");
+    const asked: string[] = [];
+    const reply = (text: string): any => ({ route: () => ({ model: "m", provider: { complete: async (r: any) => (asked.push(r.messages[0].content), { text, toolCalls: [], usage: {}, model: "m" }) } }) });
+    const card = { name: "Лорейн Вейл", race: "human" as const, gender: "f" as const, role: "вдова" };
+    expect(await describeNpc(reply("A grieving young widow, slender, black veil, frightened."), arkham, card)).toBe("a grieving young widow, slender, black veil, frightened");
+    expect(asked[0]).toMatch(/one noun phrase with age, gender and role/);
+    // Телосложение выбрал код по правилам мира: три готовых варианта по возрасту и состоянию.
+    const b = buildFor(arkham, card)!;
+    expect(asked[0]).toContain(`otherwise — '${b.young}'`);
+    expect(asked[0]).toContain(`if sick, starving or drowned — 'thin frail build'`);
+    // Пол не назван — ставим его первым словом.
+    expect(await describeNpc(reply("an elderly housekeeper, stout sturdy build"), arkham, card)).toBe("a woman, an elderly housekeeper, stout sturdy build");
+    // У мира без LoRA — прежний вид: пол и раса впереди.
+    expect(await describeNpc(reply("tall, scarred"), world, { ...card, race: "elf" })).toMatch(/^a woman, female character, .+, tall, scarred$/);
+  });
+
+  it("телосложение выбирает код: по имени всегда одно, доли мира, роковые роли и герои", async () => {
+    const { buildFor, heroVariants } = await import("../src/index");
+    const fig = arkham.art.figures!;
+    const [curvy, hourglass] = [fig.young.f[0]!.en, fig.young.f[1]!.en];
+    // Один и тот же NPC — всегда одна фигура.
+    expect(buildFor(arkham, { name: "Мэри Хоббс", gender: "f" })).toEqual(buildFor(arkham, { name: "Мэри Хоббс", gender: "f" }));
+    // Доли: половина с формами, треть «песочные часы», остальные стройные.
+    const n = 3000;
+    const picks = Array.from({ length: n }, (_, i) => buildFor(arkham, { name: `Жительница ${i}`, gender: "f" })!.young);
+    const share = (x: string) => picks.filter((p) => p === x).length / n;
+    expect(share(curvy)).toBeCloseTo(1 / 2, 1);
+    expect(share(hourglass)).toBeCloseTo(1 / 3, 1);
+    expect(1 - share(curvy) - share(hourglass)).toBeCloseTo(1 / 6, 1);
+    // Пожилые — без утрирования.
+    for (let i = 0; i < 50; i++) expect(buildFor(arkham, { name: `Старуха ${i}`, gender: "f" })!.elderly).not.toMatch(/bust/);
+    // Певица — всегда «песочные часы»; у мира без правил выбора нет.
+    for (let i = 0; i < 20; i++) expect(buildFor(arkham, { name: `Певица ${i}`, gender: "f", role: "певица в подпольном баре" })!.young).toBe(hourglass);
+    expect(buildFor(world, { name: "x", gender: "f" })).toBeUndefined();
+
+    // Героиня: четыре облика — четыре разные фигуры, фигура видна в подписи; свои слова игрока о фигуре — важнее.
+    const failing: any = { route: () => ({ model: "m", provider: { complete: async () => { throw new Error("down"); } } }) };
+    const d = { race: "human" as const, cls: "journalist", gender: "f" as const };
+    const v = await heroVariants(failing, arkham, d, "");
+    expect(v.map((x) => x.prompt.split(", ").slice(-1)[0])).toEqual(fig.hero.f.map((h) => h.en.split(", ").slice(-1)[0]));
+    expect(v[0]!.label).toMatch(/, с формами$/);
+    expect(v[2]!.label).toMatch(/, стройная$/);
+    expect((await heroVariants(failing, arkham, d, "худая, высокая")).every((x) => !/bust|slender|athletic/.test(x.prompt))).toBe(true);
   });
 
   it("конвейер шлёт LoRA в fal только миру, для которого она задана", async () => {
@@ -172,5 +223,15 @@ describe("LoRA стиля", () => {
     expect(calls[0]!.url).toBe("https://fal.run/fal-ai/flux-2/klein/4b");
     expect(calls[0]!.body.loras).toBeUndefined();
     expect(f.prompt.startsWith(world.art.stylePrefix)).toBe(true);
+
+    // Портрет с LoRA — 2:3, как датасет; без LoRA — прежний квадрат.
+    calls.length = 0;
+    const { renderPortrait } = await import("../src/index");
+    const pa = await renderPortrait({ world: arkham, provider, storage, description: "a woman librarian", key: "npc/a", seed: 1 });
+    expect(calls[0]!.body.image_size).toEqual({ width: 1024, height: 1536 });
+    expect(pa.prompt).toBe("mthnr style, three-quarter portrait of a woman librarian, plain light grey background");
+    calls.length = 0;
+    await renderPortrait({ world, provider, storage, description: "a woman, female character, elf", key: "npc/f", seed: 1 });
+    expect(calls[0]!.body.image_size).toEqual({ width: 1024, height: 1024 });
   });
 });

@@ -48,10 +48,11 @@ export interface FalConfig {
 }
 
 /**
- * Эндпоинт для генерации с LoRA. LoRA обучаются на klein 9B: тренер 4B на fal закрыт,
- * а LoRA работает только с той моделью, на которой обучена.
+ * Эндпоинт для генерации с LoRA. LoRA обучаются тренером klein 9B **Base** (тренер 4B на fal закрыт),
+ * а LoRA работает только с той моделью, на которой обучена: Base, не дистиллированная klein 9B.
+ * На `klein/9b/lora` та же LoRA почти не меняла картинку ни на какой силе.
  */
-export const DEFAULT_LORA_MODEL = "fal-ai/flux-2/klein/9b/lora";
+export const DEFAULT_LORA_MODEL = "fal-ai/flux-2/klein/9b/base/lora";
 
 /** FAL_LORA_<ID>_URL / FAL_LORA_<ID>_SCALE → LoRA по мирам; сила по умолчанию 1, допустимо 0…2. */
 export function lorasFromEnv(env: Record<string, string | undefined>): Record<string, LoraRef> {
@@ -84,6 +85,8 @@ export function falConfigFromEnv(env: Record<string, string | undefined> = proce
  */
 export const BACKGROUND_SIZE = { width: 1920, height: 1088 } as const;
 const PORTRAIT_SIZE = { width: 1024, height: 1024 } as const;
+/** Портрет с LoRA — 2:3, как картинки датасета: в квадрате фигура мельче и срезана по пояс. */
+const LORA_PORTRAIT_SIZE = { width: 1024, height: 1536 } as const;
 
 /** Модели, которые fal считает за мегапиксель (цена ниже — за 1 Мп), остальные — за картинку. */
 const PER_MP = /flux-2\/klein/;
@@ -94,6 +97,8 @@ const PRICE: Record<string, number> = {
   "fal-ai/flux-2/klein/4b": 0.003,
   "fal-ai/flux-2/klein/4b/lora": 0.01,
   "fal-ai/flux-2/klein/9b/lora": 0.015,
+  "fal-ai/flux-2/klein/4b/base/lora": 0.015,
+  "fal-ai/flux-2/klein/9b/base/lora": 0.02,
   "fal-ai/birefnet/v2": 0.002,
 };
 
@@ -131,7 +136,7 @@ export class FalImageProvider implements ImageProvider {
     const base = req.quality === "portrait" ? this.cfg.portraitModel : this.cfg.backgroundModel;
     const model = req.lora ? this.cfg.loraModel || DEFAULT_LORA_MODEL : base;
     const isKontext = model.includes("kontext");
-    const dims = req.shape === "portrait" ? PORTRAIT_SIZE : BACKGROUND_SIZE;
+    const dims = req.shape === "portrait" ? (req.lora ? LORA_PORTRAIT_SIZE : PORTRAIT_SIZE) : BACKGROUND_SIZE;
     const size = isKontext ? { aspect_ratio: req.shape === "portrait" ? "1:1" : "16:9" } : { image_size: { ...dims } };
     const loras = req.lora ? { loras: [{ path: req.lora.url, scale: req.lora.scale }] } : {};
     const mp = (dims.width * dims.height) / 1_000_000;

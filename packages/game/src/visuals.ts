@@ -14,8 +14,12 @@ import { GameError, type GameState, type TurnRecord } from "./types";
  * (status queued → working → ready | failed), забираются через FOR UPDATE SKIP LOCKED.
  */
 
-/** world — id мира, в стиле которого рисовать; в задачах до миров его нет — это фэнтези. */
-type Job = { world?: string } & (
+/**
+ * world — id мира, в стиле которого рисовать; в задачах до миров его нет — это фэнтези.
+ * rev — номер перерисовки (restyleImages): файл пишется под новым ключом, иначе браузер
+ * покажет старую картинку из кэша (отдаются как immutable).
+ */
+type Job = { world?: string; rev?: number } & (
   | { type: "npc"; npcId: string; card: NpcCard }
   /** NPC без карточки: расу, пол и облик угадывает служебная модель по репликам. */
   | { type: "npc-guess"; npcId: string; name: string; lines: string[]; scene: string }
@@ -369,21 +373,22 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
   try {
     const j = row.job;
     const world = getWorld(isWorldId(j.world) ? j.world : DEFAULT_WORLD);
+    const rev = j.rev ? `-r${j.rev}` : "";
     let r;
     if (j.type === "npc") {
       const description = await describeNpc(d.router, world, j.card, signal);
-      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description, key: `npc/${row.id}`, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description, key: `npc/${row.id}${rev}`, signal });
     } else if (j.type === "npc-guess") {
       const g = await guessNpc(d.router, world, j, signal);
       await d.db.update(npcs).set({ race: g.card.race, gender: g.card.gender, role: g.card.role }).where(eq(npcs.id, j.npcId));
-      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: g.description, key: `npc/${row.id}`, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: g.description, key: `npc/${row.id}${rev}`, signal });
     } else if (j.type === "portrait") {
-      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `npc/${row.id}`, seed: j.seed, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `npc/${row.id}${rev}`, seed: j.seed, signal });
     } else if (j.type === "hero") {
-      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `hero/${row.id}`, seed: j.seed, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `hero/${row.id}${rev}`, seed: j.seed, signal });
     } else {
       const description = await describeLocation(d.router, world, { name: j.name, type: j.locType, desc: j.desc }, signal);
-      r = await renderBackground({ world, provider: d.provider, storage: d.storage, description, time: j.time, key: `bg/${row.id}`, signal });
+      r = await renderBackground({ world, provider: d.provider, storage: d.storage, description, time: j.time, key: `bg/${row.id}${rev}`, signal });
     }
     await d.db
       .update(images)
@@ -397,6 +402,47 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
       .where(eq(images.id, row.id));
   }
   return true;
+}
+
+/**
+ * Перерисовать готовые картинки мира в нынешнем стиле (новая LoRA, сила, промпты): строки возвращаются
+ * в очередь на месте, поэтому кампании, которые на них ссылаются, получат новые картинки сами.
+ * Идут «про запас» — после срочных; место, куда входит герой, поднимается вперёд как обычно.
+ * NPC перерисовываются по карточке через служебную модель — облик может немного поменяться.
+ * Портреты героев игроков — только с heroes: их выбирал сам игрок.
+ */
+export async function restyleImages(db: Db, worldId: string, o: { heroes?: boolean; dryRun?: boolean } = {}) {
+  const kinds = o.heroes ? ["npc", "background", "hero"] : ["npc", "background"];
+  const where = and(sql`${images.job}->>'world' = ${worldId}`, inArray(images.kind, kinds), inArray(images.status, ["ready", "failed"]));
+  const counts = await db.select({ kind: images.kind, n: sql<number>`count(*)::int` }).from(images).where(where).groupBy(images.kind);
+  const byKind = Object.fromEntries(counts.map((c) => [c.kind, c.n])) as Record<string, number>;
+  if (!o.dryRun && counts.length) {
+    // Постоянные лица: старые портреты (до правки внешности в данных мира) — по нынешнему описанию,
+    // чтобы и в старых кампаниях у Рут был блокнот, а не книга.
+    const world = isWorldId(worldId) ? getWorld(worldId) : undefined;
+    for (const m of world?.cast ? [world.cast.mentor, ...world.cast.allies] : []) {
+      const tag = castTag(world!, m);
+      await db
+        .update(images)
+        .set({
+          job: sql`jsonb_set(${images.job}, '{description}', to_jsonb(${m.portrait}::text))`,
+          tags: sql`array_append(${images.tags}, ${tag})`,
+        })
+        .where(and(eq(images.kind, "npc"), sql`EXISTS (SELECT 1 FROM unnest(${images.tags}) t WHERE t LIKE ${`cast:${worldId}:${m.id}:%`})`, sql`NOT ${images.tags} @> ARRAY[${tag}]::text[]`));
+    }
+    await db
+      .update(images)
+      .set({
+        status: "queued",
+        attempts: 0,
+        error: null,
+        job: sql`jsonb_set(${images.job}, '{rev}', to_jsonb(coalesce((${images.job}->>'rev')::int, 0) + 1))`,
+        tags: sql`CASE WHEN ${images.tags} @> ARRAY[${PREFETCH_TAG}]::text[] THEN ${images.tags} ELSE array_append(${images.tags}, ${PREFETCH_TAG}) END`,
+      })
+      .where(where);
+    wakeWorker();
+  }
+  return byKind;
 }
 
 /** Воркер в процессе сервера: несколько параллельных потоков; пустая очередь — опрос раз в секунду или пробуждение от enqueue. */

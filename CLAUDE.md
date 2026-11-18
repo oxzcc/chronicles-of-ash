@@ -36,6 +36,7 @@ pnpm arena:ballot <файл прогона>      # анонимный бюлле
 pnpm lora:dataset -- --world arkham   # датасет LoRA стиля: data/lora/<мир>/ + подписи → zip
 pnpm lora:train -- --world arkham     # обучить LoRA на fal (спросит подтверждение)
 pnpm lora:compare -- --world arkham   # картинки с LoRA и без → data/lora/compare/…/index.html
+pnpm images:restyle -- --world arkham # перерисовать готовые картинки мира в нынешнем стиле (спросит подтверждение)
 ```
 
 Схема БД меняется так: правка `packages/db/src/schema.ts` → `pnpm --filter @ash/db generate` → проверить SQL в `migrations/` → `pnpm db:migrate`.
@@ -58,7 +59,7 @@ pnpm lora:compare -- --world arkham   # картинки с LoRA и без → d
 - Создание кампании отдаёт поток (SSE): события `progress` для полосы загрузки, затем `done`. Прогресс настоящий — по объёму скрытых рассуждений и разделам JSON; ожидаемые объёмы и время — в `EXPECT` в `packages/game/src/progress.ts`, при смене модели рассказчика поправить.
 - Ранний старт: дело начинает придумываться, пока игрок рисует портрет (`/api/campaigns/pregen`, `PregenStore` в `packages/game/src/pregen.ts`); старт берёт заготовку, только если герой не изменился (`draftKey`). Хранится в памяти процесса — в фазе 4 перенести в Redis. Cookie игрока выдаёт `apps/web/proxy.ts`.
 - Картинки никогда не задерживают ход: текст идёт сразу, картинки — из очереди; клиент показывает силуэт и опрашивает `/api/campaigns/:id/scene`.
-- LoRA стиля мира: триггер и короткий префикс — в `art.lora` мира, веса и сила — только в окружении (`FAL_LORA_<ID>_URL`, `FAL_LORA_<ID>_SCALE`). Датасеты — в `data/lora/` (не в git).
+- LoRA стиля мира: триггер и короткий префикс — в `art.lora` мира, веса и сила — только в окружении (`FAL_LORA_<ID>_URL`, `FAL_LORA_<ID>_SCALE`). Датасеты — в `data/lora/` (не в git). LoRA рисуется той же моделью, на которой обучена (сейчас klein 9B **Base**). Сменили LoRA, силу или промпты картинок — `pnpm images:restyle`, иначе старые фоны и портреты останутся в библиотеке.
 - Готовые картинки лежат в `data/images/` (в git не попадают); в фазе 4 — S3 + CDN за тем же интерфейсом `ImageStorage`.
 
 ## Что временное

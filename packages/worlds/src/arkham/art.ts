@@ -48,6 +48,56 @@ export const arkhamArt: ArtStyle = {
     woods: "dark New England woods with old stone walls and fallen leaves",
     farm: "an isolated New England farmhouse with a barn and a dry field",
   },
+  // Владелец, 18 ноября: у молодых и средних лет женщин половина — с формами, треть — «песочные часы»,
+  // остальные — стройные; пожилые — без утрирования; роковые роли — всегда «песочные часы».
+  figures: {
+    young: {
+      f: [
+        { en: "curvy voluptuous build with a large bust and wide hips", weight: 3 },
+        { en: "voluptuous hourglass figure with a very large bust and wide hips", weight: 2 },
+        { en: "slim slender build", weight: 1 / 3 },
+        { en: "petite slender build", weight: 1 / 3 },
+        { en: "slim athletic build", weight: 1 / 3 },
+      ],
+      m: [
+        { en: "tall muscular athletic build", weight: 1 },
+        { en: "broad burly build", weight: 1 },
+        { en: "wiry lean build", weight: 1 },
+        { en: "heavyset portly build", weight: 1 },
+        { en: "stocky build", weight: 1 },
+        { en: "lean slender build", weight: 1 },
+      ],
+    },
+    elderly: {
+      f: [
+        { en: "stout heavyset build", weight: 1 },
+        { en: "slim upright build", weight: 1 },
+        { en: "thin wiry build", weight: 1 },
+      ],
+      m: [
+        { en: "stocky build", weight: 1 },
+        { en: "thin wiry build", weight: 1 },
+        { en: "heavyset portly build", weight: 1 },
+        { en: "gaunt bony build", weight: 1 },
+      ],
+    },
+    frail: "thin frail build",
+    roles: [{ match: /певиц|актрис|танцовщ|светск|жриц|куртизан|роков|кинозвезд|звезд[аы] /i, f: "voluptuous hourglass figure with a very large bust and wide hips" }],
+    hero: {
+      f: [
+        { en: "curvy voluptuous build with a large bust and wide hips", ru: "с формами" },
+        { en: "voluptuous hourglass figure with a very large bust and wide hips", ru: "пышная фигура" },
+        { en: "slim slender build", ru: "стройная" },
+        { en: "slim athletic build", ru: "спортивная" },
+      ],
+      m: [
+        { en: "tall muscular athletic build", ru: "атлетичный" },
+        { en: "broad burly build", ru: "крепкий" },
+        { en: "wiry lean build", ru: "жилистый" },
+        { en: "heavyset stocky build", ru: "грузный" },
+      ],
+    },
+  },
   interiorTypes: ["office", "hotel", "diner", "police", "library", "newspaper", "church", "speakeasy", "warehouse", "cellar"],
   // Датасет: data/lora/arkham_dataset (58 картинок владельца, подписи — data/lora/arkham_captions.json).
   lora: {

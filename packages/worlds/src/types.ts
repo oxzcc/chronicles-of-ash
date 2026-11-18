@@ -85,6 +85,25 @@ export interface GmText {
 export type TimeOfDay = "day" | "dusk" | "night";
 
 /** Визуальный стиль мира для FLUX. Промпты картинок — по-английски. */
+/** Вариант телосложения: слова для FLUX и вес при случайном выборе. */
+export interface BuildOption {
+  en: string;
+  weight: number;
+}
+
+export interface Figures {
+  /** Молодые и средних лет. */
+  young: { f: BuildOption[]; m: BuildOption[] };
+  /** Пожилые — без утрирования. */
+  elderly: { f: BuildOption[]; m: BuildOption[] };
+  /** Больные, голодные, утопленники — у всех. */
+  frail: string;
+  /** Роли (по-русски), которым телосложение задано всегда: певица, светская дама… */
+  roles?: { match: RegExp; f?: string; m?: string }[];
+  /** Четыре облика героя на выбор — четыре разных фигуры; ru — в подпись варианта. */
+  hero: { f: { en: string; ru: string }[]; m: { en: string; ru: string }[] };
+}
+
 export interface ArtStyle {
   /** Префикс каждого промпта: техника, палитра, эпоха. */
   stylePrefix: string;
@@ -107,13 +126,18 @@ export interface ArtStyle {
   /** Места, которые рисуются изнутри (и ночью). */
   interiorTypes: LocationType[];
   /**
+   * Телосложение людей — художественное решение мира. Выбирает код (seed от имени, чтобы NPC
+   * всегда выглядел одинаково), служебная модель только вписывает выбранное в описание.
+   */
+  figures?: Figures;
+  /**
    * Своя LoRA стиля (обучена на картинках мира). Веса и сила — только в окружении:
    * FAL_LORA_<ID>_URL и FAL_LORA_<ID>_SCALE. Пока URL не задан, мир рисуется по stylePrefix.
    */
   lora?: {
     /** Триггер из подписей датасета — ставится первым словом промпта. */
     trigger: string;
-    /** Префикс вместо stylePrefix: эпоха и запреты без описания техники — технику держит LoRA. */
+    /** Префикс фонов вместо stylePrefix: эпоха и запреты без описания техники — технику держит LoRA. Портреты с LoRA идут без префикса. */
     stylePrefix: string;
   };
 }
