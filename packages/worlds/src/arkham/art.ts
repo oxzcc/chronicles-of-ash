@@ -124,10 +124,10 @@ export const arkhamArt: ArtStyle = {
     frail: "thin frail build",
     roles: [{ match: /певиц|актрис|танцовщ|светск|жриц|куртизан|роков|кинозвезд|звезд[аы] /i, f: "voluptuous hourglass figure with a very large bust and wide hips" }],
     // Четыре облика героини — четыре разных силуэта. «С формами» и «пышная» раньше обе были про грудь и бёдра
-    // и рисовались почти одинаково; теперь первая — талия и изгибы, вторая — полная и мягкая целиком.
+    // и рисовались почти одинаково; теперь первая — «песочные часы» с очень большой грудью и тонкой талией, вторая — полная и мягкая целиком.
     hero: {
       f: [
-        "curvy hourglass figure with a full bust, a narrow cinched waist and wide hips",
+        "voluptuous hourglass figure with a very large bust, a narrow cinched waist and wide hips",
         "plump full-figured build, soft rounded body with a thick waist, full arms and a round soft face",
         "slim slender build, narrow shoulders and a flat figure",
         "slim athletic build, toned arms and broad straight shoulders",
