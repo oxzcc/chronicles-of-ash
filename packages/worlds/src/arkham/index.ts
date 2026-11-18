@@ -23,7 +23,7 @@ export const arkham: World = {
       "РАССЛЕДОВАНИЕ: это детектив, а не боевик. Ключевую улику герой находит, если ищет в правильном месте; проверка решает цену (время, опасность, неприятные последствия) и дополнительные детали, а не то, найдёт ли он главное. Свидетели лгут, недоговаривают и боятся, но не молчат бесконечно, если герой нашёл подход. Сверхъестественное — через детали, звуки, запахи и недосказанность; не показывай его целиком.",
       "ЭПОХА И БОЙ: 1926 год — никаких фэнтезийных рас, мечей, таверн и заклинаний из книжек о драконах; деньги — доллары и центы. Бой редок: противники-люди (громила с ножом, культист с револьвером) — по обычным числам; против тварей бой не объявляй, а опиши угрозу и дай герою бежать, спрятаться или найти другой выход.",
     ],
-    version: "arkham-4",
+    version: "arkham-5",
   },
   genre: "мистического детектива по мотивам Лавкрафта (Аркхэм, Новая Англия, 1926 год)",
   ui: {
@@ -52,9 +52,45 @@ export const arkham: World = {
   features: { case: true },
   fallbackCase: ARKHAM_FALLBACK_CASE,
   // Владелец: «союзники и доктор могут быть замешаны, но редко» — одно дело из десяти.
+  // Внешность постоянная: рассказчик описывает их только так, портрет — один на мир (женщины — с формами, мужчины — суровые).
   cast: {
-    mentor: "доктор Сайлас Уэйкфилд",
-    allies: ["библиотекарь Хэтти Колдуэлл", "сержант Деннис Маллой", "коронер Пайк", "репортёр Рут Эшворт", "Тео Финнеган из бакалеи", "букинистка мадам Резник"],
+    mentor: {
+      id: "wakefield", name: "доктор Сайлас Уэйкфилд", label: "доктор Сайлас Уэйкфилд", role: "наставник, отставной профессор антропологии", gender: "m",
+      look: "высокий сухопарый старик под семьдесят, седые бакенбарды, пенсне на чёрном шнурке, поношенная твидовая тройка, трубка",
+      portrait: "male, ordinary 1920s American, tall gaunt man in his late sixties, stern deeply lined face, white mutton-chop whiskers, pince-nez on a black cord, worn tweed three-piece suit with a watch chain, briar pipe in hand, sharp knowing eyes",
+    },
+    allies: [
+      {
+        id: "caldwell", name: "Хэтти Колдуэлл", label: "библиотекарь Хэтти Колдуэлл", role: "младший библиотекарь Мискатоника", gender: "f",
+        look: "молодая женщина лет двадцати пяти, круглые очки, каштановые волосы волной, пышная фигура, приталенная блузка с камеей, стопка книг",
+        portrait: "female, ordinary 1920s American, young woman about twenty-five, round tortoiseshell spectacles, chestnut finger-waved bob, curvy figure, fitted cream blouse with a cameo brooch and a high-waisted skirt, holding a stack of old books, shy clever smile",
+      },
+      {
+        id: "malloy", name: "сержант Деннис Маллой", label: "сержант Деннис Маллой", role: "полицейский сержант", gender: "m",
+        look: "грузный ирландец за пятьдесят, полицейская форма с медными пуговицами, рыжие с проседью усы, усталые суровые глаза",
+        portrait: "male, ordinary 1920s American, heavyset Irish police sergeant in his fifties, dark blue 1920s police uniform with brass buttons and a peaked cap, bushy ginger-grey moustache, broken-veined cheeks, tired stern eyes",
+      },
+      {
+        id: "pike", name: "доктор Лоренс Пайк", label: "коронер Лоренс Пайк", role: "коронер городской больницы", gender: "m",
+        look: "худой мужчина за пятьдесят, впалые щёки, круглые очки в стальной оправе, белый халат поверх жилета, пятна реактивов на пальцах",
+        portrait: "male, ordinary 1920s American, thin hollow-cheeked man in his fifties, round steel-rimmed glasses, thinning slicked grey hair, white coroner's coat over a waistcoat, chemical stains on his fingers, haunted sleepless eyes",
+      },
+      {
+        id: "ashworth", name: "Рут Эшворт", label: "репортёр Рут Эшворт", role: "репортёр «Вестника»", gender: "f",
+        look: "женщина около тридцати, чёрное каре, алая помада, пышная фигура, шёлковая блуза с расстёгнутым воротом под мужским жилетом, блокнот",
+        portrait: "female, ordinary 1920s American, woman about thirty, sleek black bob, red lipstick, curvy figure, silk blouse open at the collar under a man's pinstripe waistcoat, reporter's notebook in hand, confident sly smile",
+      },
+      {
+        id: "finnegan", name: "Тео Финнеган", label: "Тео Финнеган из бакалеи", role: "хозяин подпольного бара", gender: "m",
+        look: "крепкий мужчина лет сорока, сломанный нос, закатанные рукава, фартук бакалейщика поверх жилета, хитрая улыбка",
+        portrait: "male, ordinary 1920s American, burly man about forty, broken nose, stubbled square jaw, shirt sleeves rolled up over thick forearms, grocer's apron over a waistcoat, flat cap, sly crooked smile",
+      },
+      {
+        id: "reznik", name: "мадам Иоланта Резник", label: "букинистка мадам Иоланта Резник", role: "букинистка и гадалка", gender: "f",
+        look: "статная женщина за сорок, чёрные кудри с проседью, подведённые глаза, пышная фигура, бархатное платье с глубоким вырезом, шаль с бахромой, кольца",
+        portrait: "female, ordinary 1920s American, statuesque woman in her mid-forties, heavy black curls streaked with grey, kohl-rimmed dark eyes, full figure, dark velvet dress with a low neckline under a fringed shawl, strings of beads and many rings, knowing smile",
+      },
+    ],
     insiderChance: 0.1,
   },
   art: arkhamArt,

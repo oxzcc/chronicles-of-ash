@@ -1,8 +1,9 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { mulberry32, neighbors, type CharacterDraft } from "@ash/engine";
+import { mulberry32, neighbors, sameName, type CharacterDraft } from "@ash/engine";
 import { getWorld } from "@ash/worlds";
 import { createRouter, type CompletionRequest, type CompletionResult, type LlmProvider } from "@ash/llm";
-import { createDb } from "@ash/db";
+import { createDb, npcs } from "@ash/db";
+import { eq } from "drizzle-orm";
 import {
   campaignTurns, ConflictError, createCampaign, ensureUser, GameError, loadCampaign, newGame, playTurn, saveTurn,
   type GameEvent, type TurnDeps,
@@ -63,7 +64,7 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-4+arkham-4");
+    expect(a.records[0]!.promptVersion).toBe("gm-4+arkham-5");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
@@ -312,9 +313,19 @@ describe.skipIf(!url)("картинки", async () => {
     for (const l of w.locations) expect(!!l.imageId).toBe(w.case!.known.includes(l.id));
     const c = await loadCampaign(db, uid, id);
     let scene = await v.sceneView(db, id, c.characterId, w);
-    // Жители известных адресов — в очереди; жители неизвестных — ещё нет.
-    const atKnown = w.case!.people.filter((p) => w.case!.known.includes(p.at)).map((p) => p.name.toLowerCase());
-    expect(Object.keys(scene.npcs).sort()).toEqual(atKnown.sort());
+    // Свои — все, с общими портретами; жители известных адресов — в очереди, кроме тех, кто и есть свой
+    // («Деннис Маллой» = «сержант Деннис Маллой»); жители неизвестных адресов — ещё нет.
+    const cast = [arkham.cast!.mentor, ...arkham.cast!.allies];
+    const atKnown = w.case!.people.filter((p) => w.case!.known.includes(p.at) && !cast.some((m) => sameName(m.name, p.name))).map((p) => p.name.toLowerCase());
+    expect(Object.keys(scene.npcs).sort()).toEqual([...atKnown, ...cast.map((m) => m.name.toLowerCase())].sort());
+    // Портреты своих — общие для мира: у второй кампании те же картинки, новых задач на них нет.
+    const castImages = async (cid: string) =>
+      new Map((await db.select({ name: npcs.name, img: npcs.portraitImageId }).from(npcs).where(eq(npcs.campaignId, cid))).filter((r) => cast.some((m) => m.name === r.name)).map((r) => [r.name, r.img]));
+    const id2 = await createCampaign(db, uid, g);
+    await v.prefetchVisuals(db, id2, arkham, structuredClone(w));
+    const first = await castImages(id);
+    expect(first.size).toBe(cast.length);
+    expect(await castImages(id2)).toEqual(first);
     // Новый собеседник — срочно: его берут сразу после фона, где стоит герой, раньше всех заготовок.
     await v.ensureNpc(db, id, arkham, { name: "Человек в кепке", race: "human", gender: "m", role: "громила", look: "кепка, нож" });
     expect(await v.processOne(d)).toBe(true);
@@ -322,7 +333,8 @@ describe.skipIf(!url)("картинки", async () => {
     expect((await v.sceneView(db, id, c.characterId, w)).locations[w.current]!.status).toBe("ready");
     scene = await v.sceneView(db, id, c.characterId, w);
     expect(scene.npcs["человек в кепке"]!.status).toBe("ready");
-    expect(Object.values(scene.npcs).filter((n) => n.status === "ready")).toHaveLength(1);
+    // Готов только он (портреты своих могли нарисоваться в прошлых прогонах — библиотека общая).
+    expect(Object.entries(scene.npcs).filter(([k, n]) => n.status === "ready" && !cast.some((m) => m.name.toLowerCase() === k))).toHaveLength(1);
     // Мастер называет жителя коротко — новый портрет не рисуется, заготовка поднимается в начало.
     const lorraine = w.case!.people.find((p) => p.name === "Лорейн Вейл")!;
     expect(w.case!.known).toContain(lorraine.at);

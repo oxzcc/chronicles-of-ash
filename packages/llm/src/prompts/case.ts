@@ -44,7 +44,7 @@ ${c.clues.filter((x) => !x.requires).map(clue).join("\n")}
 export function castRule(world: World, insider: boolean): string {
   const cast = world.cast;
   if (!cast) return "";
-  const all = [cast.mentor, ...cast.allies].join(", ");
+  const all = [cast.mentor, ...cast.allies].map((m) => m.label).join(", ");
   return insider
     ? `- Поворот этого дела: один из своих — ${all} — замешан. Выбери одного: он скрывает правду, покрывает виновного или сам причастен. Герой ему доверяет и не догадывается; улики ведут к нему так же честно, как к остальным, а главный вопрос дела — о нём или о том, кого он покрывает.`
     : `- Свои вне подозрений: ${all} в этом деле не виновны и ни в чём не замешаны. Они могут быть свидетелями, помощниками или дать зацепку, но виновник и его сообщники — другие люди.`;
