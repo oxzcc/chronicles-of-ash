@@ -20,6 +20,7 @@ const SpeakerSchema = z
     race: z.enum(RACE_KEYS).catch("human"),
     gender: z.enum(["m", "f"]).catch("m"),
     role: str(60),
+    look: str(200).optional(),
   })
   .nullable()
   .catch(null)
@@ -173,6 +174,21 @@ export function partialBeats(text: string): Beat[] {
       .flatMap((x) => (x.success && x.data.text ? [{ ...x.data, text: stripCjk(x.data.text) }] : []));
   if (typeof raw.narration === "string" && raw.narration.trim()) return [{ speaker: null, text: stripCjk(raw.narration) }];
   return [];
+}
+
+export type Speaker = NonNullable<z.output<typeof SpeakerSchema>>;
+
+/**
+ * Карточка NPC из недописанного ответа — как только она дописана целиком
+ * (после неё в JSON уже начались другие поля). Нужна, чтобы портрет начинал рисоваться
+ * до конца хода. undefined — ещё рано; null — в ответе NPC нет.
+ */
+export function partialSpeaker(text: string): Speaker | null | undefined {
+  const raw = parsePartialJson(text) as Record<string, unknown> | null;
+  if (!raw || !("speaker" in raw)) return undefined;
+  const keys = Object.keys(raw);
+  if (keys.indexOf("speaker") === keys.length - 1) return undefined;
+  return SpeakerSchema.parse(raw.speaker);
 }
 
 /** Первый годный JSON-объект в тексте (модели иногда пишут что-то до или после). */

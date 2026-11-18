@@ -1,6 +1,6 @@
 import { skillCheck, type CheckResult, type Edge, type Rng } from "@ash/engine";
 import { narratorSystemPrompt, narratorUserPrompt, rollCheckTool, PROMPT_VERSION, type SceneContext } from "./prompts/gm";
-import { parseGmResponse, partialBeats, type Beat, type GmResponse } from "./schema";
+import { parseGmResponse, partialBeats, partialSpeaker, type Beat, type GmResponse, type Speaker } from "./schema";
 import { addUsage, emptyUsage, type ChatMessage, type LlmProvider, type Usage } from "./types";
 
 export const MAX_CHECKS_PER_TURN = 2;
@@ -14,6 +14,8 @@ export interface NarratorTurnOptions {
   signal?: AbortSignal;
   /** Реплики по мере генерации (последняя может быть недописана). */
   onBeats?: (beats: Beat[]) => void;
+  /** Карточка NPC дописана — можно ставить портрет в очередь, не дожидаясь конца хода. */
+  onSpeaker?: (speaker: Speaker) => void;
   /** false — модели не даётся roll_check (например, проверка уже брошена игрой). */
   allowChecks?: boolean;
   /** Бросок сделан — клиент показывает анимацию до продолжения текста. */
@@ -57,7 +59,15 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
   let model = o.model;
   let retried = false;
   let shown = "";
+  let speakerSent = false;
   const onText = (_d: string, full: string) => {
+    if (o.onSpeaker && !speakerSent) {
+      const s = partialSpeaker(full);
+      if (s !== undefined) {
+        speakerSent = true;
+        if (s) o.onSpeaker(s);
+      }
+    }
     const beats = partialBeats(full);
     const key = JSON.stringify(beats);
     if (beats.length && key !== shown) {

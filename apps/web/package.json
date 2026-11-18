@@ -13,6 +13,7 @@
     "@ash/db": "workspace:^",
     "@ash/engine": "workspace:^",
     "@ash/game": "workspace:^",
+    "@ash/images": "workspace:^",
     "@ash/llm": "workspace:^",
     "next": "16.4.6",
     "react": "19",

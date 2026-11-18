@@ -115,3 +115,144 @@ textarea { resize: vertical; }
 .dice .verdict.ok { color: var(--ok); } .dice .verdict.bad { color: #f0a38f; } .dice .verdict.crit { color: var(--gold); }
 @keyframes spin { from { transform: rotate(-540deg) scale(0.4); } to { transform: rotate(0) scale(1); } }
 @keyframes fade { from { opacity: 0; } }
+
+/* ===== Экран визуальной новеллы (фаза 2, по макетам) ===== */
+:root {
+  --gold-hi: #e6c47e;
+  --display: "Cormorant Garamond", Georgia, serif;
+  --text: "Alegreya", Georgia, serif;
+  --ui: "Alegreya Sans", -apple-system, "Segoe UI", sans-serif;
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.vn { position: fixed; inset: 0; overflow: hidden; background: #0c0907; color: var(--ink); font-family: var(--text); }
+.vn-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; animation: vnFade 0.8s ease; }
+.vn-bg-empty { background: radial-gradient(ellipse at 60% 30%, #2a1c12 0%, #0c0907 75%); }
+.vn-shade { position: absolute; inset: 0; pointer-events: none; background:
+  radial-gradient(ellipse 34% 60% at 18% 75%, rgba(6, 4, 3, 0.55), transparent 100%),
+  linear-gradient(180deg, rgba(8, 6, 4, 0.6) 0%, rgba(8, 6, 4, 0) 22%, rgba(8, 6, 4, 0) 45%, rgba(8, 6, 4, 0.85) 100%); }
+@keyframes vnFade { from { opacity: 0; } }
+
+/* Бюст: вырезанный портрет, тёплый контур и тень; тусклый, когда говорит рассказчик */
+.vn-bust-wrap { position: absolute; bottom: 0; height: 84%; width: 48%; pointer-events: none; transition: filter 0.35s, opacity 0.35s; }
+.vn-bust-wrap.left { left: -3%; }
+.vn-bust-wrap.right { right: 2%; }
+.vn-bust-wrap.dim { filter: brightness(0.62) saturate(0.85); }
+.vn-bust { position: absolute; bottom: 0; height: 100%; width: auto; max-width: 100%; object-fit: contain; object-position: bottom; animation: vnFade 0.6s ease;
+  filter: drop-shadow(0 0 1px rgba(255, 214, 160, 0.55)) drop-shadow(0 24px 48px rgba(0, 0, 0, 0.7));
+  -webkit-mask-image: linear-gradient(0deg, transparent 0%, #000 12%); mask-image: linear-gradient(0deg, transparent 0%, #000 12%); }
+.vn-bust.left { left: 0; object-position: left bottom; }
+.vn-bust.right { right: 0; transform: scaleX(-1); object-position: left bottom; }
+.vn-silhouette { opacity: 0.9; animation: vnPulse 2.2s ease-in-out infinite; }
+.vn-silhouette.still { animation: none; opacity: 0.7; }
+@keyframes vnPulse { 50% { opacity: 0.6; } }
+
+/* Верхняя панель */
+.vn-hud { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 20px 26px; z-index: 2; }
+.vn-place .name { font-family: var(--display); font-size: 32px; font-weight: 700; line-height: 1.05; text-shadow: 0 2px 10px #000; }
+.vn-place .sub { font-family: var(--ui); font-size: 14px; letter-spacing: 0.04em; color: var(--muted); text-shadow: 0 1px 6px #000; }
+.vn-hud-right { display: flex; gap: 12px; align-items: center; }
+.vn-hero { display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; background: rgba(17, 12, 9, 0.8); border: 1px solid #4a3a28; border-radius: 40px; text-align: left; }
+.vn-hero img, .vn-hero-ph { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; object-position: 50% 4%; border: 1px solid var(--gold); background: #2a1d14; display: grid; place-items: center; font-family: var(--display); font-size: 22px; }
+.vn-hero-info { display: flex; flex-direction: column; }
+.vn-hero .n { font-family: var(--display); font-size: 18px; font-weight: 700; line-height: 1; }
+.vn-hp { display: block; width: 140px; height: 6px; background: #3a2a1f; border-radius: 4px; overflow: hidden; margin: 5px 0 3px; }
+.vn-hp > span { display: block; height: 100%; background: linear-gradient(90deg, #7d241f, #c4473b); transition: width 0.4s; }
+.vn-stat { font-family: var(--ui); font-size: 12px; color: var(--muted); }
+.vn-tools { display: flex; gap: 8px; }
+.vn-icon { width: 44px; height: 44px; display: grid; place-items: center; background: rgba(17, 12, 9, 0.8); border: 1px solid #4a3a28; border-radius: 10px; color: var(--ink); padding: 0; }
+.vn-icon:hover:not(:disabled) { border-color: var(--gold); }
+.vn-icon svg { width: 21px; height: 21px; }
+
+/* Нижняя часть: окно реплики, варианты — по центру экрана */
+.vn-dock { position: absolute; left: 50%; transform: translateX(-50%); width: min(980px, 64vw); bottom: 52px; display: flex; flex-direction: column; gap: 10px; z-index: 2; max-height: calc(100% - 140px); }
+.vn-dock[hidden] { display: none; }
+.vn-frame { position: relative; background: rgba(17, 12, 9, 0.9); border: 1px solid var(--gold); padding: 36px 40px 38px; min-height: 120px;
+  box-shadow: 0 0 0 4px rgba(17, 12, 9, 0.9), 0 0 0 5px rgba(201, 164, 92, 0.45), 0 18px 50px rgba(0, 0, 0, 0.6); }
+.vn-frame::before, .vn-frame::after { content: ""; position: absolute; width: 16px; height: 16px; border: 2px solid var(--gold-hi); }
+.vn-frame::before { top: -7px; left: -7px; border-right: 0; border-bottom: 0; }
+.vn-frame::after { bottom: -7px; right: -7px; border-left: 0; border-top: 0; }
+.vn-frame.narrator { padding-top: 26px; }
+.vn-frame.clickable { cursor: pointer; }
+.vn-nameplate { position: absolute; top: -28px; left: 26px; padding: 6px 20px 7px; background: linear-gradient(180deg, #2a1d14, #17100b); border: 1px solid var(--gold); box-shadow: 0 0 0 3px rgba(17, 12, 9, 0.95); }
+.vn-nameplate .who { font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold-hi); line-height: 1; }
+.vn-nameplate .role { font-family: var(--ui); font-size: 12px; letter-spacing: 0.05em; color: #e0803f; margin-top: 3px; }
+.vn-line { font-size: 23px; line-height: 1.5; color: #f6ead3; }
+.vn-narr { font-size: 21px; line-height: 1.6; font-style: italic; color: #e6d6ba; white-space: pre-line; }
+.vn-writing { color: var(--muted); }
+.vn-writing::after { content: "…"; display: inline-block; width: 1.2em; overflow: hidden; vertical-align: bottom; animation: dots 1.2s steps(4) infinite; }
+.vn-caret { display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: var(--gold); vertical-align: -2px; animation: vnPulse 1s infinite; }
+.vn-advance { position: absolute; right: 20px; bottom: 12px; display: flex; align-items: center; gap: 8px; font-family: var(--ui); font-size: 12px; color: var(--gold); }
+.vn-pips { display: flex; gap: 6px; }
+.vn-pips span { width: 20px; height: 3px; background: #4a3a28; }
+.vn-pips span.on { background: var(--gold); }
+.vn-choices { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+/* Готовые варианты — на общей подложке, разделены тонкой золотой линией (как в BG3) */
+.vn-choices .suggestions { flex-direction: column; flex-wrap: nowrap; gap: 0; margin: 0; padding: 6px 0; background: rgba(17, 12, 9, 0.88); border: 1px solid #4a3a28; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); }
+.vn-choices .suggestions button { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border-radius: 0; padding: 12px 22px; font-family: var(--text); font-size: 19px; background: transparent; border: 0; color: var(--ink); transition: background 0.15s, color 0.15s; }
+.vn-choices .suggestions button + button::before { content: ""; position: absolute; top: 0; left: 18px; right: 18px; height: 1px; background: linear-gradient(90deg, transparent, rgba(201, 164, 92, 0.45) 15%, rgba(201, 164, 92, 0.45) 85%, transparent); }
+.vn-choices .suggestions button:hover:not(:disabled) { background: rgba(201, 164, 92, 0.1); color: var(--gold-hi); }
+.vn-choices .check-tag { flex: none; margin: 0; color: #1a120b; background: var(--gold); border: 0; font-weight: 700; padding: 3px 9px; border-radius: 3px; }
+.vn-choices .suggestions button:focus-visible { outline: 1px solid var(--gold); outline-offset: -4px; }
+/* Свой вариант — отдельная подложка */
+.vn-free { display: flex; gap: 8px; padding: 8px; background: rgba(17, 12, 9, 0.88); border: 1px solid #4a3a28; }
+.vn-free input { flex: 1; min-width: 0; font-family: var(--text); font-size: 18px; background: transparent; border: 0; border-radius: 0; padding: 8px 10px; }
+.vn-free input:focus { outline: none; }
+.vn-free:focus-within { border-color: var(--gold); }
+.vn-free .btn { border-radius: 0; font-family: var(--ui); font-weight: 700; }
+.vn .composer { border: 0; padding: 0; margin: 0; }
+.vn .enemies .enemy, .vn .moves .btn { border-radius: 0; }
+.vn .enemies .enemy { background: rgba(17, 12, 9, 0.9); }
+
+.vn-history { position: absolute; right: 24px; bottom: 16px; display: flex; align-items: center; gap: 8px; background: none; border: 0; color: var(--muted); font-family: var(--ui); font-size: 14px; z-index: 2; }
+.vn-history svg { width: 17px; height: 17px; }
+
+/* Заставка новой локации */
+.vn-arrival { position: absolute; top: 30%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 3; pointer-events: none; text-shadow: 0 2px 18px #000; animation: vnArrive 2.6s ease forwards; }
+.vn-arrival .rule { display: flex; align-items: center; gap: 16px; font-family: var(--ui); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold-hi); }
+.vn-arrival .rule span { width: 80px; height: 1px; background: var(--gold); }
+.vn-arrival .title { font-family: var(--display); font-size: clamp(40px, 7vw, 72px); font-weight: 700; color: #f6ead3; text-align: center; padding: 0 20px; line-height: 1; }
+.vn-arrival .sub { font-family: var(--ui); font-size: 16px; letter-spacing: 0.08em; color: #dccbb0; }
+@keyframes vnArrive { 0% { opacity: 0; transform: translateY(8px); } 15%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+
+/* Панели поверх сцены */
+.vn-drawer-veil { position: fixed; inset: 0; background: rgba(8, 6, 4, 0.55); z-index: 5; display: flex; justify-content: flex-end; }
+.vn-drawer { width: min(440px, 100%); height: 100%; background: #15100c; border-left: 1px solid #4a3a28; display: flex; flex-direction: column; animation: vnSlide 0.25s ease; }
+@keyframes vnSlide { from { transform: translateX(30px); opacity: 0; } }
+.vn-drawer-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-bottom: 1px solid #3a2e24; }
+.vn-drawer-head h2 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 28px; }
+.vn-drawer-body { padding: 16px 18px; overflow-y: auto; }
+.vn-sheet-portrait { display: block; height: 260px; margin: 0 auto 12px; filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.6)); }
+
+/* Телефон: портрет сверху, окно и варианты снизу */
+@media (max-width: 760px) {
+  .vn-hud { padding: 12px; }
+  .vn-place .name { font-size: 22px; }
+  .vn-hud { gap: 8px; }
+  .vn-place { min-width: 0; flex: 1; }
+  .vn-place .name { font-size: 19px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .vn-place .sub, .vn-stat, .vn-hero .n, .vn-tools .vn-icon:nth-child(3) { display: none; }
+  .vn-hud-right { gap: 6px; }
+  .vn-hero { padding: 4px 8px 4px 4px; gap: 6px; }
+  .vn-hero img, .vn-hero-ph { width: 34px; height: 34px; }
+  .vn-hp { width: 46px; margin: 0; }
+  .vn-icon { width: 38px; height: 38px; }
+  .vn-bust-wrap { height: 52%; width: 100%; bottom: auto; top: 70px; }
+  .vn-bust-wrap.left { left: 0; }
+  .vn-bust-wrap.right { display: none; }
+  .vn-bust.left { left: 50%; transform: translateX(-50%); object-position: center bottom; }
+  .vn-dock { left: 10px; right: 10px; width: auto; transform: none; bottom: 42px; max-height: calc(100% - 90px); }
+  .vn-frame { padding: 28px 18px 20px; min-height: 0; }
+  .vn-line { font-size: 19px; } .vn-narr { font-size: 18px; }
+  .vn-nameplate .who { font-size: 19px; }
+  .vn-choices .suggestions button { font-size: 16px; padding: 11px 12px; flex-wrap: wrap; gap: 6px 10px; }
+  .vn-history { bottom: 10px; right: 12px; }
+}
+
+/* Выбор облика при создании героя */
+.faces { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+@media (max-width: 700px) { .faces { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.face { position: relative; aspect-ratio: 3 / 4; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: radial-gradient(ellipse 70% 55% at 50% 40%, #3a2818 0%, #120d09 75%); }
+.face.on { border: 2px solid var(--gold-hi); box-shadow: 0 0 0 4px rgba(201, 164, 92, 0.25); }
+.face img { position: absolute; left: 50%; bottom: 0; height: 94%; transform: translateX(-50%); filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.7)); }
+.face-wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-family: var(--sans); animation: vnPulse 1.6s infinite; }
+.face-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 8px; background: linear-gradient(0deg, rgba(10, 7, 5, 0.95), transparent); font-family: var(--sans); font-size: 13px; color: var(--ink); }

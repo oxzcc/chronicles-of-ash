@@ -20,7 +20,7 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
     models: {
       narratorPaid: env.NARRATOR_MODEL_PAID || "deepseek/deepseek-v4.1-flash",
       narratorFree: env.NARRATOR_MODEL_FREE || "deepseek/deepseek-v4.1-flash",
-      utility: env.UTILITY_MODEL || "anthropic/claude-haiku-5.5",
+      utility: env.UTILITY_MODEL || "deepseek/deepseek-v4.1-flash",
     },
   };
 }

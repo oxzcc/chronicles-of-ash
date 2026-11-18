@@ -54,6 +54,8 @@ export async function newGame(o: { router: ModelRouter; tier: Tier; draft: Chara
 /** Предыстория по выбору игрока — служебной моделью. */
 export async function generateBackstory(o: { router: ModelRouter; draft: CharacterDraft; signal?: AbortSignal }): Promise<{ text: string; usage: Usage }> {
   const { provider, model } = o.router.route("utility");
-  const r = await provider.complete({ model, signal: o.signal, maxTokens: 400, temperature: 1, messages: [{ role: "user", content: backstoryPrompt(o.draft) }] });
+  // Лимит с запасом: служебная модель тратит до 2000 токенов на скрытые рассуждения.
+  const r = await provider.complete({ model, signal: o.signal, maxTokens: 3000, reasoningEffort: "minimal", temperature: 1, messages: [{ role: "user", content: backstoryPrompt(o.draft) }] });
+  if (!r.text.trim()) throw new GameError("Мастер не успел придумать предысторию — попробуй ещё раз.");
   return { text: r.text.trim().replace(/^["«]|["»]$/g, "").slice(0, 1200), usage: r.usage };
 }

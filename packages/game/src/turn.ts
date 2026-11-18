@@ -28,6 +28,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       scene: { character: c, campaign: w, history: history(), action },
       onBeats: (beats) => deps.emit?.({ type: "beats", beats }),
       onRoll: (roll) => deps.emit?.({ type: "roll", roll }),
+      onSpeaker: deps.onSpeaker,
       allowChecks: !opts.preRolls?.length,
     });
     const resp = r.response;
@@ -91,6 +92,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     case "start": {
       if (w.turn > 0) throw new GameError("Приключение уже началось.");
       const place = locationById(w, w.current)!;
+      await deps.onArrive?.();
       const { resp } = await narrate("start", "Начало приключения", systemActions.start(place.name));
       await maybeStartCombat(resp);
       break;
@@ -130,6 +132,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       } catch (e) {
         throw new GameError((e as Error).message);
       }
+      await deps.onArrive?.();
       const { resp } = await narrate("travel", `Путь в «${t.to.name}»`, systemActions.travel(t.from.name, t.to.name, t.encounter));
       await maybeStartCombat(resp);
       await checkDowned();

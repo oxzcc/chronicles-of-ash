@@ -29,6 +29,7 @@ async function freshGame(seed = "t") {
   return newGame({ router: fakeRouter(), tier: "free", draft, rng: mulberry32(1), seed });
 }
 const deps = (over: Partial<TurnDeps> = {}): TurnDeps => ({ router: fakeRouter(), tier: "free", worldBible: "", rng: mulberry32(5), ...over });
+const dpsFake = () => deps();
 
 describe("новая игра", () => {
   it("герой и квест от фейковой модели", async () => {
@@ -143,5 +144,99 @@ describe.skipIf(!url)("база", () => {
     expect(again.recent[0]!.suggestions[2]!.check).toEqual({ skill: "Внимательность", dc: 12 });
     expect((await campaignTurns(db, id))[0]!.suggestions).toHaveLength(3);
     await expect(loadCampaign(db, crypto.randomUUID(), id)).rejects.toThrow(/не найдена/);
+  });
+});
+
+describe.skipIf(!url)("картинки", async () => {
+  const { mkdtemp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { FakeImageProvider, LocalStorage } = await import("@ash/images");
+  const v = await import("../src/visuals");
+  const { db, pool } = url ? createDb(url) : ({} as ReturnType<typeof createDb>);
+  afterAll(() => pool?.end());
+  const deps = async () => ({ db, router: fakeRouter(), provider: new FakeImageProvider(), storage: new LocalStorage(await mkdtemp(join(tmpdir(), "ash-q-"))) });
+  const drain = async (d: Awaited<ReturnType<typeof deps>>) => {
+    let n = 0;
+    while (await v.processOne(d)) n++;
+    return n;
+  };
+
+  it("первый ход: портрет нового NPC и фон стартовой локации, оба готовы после очереди", async () => {
+    const d = await deps();
+    await drain(d); // очередь от прошлых тестов
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const g = await freshGame("vis");
+    const id = await createCampaign(db, uid, g);
+    const c = await loadCampaign(db, uid, id);
+    const r = await playTurn(dpsFake(), c.state, c.recent, { kind: "start" });
+    await v.prepareVisuals(db, id, r.state, r.records);
+    await saveTurn(db, c, r.state, r.records);
+    expect(r.state.campaign.locations[0]!.imageId).toBeTruthy();
+    let scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
+    expect(scene.npcs["старый ведун"]!.status).toBe("queued");
+    expect(await drain(d)).toBe(2);
+    scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
+    expect(scene.npcs["старый ведун"]!.url).toMatch(/^\/api\/images\/npc\/.+\.webp$/);
+    expect(scene.locations.L0!.status).toBe("ready");
+    // тот же NPC в следующем ходу — портрет не перерисовывается
+    const r2 = await playTurn(dpsFake(), r.state, r.records, { kind: "action", text: "Спрашиваю ещё" });
+    await v.prepareVisuals(db, id, r2.state, r2.records);
+    expect(await drain(d)).toBe(0);
+  });
+
+  it("второй говорящий без карточки тоже получает портрет", async () => {
+    const d = await deps();
+    await drain(d);
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const g = await freshGame("guess");
+    const id = await createCampaign(db, uid, g);
+    const c = await loadCampaign(db, uid, id);
+    const r = await playTurn(dpsFake(), c.state, c.recent, { kind: "start" });
+    r.records[0]!.beats.push({ speaker: "Серый плащ", text: "Выходи, рогатая." }, { speaker: c.state.character.name, text: "Не дождёшься." });
+    await v.prepareVisuals(db, id, r.state, r.records);
+    let scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
+    expect(scene.npcs["серый плащ"]!.status).toBe("queued");
+    expect(scene.npcs[c.state.character.name.toLowerCase()]).toBeUndefined(); // герой — не NPC
+    await drain(d);
+    scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
+    expect(scene.npcs["серый плащ"]!.url).toMatch(/^\/api\/images\/npc\/.+\.webp$/);
+  });
+
+  it("обычные локации берут фон из общей библиотеки по типу", async () => {
+    const d = await deps();
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const g = await freshGame(`lib${i}`);
+      const cid = await createCampaign(db, uid, g);
+      const w = g.campaign;
+      w.current = w.locations.find((l) => l.type === "road")!.id; // тракт — не ключевое место
+      await v.prepareVisuals(db, cid, g, []);
+      ids.push(w.locations.find((l) => l.id === w.current)!.imageId!);
+    }
+    await drain(d);
+    expect(new Set(ids).size).toBeLessThanOrEqual(v.LIBRARY_PER_TYPE);
+  });
+
+  it("облик героя: 4 разных варианта, чужие картинки не видны и не прикрепляются", async () => {
+    const d = await deps();
+    const uid = crypto.randomUUID();
+    const other = crypto.randomUUID();
+    await ensureUser(db, uid);
+    await ensureUser(db, other);
+    const opts = await v.createHeroOptions(db, fakeRouter(), uid, { race: "elf", cls: "rogue", gender: "f" }, "");
+    expect(new Set(opts.map((o) => o.label)).size).toBe(4);
+    await drain(d);
+    const st = await v.imageStatuses(db, uid, opts.map((o) => o.id));
+    expect(st.every((s) => s.status === "ready")).toBe(true);
+    expect(await v.imageStatuses(db, other, opts.map((o) => o.id))).toHaveLength(0);
+    const g = await freshGame("hero");
+    const cid = await createCampaign(db, other, g);
+    const c = await loadCampaign(db, other, cid);
+    await expect(v.attachHeroPortrait(db, other, c.characterId, opts[0]!.id)).rejects.toThrow(/недоступен/);
   });
 });

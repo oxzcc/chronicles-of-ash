@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { Campaign, Character, CheckResult } from "@ash/engine";
 
 /** Схема по таблице «Данные» из плана. Состояние героя и кампании — jsonb: его меняет только движок. */
@@ -76,6 +76,8 @@ export const npcs = pgTable("npcs", {
   id: id(),
   campaignId: uuid("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  /** Имя в нижнем регистре — NPC в кампании узнаётся по нему. */
+  nameKey: text("name_key").notNull(),
   race: text("race").notNull(),
   gender: text("gender").notNull(),
   role: text("role").notNull().default(""),
@@ -85,11 +87,18 @@ export const npcs = pgTable("npcs", {
   attitude: integer("attitude").notNull().default(0),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index("npcs_campaign_idx").on(t.campaignId)]);
+}, (t) => [uniqueIndex("npcs_campaign_name_idx").on(t.campaignId, t.nameKey)]);
 
 export const images = pgTable("images", {
   id: id(),
-  kind: text("kind").notNull(), // portrait | npc | background | map
+  kind: text("kind").notNull(), // hero | npc | background
+  /** Чья картинка: портреты героя видит только их игрок. Фоны — общая библиотека (null). */
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  /** Что рисовать: описание и параметры задачи для воркера. */
+  job: jsonb("job").$type<Record<string, unknown>>().notNull().default({}),
+  attempts: integer("attempts").notNull().default(0),
+  error: text("error"),
   prompt: text("prompt").notNull(),
   model: text("model").notNull(),
   url: text("url"),
@@ -98,4 +107,5 @@ export const images = pgTable("images", {
   tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
   costUsd: numeric("cost_usd", { precision: 10, scale: 6 }).notNull().default("0"),
   createdAt: createdAt(),
-}, (t) => [index("images_tags_idx").using("gin", t.tags)]);
+  updatedAt: updatedAt(),
+}, (t) => [index("images_tags_idx").using("gin", t.tags), index("images_queue_idx").on(t.status, t.createdAt)]);
