@@ -3,13 +3,26 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cookies } from "next/headers";
 import { createDb, type Db } from "@ash/db";
-import { ensureUser, GameError } from "@ash/game";
+import { secureRng } from "@ash/engine";
+import { ensureUser, GameError, newGame, PregenStore } from "@ash/game";
 import { configFromEnv, createRouter, type ModelRouter, type Tier } from "@ash/llm";
 import type { World } from "@ash/worlds";
+import { isUid, UID_COOKIE, uidCookieOptions } from "./uid";
 
 let router: ModelRouter | null = null;
 export function getRouter(): ModelRouter {
   return (router ??= createRouter(configFromEnv()));
+}
+
+/**
+ * Заготовки дел (ранний старт, пока игрок выбирает портрет). Живут в памяти процесса;
+ * через globalThis — чтобы перезагрузка модулей в dev не плодила хранилища.
+ */
+const g = globalThis as { __ashPregen?: PregenStore };
+export function getPregen(): PregenStore {
+  return (g.__ashPregen ??= new PregenStore(({ draft, tier, signal, onProgress }) =>
+    newGame({ router: getRouter(), tier, draft, rng: secureRng, seed: crypto.randomUUID(), signal, onProgress }),
+  ));
 }
 
 let dbHandle: ReturnType<typeof createDb> | null = null;
@@ -35,18 +48,16 @@ export function getWorldBible(world: World): string {
   return text;
 }
 
-const COOKIE = "ash_uid";
-
 /**
- * Временный игрок: случайный id в httpOnly-cookie. Заменится входом через почту и соцсети в фазе 4.
- * Вызывать только из Route Handlers — там cookie можно записать.
+ * Временный игрок: случайный id в httpOnly-cookie (выдаёт proxy.ts). Заменится входом через почту и соцсети в фазе 4.
+ * Вызывать только из Route Handlers — там cookie можно записать, если proxy почему-то её не выдал.
  */
 export async function currentUser(): Promise<{ id: string; tier: Tier }> {
   const jar = await cookies();
-  let id = jar.get(COOKIE)?.value;
-  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+  let id = jar.get(UID_COOKIE)?.value;
+  if (!isUid(id)) {
     id = crypto.randomUUID();
-    jar.set(COOKIE, id, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 365, path: "/" });
+    jar.set(UID_COOKIE, id, uidCookieOptions());
   }
   return ensureUser(getDb(), id);
 }

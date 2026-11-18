@@ -81,11 +81,22 @@ export default function NewHero() {
   const toggleSkill = (s: SkillName) =>
     setSkills((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : cur.length < CHOSEN_SKILLS ? [...cur, s] : cur));
 
+  /**
+   * Ранний старт: пока игрок выбирает портрет или читает предысторию, мастер уже придумывает дело.
+   * Ответ не ждём; неполный герой сервер просто пропустит. Если потом герой изменится —
+   * при старте дело придумается заново.
+   */
+  const pregen = (d: CharacterDraft) => {
+    if (validateDraft(R, d).length === 0) void fetch("/api/campaigns/pregen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: d }) }).catch(() => undefined);
+  };
+
   async function writeStory() {
     setBusy("story");
     setError("");
     try {
-      setBackstory((await api<{ text: string }>("/api/backstory", { draft })).text);
+      const text = (await api<{ text: string }>("/api/backstory", { draft })).text;
+      setBackstory(text);
+      pregen({ ...draft, backstory: text });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -97,6 +108,7 @@ export default function NewHero() {
     setBusy("faces");
     setError("");
     setFace(null);
+    pregen(draft);
     try {
       const r = await api<{ options: { id: string; label: string }[] }>("/api/portraits", { draft, notes: look });
       setFaces(r.options.map((o) => ({ ...o, status: "queued", url: null })));
@@ -294,6 +306,8 @@ export default function NewHero() {
         <textarea
           value={backstory}
           onChange={(e) => setBackstory(e.target.value)}
+          // Дописал предысторию сам — дело начинает придумываться под неё.
+          onBlur={() => faces.length > 0 && pregen(draft)}
           maxLength={1200}
           rows={4}
           style={{ width: "100%" }}
