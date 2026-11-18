@@ -12,10 +12,13 @@ export type { TimeOfDay } from "@ash/worlds";
 /**
  * Портреты рисуются на светлом ровном фоне и с ярким светом на лице:
  * так фон чисто вырезается, а персонаж потом читается на тёмной сцене.
- * Один кадр для всех: по пояс, голова в верхней трети с запасом сверху — тогда портреты одного масштаба и не обрезаны.
+ * Один кадр для всех: по пояс, голова в верхней трети и не касается края — тогда портреты одного масштаба и не обрезаны.
+ * Позу и ракурс («low angle», «looking over her shoulder») даёт описание персонажа, как в подписях датасета LoRA:
+ * без «centered» и пустоты над головой герои не стоят навытяжку, как в каталоге.
+ * Свет — тёплый и сбоку: лицо читается на тёмной сцене, но без глянца фронтального света.
  */
 const PORTRAIT_LIGHT =
-  "waist-up portrait of a single character, centered, three-quarter view, head in the upper third with empty space above it, shoulders and elbows fully inside the frame, cut at the waist, bright warm key light on the face, soft rim light, plain flat light grey studio background";
+  "waist-up portrait of a single character, head in the upper third not touching the top edge, shoulders and elbows fully inside the frame, cut at the waist, warm directional side light on the face, matte shading, plain flat light grey studio background";
 
 /**
  * Начало промпта: стиль мира. С LoRA — триггер из датасета и короткий префикс (эпоха и запреты),

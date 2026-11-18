@@ -40,6 +40,14 @@ export interface NpcCard {
 }
 
 /**
+ * Что просим описать у человека — словами подписей датасета LoRA мира: телосложение прямо
+ * («thin frail build», «stout sturdy build», «voluptuous hourglass figure»), поза рук, ракурс для властных
+ * и выражение лица. Без этого модель пишет «friendly smile», и все портреты улыбаются одинаково.
+ */
+const LOOK_PARTS =
+  "age; build in plain body-type words that fit the role (e.g. thin frail, wiry, stout sturdy, heavyset, muscular, curvy, voluptuous hourglass); face with one telling feature (wrinkles, scar, freckles, dark circles); hair; clothing; one distinctive detail or object in hand; pose of the hands or body (arms crossed, hands on hips, looking over the shoulder, hugging oneself); add 'low angle' only for imposing or powerful people; expression that fits their mood (stern, haughty, wary, frightened, smug), a smile only if the role calls for one";
+
+/**
  * NPC без карточки: мастер дал ему реплики, но расу, пол и внешность описал только для главного
  * собеседника. Догадываемся по имени, репликам и сцене (в русском пол обычно слышен: «рогатая», «пришла»).
  */
@@ -58,7 +66,7 @@ export async function guessNpc(
 Name: ${o.name}
 Their lines (Russian): ${o.lines.map((l) => `«${l}»`).join(" ").slice(0, 600)}
 Scene (Russian): ${o.scene.slice(0, 600)}
-Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 15-30 words: age, build, face, hair, clothing, one distinctive detail, expression; no names, no style words"}`,
+Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 20-40 words: ${LOOK_PARTS}; no names, no style words"}`,
       signal,
     );
     const j = extractJson(raw) as Record<string, unknown> | null;
@@ -85,7 +93,7 @@ export async function describeNpc(router: ModelRouter, world: World, npc: NpcCar
     const text = oneLine(
       await ask(
         router,
-        `Write an English image prompt fragment (15-35 words, no style words, no names) describing how this ${world.art.genreEn} character looks: age, build, face, hair, clothing, one distinctive detail, expression.\nCharacter: ${npc.name}, ${world.rules.races[npc.race]?.name ?? npc.race} (${raceEn(world, npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
+        `Write an English image prompt fragment (20-45 words, no style words, no names) describing how this ${world.art.genreEn} character looks: ${LOOK_PARTS}.\nCharacter: ${npc.name}, ${world.rules.races[npc.race]?.name ?? npc.race} (${raceEn(world, npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
         signal,
       ),
     );

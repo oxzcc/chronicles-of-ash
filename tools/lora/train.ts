@@ -1,6 +1,7 @@
 /**
  * Обучение LoRA стиля мира на fal (FLUX.2 [klein] 9B Base; тренер 4B на fal закрыт).
- * Такая LoRA работает только на 9B — в игре её рисует fal-ai/flux-2/klein/9b/lora (FAL_LORA_MODEL).
+ * Такая LoRA работает только на 9B Base — в игре её рисует fal-ai/flux-2/klein/9b/base/lora (FAL_LORA_MODEL).
+ * На дистиллированной klein/9b/lora она почти не действует.
  *
  *   pnpm lora:train -- --world arkham                 загрузить датасет и обучить (спросит подтверждение)
  *   pnpm lora:train -- --world arkham --steps 1500 --lr 0.0002   больше шагов и выше learning rate
@@ -18,8 +19,8 @@ import { fal } from "@fal-ai/client";
 const TRAINER_DEFAULT = "fal-ai/flux-2-klein-9b-base-trainer";
 /** Эндпоинт генерации, который понимает LoRA этого тренера. */
 const INFERENCE: Record<string, string> = {
-  "fal-ai/flux-2-klein-9b-base-trainer": "fal-ai/flux-2/klein/9b/lora",
-  "fal-ai/flux-2-klein-4b-base-trainer": "fal-ai/flux-2/klein/4b/lora",
+  "fal-ai/flux-2-klein-9b-base-trainer": "fal-ai/flux-2/klein/9b/base/lora",
+  "fal-ai/flux-2-klein-4b-base-trainer": "fal-ai/flux-2/klein/4b/base/lora",
 };
 
 const arg = (name: string, def: string) => {
@@ -97,4 +98,4 @@ save({ loraUrl, configUrl: data.config_file?.url, finishedAt: new Date().toISOSt
 const id = world.toUpperCase();
 console.log(`\nГотово за ${Math.round((Date.now() - t0) / 60000)} мин. Веса: ${statePath}`);
 console.log(`Сравнить с LoRA и без: pnpm lora:compare -- --world ${world}`);
-console.log(`Включить в игре — добавь в .env:\n  FAL_LORA_${id}_URL="${loraUrl}"\n  FAL_LORA_${id}_SCALE="0.8"\n  FAL_LORA_MODEL="${INFERENCE[TRAINER] ?? "fal-ai/flux-2/klein/9b/lora"}"`);
+console.log(`Включить в игре — добавь в .env:\n  FAL_LORA_${id}_URL="${loraUrl}"\n  FAL_LORA_${id}_SCALE="0.8"\n  FAL_LORA_MODEL="${INFERENCE[TRAINER] ?? "fal-ai/flux-2/klein/9b/base/lora"}"`);

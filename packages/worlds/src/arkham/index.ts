@@ -63,7 +63,7 @@ export const arkham: World = {
       {
         id: "caldwell", name: "Хэтти Колдуэлл", label: "библиотекарь Хэтти Колдуэлл", role: "младший библиотекарь Мискатоника", gender: "f",
         look: "молодая женщина лет двадцати пяти, круглые очки, каштановые волосы волной, пышная фигура, приталенная блузка с камеей, стопка книг",
-        portrait: "female, ordinary 1920s American, young woman about twenty-five, round tortoiseshell spectacles, chestnut finger-waved bob, curvy figure, fitted cream blouse with a cameo brooch and a high-waisted skirt, holding a stack of old books, shy clever smile",
+        portrait: "female, ordinary 1920s American, young woman about twenty-five, curvy build with a full bust and wide hips, round tortoiseshell spectacles, chestnut finger-waved bob, pencil behind the ear, fitted cream blouse with a cameo brooch and a high-waisted skirt, hugging a stack of old books to her chest, shy clever sidelong glance",
       },
       {
         id: "malloy", name: "сержант Деннис Маллой", label: "сержант Деннис Маллой", role: "полицейский сержант", gender: "m",
@@ -78,7 +78,7 @@ export const arkham: World = {
       {
         id: "ashworth", name: "Рут Эшворт", label: "репортёр Рут Эшворт", role: "репортёр «Вестника»", gender: "f",
         look: "женщина около тридцати, чёрное каре, алая помада, пышная фигура, шёлковая блуза с расстёгнутым воротом под мужским жилетом, блокнот",
-        portrait: "female, ordinary 1920s American, woman about thirty, sleek black bob, red lipstick, curvy figure, silk blouse open at the collar under a man's pinstripe waistcoat, reporter's notebook in hand, confident sly smile",
+        portrait: "female, ordinary 1920s American, woman about thirty, curvy voluptuous build with a large bust and wide hips, sleek black bob, red lipstick, silk blouse open at the collar under a man's pinstripe waistcoat, small spiral reporter's notepad and a pencil in hand, hand on hip, confident sly smirk, low angle",
       },
       {
         id: "finnegan", name: "Тео Финнеган", label: "Тео Финнеган из бакалеи", role: "хозяин подпольного бара", gender: "m",
@@ -88,7 +88,7 @@ export const arkham: World = {
       {
         id: "reznik", name: "мадам Иоланта Резник", label: "букинистка мадам Иоланта Резник", role: "букинистка и гадалка", gender: "f",
         look: "статная женщина за сорок, чёрные кудри с проседью, подведённые глаза, пышная фигура, бархатное платье с глубоким вырезом, шаль с бахромой, кольца",
-        portrait: "female, ordinary 1920s American, statuesque woman in her mid-forties, heavy black curls streaked with grey, kohl-rimmed dark eyes, full figure, dark velvet dress with a low neckline under a fringed shawl, strings of beads and many rings, knowing smile",
+        portrait: "female, ordinary 1920s American, statuesque woman in her mid-forties, voluptuous curvy build with a very large bust, fine lines around the eyes, heavy black curls streaked with grey, kohl-rimmed dark eyes, dark velvet dress with a deep neckline under a fringed shawl, strings of beads and many rings, shuffling a deck of tarot cards, knowing enigmatic look",
       },
     ],
     insiderChance: 0.1,
