@@ -22,7 +22,8 @@
     "lora:dataset": "tsx tools/lora/dataset.ts",
     "lora:train": "tsx --env-file-if-exists=.env tools/lora/train.ts",
     "lora:compare": "tsx --env-file-if-exists=.env tools/lora/compare.ts",
-    "cast:preview": "tsx --env-file-if-exists=.env tools/cast-preview.ts"
+    "cast:preview": "tsx --env-file-if-exists=.env tools/cast-preview.ts",
+    "images:restyle": "tsx --env-file-if-exists=.env tools/restyle-images.ts"
   },
   "devDependencies": {
     "@fal-ai/client": "^1.11.0",
@@ -42,6 +43,7 @@
     ]
   },
   "dependencies": {
+    "@ash/db": "workspace:^",
     "@ash/engine": "workspace:^",
     "@ash/game": "workspace:^",
     "@ash/images": "workspace:^",

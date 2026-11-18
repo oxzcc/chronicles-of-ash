@@ -98,4 +98,4 @@ save({ loraUrl, configUrl: data.config_file?.url, finishedAt: new Date().toISOSt
 const id = world.toUpperCase();
 console.log(`\nГотово за ${Math.round((Date.now() - t0) / 60000)} мин. Веса: ${statePath}`);
 console.log(`Сравнить с LoRA и без: pnpm lora:compare -- --world ${world}`);
-console.log(`Включить в игре — добавь в .env:\n  FAL_LORA_${id}_URL="${loraUrl}"\n  FAL_LORA_${id}_SCALE="0.8"\n  FAL_LORA_MODEL="${INFERENCE[TRAINER] ?? "fal-ai/flux-2/klein/9b/base/lora"}"`);
+console.log(`Включить в игре — добавь в .env:\n  FAL_LORA_${id}_URL="${loraUrl}"\n  FAL_LORA_${id}_SCALE="1.2"\n  FAL_LORA_MODEL="${INFERENCE[TRAINER] ?? "fal-ai/flux-2/klein/9b/base/lora"}"`);

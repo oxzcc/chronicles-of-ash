@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@ash/db':
+        specifier: workspace:^
+        version: link:packages/db
       '@ash/engine':
         specifier: workspace:^
         version: link:packages/engine

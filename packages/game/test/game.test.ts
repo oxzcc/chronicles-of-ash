@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { mulberry32, neighbors, sameName, type CharacterDraft } from "@ash/engine";
 import { getWorld } from "@ash/worlds";
 import { createRouter, type CompletionRequest, type CompletionResult, type LlmProvider } from "@ash/llm";
-import { createDb, npcs } from "@ash/db";
+import { createDb, images, npcs } from "@ash/db";
 import { eq } from "drizzle-orm";
 import {
   campaignTurns, ConflictError, createCampaign, ensureUser, GameError, loadCampaign, newGame, playTurn, saveTurn,
@@ -415,5 +415,47 @@ describe.skipIf(!url)("картинки", async () => {
     const cid = await createCampaign(db, other, g);
     const c = await loadCampaign(db, other, cid);
     await expect(v.attachHeroPortrait(db, other, c.characterId, opts[0]!.id)).rejects.toThrow(/недоступен/);
+  });
+
+  it("перерисовка мира: готовые картинки — снова в очередь на месте, под новым ключом; постоянные лица — по нынешнему описанию", async () => {
+    const d = await deps();
+    await drain(d);
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const arkham = getWorld("arkham");
+    const draftA: CharacterDraft = { world: "arkham", phobia: "Мертвецы", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: draftA, rng: mulberry32(2), seed: "restyle" });
+    const id = await createCampaign(db, uid, g);
+    await v.prefetchVisuals(db, id, arkham, g.campaign);
+    await drain(d);
+    const bgId = g.campaign.locations.find((l) => l.imageId)!.imageId!;
+    // Портрет Рут из старых данных мира: другой отпечаток описания, книга вместо блокнота.
+    const ruth = arkham.cast!.allies.find((m) => m.id === "ashworth")!;
+    const [old] = await db
+      .insert(images)
+      .values({ kind: "npc", job: { world: "arkham", type: "portrait", description: "woman with a book", seed: 1 }, tags: ["cast:arkham:ashworth:old"], prompt: "", model: "", status: "ready", url: "/api/images/npc/old.webp" })
+      .returning({ id: images.id });
+    const heroOpts = await v.createHeroOptions(db, fakeRouter(), uid, { world: "arkham", race: "human", cls: "journalist", gender: "f" }, "");
+    await drain(d);
+
+    expect((await v.restyleImages(db, "arkham", { dryRun: true })).background).toBeGreaterThan(0);
+    const counts = await v.restyleImages(db, "arkham");
+    expect(counts.npc).toBeGreaterThan(0);
+    expect(counts.hero).toBeUndefined();
+    const row = async (iid: string) => (await db.select().from(images).where(eq(images.id, iid)))[0]!;
+    expect((await row(bgId)).status).toBe("queued");
+    expect((await row(bgId)).tags).toContain(v.PREFETCH_TAG);
+    expect((await row(heroOpts[0]!.id)).status).toBe("ready");
+    const ruthRow = await row(old!.id);
+    expect((ruthRow.job as { description: string }).description).toBe(ruth.portrait);
+    expect(ruthRow.tags).toContain(v.castTag(arkham, ruth));
+    await drain(d);
+    const bg = await row(bgId);
+    expect(bg.status).toBe("ready");
+    expect(bg.url).toMatch(/^\/api\/images\/bg\/.+-r1\.webp$/);
+    // Вторая перерисовка — следующий ключ.
+    await v.restyleImages(db, "arkham");
+    await drain(d);
+    expect((await row(bgId)).url).toMatch(/-r2\.webp$/);
   });
 });
