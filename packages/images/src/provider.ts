@@ -78,21 +78,32 @@ export function falConfigFromEnv(env: Record<string, string | undefined> = proce
   };
 }
 
-/** Примерная цена за картинку — для учёта; точную fal не возвращает. */
+/**
+ * Размер фона. Фон растягивается на весь экран, поэтому 1024×576 (landscape_16_9) на больших мониторах
+ * выглядит мыльным. 1920×1088 — кратно 16; fal не рисует klein больше 2048 по длинной стороне.
+ */
+export const BACKGROUND_SIZE = { width: 1920, height: 1088 } as const;
+const PORTRAIT_SIZE = { width: 1024, height: 1024 } as const;
+
+/** Модели, которые fal считает за мегапиксель (цена ниже — за 1 Мп), остальные — за картинку. */
+const PER_MP = /flux-2\/klein/;
+
+/** Примерная цена — для учёта; точную fal не возвращает. */
 const PRICE: Record<string, number> = {
   "fal-ai/flux-pro/kontext/text-to-image": 0.04,
   "fal-ai/flux-2/klein/4b": 0.003,
-  // LoRA-эндпоинты считают за мегапиксель: square_hd ≈ 1 Мп, фон 16:9 — около 0,6 Мп.
   "fal-ai/flux-2/klein/4b/lora": 0.01,
   "fal-ai/flux-2/klein/9b/lora": 0.015,
   "fal-ai/birefnet/v2": 0.002,
 };
 
+const price = (model: string, megapixels: number) => (PRICE[model] ?? 0) * (PER_MP.test(model) ? megapixels : 1);
+
 export class FalImageProvider implements ImageProvider {
   readonly name = "fal";
   constructor(private readonly cfg: FalConfig) {}
 
-  private async call(model: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ImageResult> {
+  private async call(model: string, input: Record<string, unknown>, signal?: AbortSignal, megapixels = 1): Promise<ImageResult> {
     const f = this.cfg.fetchImpl ?? fetch;
     // sync_mode: картинка приходит прямо в ответе (data URI), без скачивания с fal.media.
     const res = await f(`https://fal.run/${model}`, {
@@ -106,10 +117,10 @@ export class FalImageProvider implements ImageProvider {
     const url: string | undefined = body.images?.[0]?.url ?? body.image?.url;
     if (!url) throw new Error(`fal ${model}: no image in response`);
     const m = /^data:([^;]+);base64,(.*)$/s.exec(url);
-    if (m) return { bytes: Buffer.from(m[2]!, "base64"), contentType: m[1]!, model, costUsd: PRICE[model] ?? 0 };
+    if (m) return { bytes: Buffer.from(m[2]!, "base64"), contentType: m[1]!, model, costUsd: price(model, megapixels) };
     const img = await f(url, { signal });
     if (!img.ok) throw new Error(`fal download ${img.status}`);
-    return { bytes: Buffer.from(await img.arrayBuffer()), contentType: img.headers.get("content-type") ?? "image/png", model, costUsd: PRICE[model] ?? 0 };
+    return { bytes: Buffer.from(await img.arrayBuffer()), contentType: img.headers.get("content-type") ?? "image/png", model, costUsd: price(model, megapixels) };
   }
 
   loraFor(worldId: string): LoraRef | undefined {
@@ -120,11 +131,11 @@ export class FalImageProvider implements ImageProvider {
     const base = req.quality === "portrait" ? this.cfg.portraitModel : this.cfg.backgroundModel;
     const model = req.lora ? this.cfg.loraModel || DEFAULT_LORA_MODEL : base;
     const isKontext = model.includes("kontext");
-    const size = isKontext
-      ? { aspect_ratio: req.shape === "portrait" ? "1:1" : "16:9" }
-      : { image_size: req.shape === "portrait" ? "square_hd" : "landscape_16_9" };
+    const dims = req.shape === "portrait" ? PORTRAIT_SIZE : BACKGROUND_SIZE;
+    const size = isKontext ? { aspect_ratio: req.shape === "portrait" ? "1:1" : "16:9" } : { image_size: { ...dims } };
     const loras = req.lora ? { loras: [{ path: req.lora.url, scale: req.lora.scale }] } : {};
-    return this.call(model, { prompt: req.prompt, num_images: 1, ...size, ...loras, ...(req.seed !== undefined ? { seed: req.seed } : {}) }, req.signal);
+    const mp = (dims.width * dims.height) / 1_000_000;
+    return this.call(model, { prompt: req.prompt, num_images: 1, ...size, ...loras, ...(req.seed !== undefined ? { seed: req.seed } : {}) }, req.signal, mp);
   }
 
   removeBackground(image: Buffer, signal?: AbortSignal): Promise<ImageResult> {

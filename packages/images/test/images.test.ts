@@ -69,7 +69,7 @@ describe("fal", () => {
     const g = await p.generate({ prompt: "x", shape: "portrait", quality: "portrait", seed: 3 });
     const c = await p.removeBackground(g.bytes);
     expect(g.bytes.equals(png)).toBe(true);
-    expect(calls[0]!.body).toMatchObject({ sync_mode: true, image_size: "square_hd", seed: 3 });
+    expect(calls[0]!.body).toMatchObject({ sync_mode: true, image_size: { width: 1024, height: 1024 }, seed: 3 });
     expect(calls[1]!.url).toBe("https://fal.run/fal-ai/birefnet/v2");
     expect(calls[1]!.body).toMatchObject({ model: "Portrait", output_format: "png" });
     expect(c.costUsd).toBeGreaterThan(0);
@@ -163,6 +163,9 @@ describe("LoRA стиля", () => {
     expect(calls[0]!.body.loras).toEqual([{ path: "https://w/l.safetensors", scale: 0.7 }]);
     expect(a.prompt).toMatch(/^mthnr style, /);
     expect(a.model).toBe("fal-ai/flux-2/klein/4b/lora");
+    // Фон — 1920×1088 (на больших экранах 1024×576 мылится), цена — за мегапиксели.
+    expect(calls[0]!.body.image_size).toEqual({ width: 1920, height: 1088 });
+    expect(a.costUsd).toBeCloseTo(0.01 * 1.92 * 1.088, 5);
 
     calls.length = 0;
     const f = await renderBackground({ world, provider, storage, description: "a ruined keep", time: "dusk", key: "bg/f", seed: 1 });
