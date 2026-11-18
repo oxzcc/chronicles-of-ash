@@ -11,6 +11,8 @@ export function draftWorld(d: Pick<CharacterDraft, "world">): World {
 }
 
 export interface NewGameResult extends GameState {
+  /** В этом деле замешан кто-то из своих (редкий поворот). */
+  insider: boolean;
   usage: Usage;
   model: string;
   usedFallback: boolean;
@@ -38,6 +40,8 @@ export async function newGame(o: {
   // рассуждений даже при effort low; с прежними 6000 ответ обрывался пустым, и каждая игра шла на запасном деле.
   // Квест фэнтези — до 2,5 тыс. из прежних 3000, тоже впритык.
   const isCase = !!world.features.case;
+  // Замешан ли в деле кто-то из своих (наставник, союзники) — редкий бросок кода, не решение модели.
+  const insider = isCase && !!world.cast && o.rng() < world.cast.insiderChance;
   const layout = (seed: object) => (isCase ? layoutCase(world.rules, seed as CaseSeed, o.seed) : layoutCampaign(world.rules, seed as QuestSeed, o.seed));
   const progress = o.onProgress ? progressTracker({ kind: isCase ? "case" : "quest", thinkingLabel: world.ui.starting, onProgress: o.onProgress }) : null;
   progress?.start();
@@ -50,7 +54,7 @@ export async function newGame(o: {
         model, signal: o.signal, maxTokens: isCase ? 16000 : 6000, temperature: 1,
         onReasoning: progress ? (n) => progress.reasoning(n) : undefined,
         onText: progress ? (_d, full) => progress.text(full) : undefined,
-        messages: [{ role: "user", content: isCase ? casePrompt(world, character) : questPrompt(world, character) }],
+        messages: [{ role: "user", content: isCase ? casePrompt(world, character, 8, insider) : questPrompt(world, character) }],
       });
       usage = addUsage(usage, r.usage);
       const raw = extractJson(r.text);
@@ -64,7 +68,7 @@ export async function newGame(o: {
     if (ticker) clearInterval(ticker);
   }
   const usedFallback = !campaign;
-  return { character, campaign: campaign ?? layout(isCase && world.fallbackCase ? world.fallbackCase : world.fallbackQuest), usage, model, usedFallback };
+  return { character, campaign: campaign ?? layout(isCase && world.fallbackCase ? world.fallbackCase : world.fallbackQuest), insider: insider && !usedFallback, usage, model, usedFallback };
 }
 
 /** Предыстория по выбору игрока — служебной моделью. */

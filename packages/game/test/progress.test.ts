@@ -87,3 +87,37 @@ describe("новая игра с полосой загрузки", () => {
     expect(seen.some((p) => p.phase === "retry")).toBe(true);
   });
 });
+
+describe("свои в деле", () => {
+  const W = getWorld("arkham");
+  const d: CharacterDraft = { world: "arkham", phobia: W.rules.sanity!.phobias[0]!, name: "Уолтер Грей", gender: "m", race: "human", cls: "detective", skills: ["Внимательность", "Психология"], base: { ...W.rules.recommended.detective! } };
+  const run = async (roll: number) => {
+    const prompts: string[] = [];
+    const provider: LlmProvider = {
+      name: "p",
+      async complete(req: CompletionRequest): Promise<CompletionResult> {
+        prompts.push(String(req.messages[0]!.content));
+        const text = JSON.stringify(W.fallbackCase);
+        return { text, toolCalls: [], usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0, costUsd: 0 }, model: "m", finishReason: "stop" };
+      },
+    };
+    const router = { isFake: false, route: () => ({ provider, model: "m" }), direct: () => ({ provider, model: "m" }) } as any;
+    // Первые броски уходят на героя (золото), последний — на «своих».
+    const g = await newGame({ router, tier: "free", draft: d, rng: () => roll, seed: "c" });
+    return { g, prompt: prompts[0]! };
+  };
+  it("редкий бросок решает код: ниже шанса — один из своих замешан", async () => {
+    const yes = await run(W.cast!.insiderChance / 2);
+    expect(yes.g.insider).toBe(true);
+    expect(yes.prompt).toMatch(/Поворот этого дела: один из своих/);
+    expect(yes.prompt).toMatch(/Хэтти Колдуэлл/);
+    const no = await run(0.5);
+    expect(no.g.insider).toBe(false);
+    expect(no.prompt).toMatch(/Свои вне подозрений/);
+  });
+  it("шанс редкий, у фэнтези своих нет", () => {
+    expect(W.cast!.insiderChance).toBeGreaterThan(0);
+    expect(W.cast!.insiderChance).toBeLessThanOrEqual(0.2);
+    expect(getWorld("fantasy").cast).toBeUndefined();
+  });
+});

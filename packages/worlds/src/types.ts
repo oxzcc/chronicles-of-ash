@@ -38,6 +38,11 @@ export interface World {
   };
   /** Запасное дело (для features.case). */
   fallbackCase?: CaseSeed;
+  /**
+   * «Свои» в деле: наставник и союзники героя. Обычно они вне подозрений; изредка (insiderChance,
+   * бросает код при создании дела) один из них замешан — это поворот, а не правило.
+   */
+  cast?: { mentor: string; allies: string[]; insiderChance: number };
   art: ArtStyle;
 }
 
