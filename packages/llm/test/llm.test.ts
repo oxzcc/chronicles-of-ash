@@ -59,6 +59,17 @@ describe("разбор ответа мастера", () => {
     if (r.ok) return;
     expect(r.fallback.beats[0]!.text).toBe("Дверь скрипит\nи открывается");
   });
+  it("переход по рассказу и облик врага", () => {
+    const r = parseGmResponse('{"beats":[{"speaker":null,"text":"Ворота кладбища."}],"move":" Кладбище Крайстчерч ","combat":{"enemies":[{"name":"Упырь","hp":9,"ac":12,"attack":3,"damage":"1d6","creature":true,"look":"серая кожа, когти","gender":"x"}]}}', R);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.move).toBe("Кладбище Крайстчерч");
+    expect(r.value.combat!.enemies[0]).toMatchObject({ name: "Упырь", creature: true, look: "серая кожа, когти", gender: undefined });
+    for (const m of ['"move":null', '"move":"null"', '"move":""', '"move":5']) {
+      const x = parseGmResponse(`{"beats":[{"speaker":null,"text":"Тут."}],${m}}`, R);
+      expect(x.ok && x.value.move).toBeNull();
+    }
+  });
 });
 
 describe("стриминг реплик", () => {
@@ -212,8 +223,8 @@ describe("промпты по мирам", () => {
     expect(a).toContain('"race":"human"');
     expect(a).not.toMatch(/Baldur|тёмно-фэнтезийн|золот/);
     expect(gmRules(world)).not.toContain("РАССЛЕДОВАНИЕ:");
-    expect(promptVersion(arkham)).toBe("gm-3+arkham-4");
-    expect(promptVersion(world)).toBe("gm-3");
+    expect(promptVersion(arkham)).toBe("gm-4+arkham-4");
+    expect(promptVersion(world)).toBe("gm-4");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
     const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] }, mulberry32(1));
@@ -231,7 +242,7 @@ describe("промпты по мирам", () => {
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-3+arkham-4");
+    expect(r.promptVersion).toBe("gm-4+arkham-4");
   });
 });
 
@@ -251,7 +262,7 @@ describe("дело в промптах", () => {
     expect(p).toContain("Разгадка: Корделию Вейл отравил");
     expect(p).toContain("[c1] Дом Вейлов на Сосновой улице (L1) — не найдена, ключевая");
     expect(p).toMatch(/Места, о которых герой ещё не знает: Бакалея Финнегана \(L4/);
-    expect(p).toContain("Известные герою адреса:");
+    expect(p).toContain("известные герою адреса, каждый переход — визит по делу");
     expect(p).toContain("Визиты: 0 из 10.");
   });
   it("ответ мастера несёт улики и адреса", () => {

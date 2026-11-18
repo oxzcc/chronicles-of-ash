@@ -35,7 +35,7 @@ export interface GenSnapshot {
 }
 
 const EXPECT: Record<GenKind, { reasoningChars: number; thinkMs: number; textChars: number; writeMs: number }> = {
-  case: { reasoningChars: 20_000, thinkMs: 48_000, textChars: 5_200, writeMs: 10_000 },
+  case: { reasoningChars: 20_000, thinkMs: 48_000, textChars: 5_900, writeMs: 11_000 },
   quest: { reasoningChars: 4_000, thinkMs: 12_000, textChars: 1_700, writeMs: 3_000 },
 };
 

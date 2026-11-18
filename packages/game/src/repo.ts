@@ -25,6 +25,11 @@ export async function createCampaign(db: Db, userId: string, s: GameState): Prom
   });
 }
 
+/** Состояние новой кампании до первого хода (фоны про запас записались в места). Ход уже сделан — не трогаем. */
+export async function saveFreshState(db: Db, id: string, state: Campaign): Promise<void> {
+  await db.update(campaigns).set({ state }).where(and(eq(campaigns.id, id), eq(campaigns.turnNo, 0)));
+}
+
 export interface LoadedCampaign {
   id: string;
   characterId: string;

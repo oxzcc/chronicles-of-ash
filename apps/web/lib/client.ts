@@ -1,6 +1,6 @@
 "use client";
 
-import type { Character, CheckResult, CombatEvent, CombatOutcome, CombatState, PublicCampaign } from "@ash/engine";
+import type { Character, CheckResult, CombatEvent, CombatOutcome, CombatState, LocationType, PublicCampaign } from "@ash/engine";
 import type { Beat, Suggestion } from "@ash/llm";
 import type { SceneView } from "@ash/game";
 
@@ -35,7 +35,7 @@ export interface CampaignView {
 export type TurnStreamEvent =
   | { type: "beats"; beats: Beat[] }
   /** Герой вошёл в локацию (ещё до рассказа): фон уже в очереди или готов. */
-  | { type: "arrive"; location: string; imageId: string | null; image: SceneView["locations"][string] | null }
+  | { type: "arrive"; location: string; name: string; locType: LocationType; imageId: string | null; image: SceneView["locations"][string] | null }
   | { type: "roll"; roll: CheckResult }
   | { type: "combat"; events: CombatEvent[]; combat: CombatState | null; outcome: CombatOutcome }
   | { type: "done"; turnNo: number; character: Character; campaign: PublicCampaign; turns: TurnView[]; costUsd: number; scene: SceneView }

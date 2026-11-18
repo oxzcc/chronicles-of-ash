@@ -75,6 +75,10 @@ const EnemySchema = z.object({
   ac: int,
   attack: int,
   damage: z.string().catch("1d6+1"),
+  /** Для портрета врага: пол, облик; creature — зверь или чудовище, а не человек. */
+  gender: z.enum(["m", "f"]).optional().catch(undefined),
+  creature: z.boolean().optional().catch(undefined),
+  look: str(200).optional(),
 });
 
 const rawResponseSchema = (r: Ruleset) => z.object({
@@ -105,6 +109,13 @@ const rawResponseSchema = (r: Ruleset) => z.object({
   clues: strList(4, 8).default([]),
   reveal: strList(4, 8).default([]),
   suggestions: z.array(z.unknown()).catch([]).default([]),
+  /** Герой по ходу рассказа пришёл в другое место карты: название или id; проверяет движок. */
+  move: z
+    .string()
+    .nullable()
+    .catch(null)
+    .default(null)
+    .transform((m) => (m && m.trim() && !/^(null|нет|none)$/i.test(m.trim()) ? m.trim().slice(0, 80) : null)),
 });
 
 /** Схема ответа мастера для правил мира: расы NPC и навыки проверок — из мира. */
@@ -130,6 +141,7 @@ function buildGmResponseSchema(rules: Ruleset) {
       questComplete: r.questComplete,
       clues: r.clues,
       reveal: r.reveal,
+      move: r.move,
       suggestions,
     };
   });

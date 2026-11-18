@@ -9,7 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { hashStr, mulberry32 } from "@ash/engine";
+import { applyCaseChanges, hashStr, mulberry32, storyMove } from "@ash/engine";
 import { configFromEnv, createRouter, runNarratorTurn } from "@ash/llm";
 import { worldBiblePath } from "@ash/worlds";
 import { buildScene, type SceneSet } from "./scene";
@@ -56,8 +56,16 @@ for (const scene of scenes) {
       const { world, ...built } = buildScene(set, scene);
       const r = await runNarratorTurn({ provider, model: id, world, worldBible, scene: built, rng: mulberry32(hashStr(scene.id)) });
       total += r.usage.costUsd;
-      results.push({ scene: scene.id, model, ms: Date.now() - t0, response: r.response, rolls: r.rolls.map((x) => x.summary), usage: r.usage, degraded: r.degraded, requests: r.requests });
-      console.log(`${Date.now() - t0} мс, $${r.usage.costUsd.toFixed(4)}${r.degraded ? ", JSON не разобран" : ""}`);
+      // Переход по рассказу: что скажет движок (на копии кампании, после reveal из этого же ответа).
+      let move: string | null = null;
+      if (r.response.move) {
+        const w = structuredClone(built.campaign);
+        applyCaseChanges(w, { clues: r.response.clues, reveal: r.response.reveal });
+        const m = storyMove(world.rules, w, r.response.move, mulberry32(1));
+        move = `«${r.response.move}» → ${!m ? "то же место" : "error" in m ? `отклонён: ${m.error}` : `принят: ${m.to.name}`}`;
+      }
+      results.push({ scene: scene.id, model, ms: Date.now() - t0, response: r.response, move, rolls: r.rolls.map((x) => x.summary), usage: r.usage, degraded: r.degraded, requests: r.requests });
+      console.log(`${Date.now() - t0} мс, $${r.usage.costUsd.toFixed(4)}${r.degraded ? ", JSON не разобран" : ""}${move ? `, move ${move}` : ""}`);
     } catch (e) {
       results.push({ scene: scene.id, model, error: (e as Error).message });
       console.log(`ошибка: ${(e as Error).message}`);

@@ -22,6 +22,16 @@ describe("дело: раскладка", () => {
     expect(c.limit).toBe(10);
     expect(w.target).toBe("");
   });
+  it("жители: пол и внешность — для портретов заранее; битые поля отбрасываются", () => {
+    const people = [
+      { name: "Эзра Кроу", role: "могильщик", gender: "m", look: "старик с лопатой", at: 1 },
+      { name: "Мод", role: "вдова", gender: "?", look: 42, at: 1 },
+    ];
+    const c = layoutCase(R, { ...seed, people } as CaseSeed, "s").case!;
+    expect(c.people[0]).toMatchObject({ name: "Эзра Кроу", gender: "m", look: "старик с лопатой" });
+    expect(c.people[1]!.gender).toBeUndefined();
+    expect(c.people[1]!.look).toBeUndefined();
+  });
   it("битое дело не собирается, битые улики отбрасываются", () => {
     expect(() => layoutCase(R, { ...seed, truth: "" }, "s")).toThrow();
     expect(() => layoutCase(R, { ...seed, questions: [] }, "s")).toThrow();

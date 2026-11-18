@@ -7,3 +7,4 @@ export * from "./changes";
 export * from "./combat";
 export * from "./world";
 export * from "./case";
+export * from "./names";

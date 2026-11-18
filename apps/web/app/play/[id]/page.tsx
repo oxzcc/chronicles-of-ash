@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { locationById, locationTypeName, type CheckResult, type CombatEvent, type CombatMove, type LocationType } from "@ash/engine";
+import { locationById, locationTypeName, matchName, type CheckResult, type CombatEvent, type CombatMove, type CombatState, type LocationType } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
@@ -48,7 +48,16 @@ interface Enter {
 const ARRIVAL_MS = 2600;
 const NPC_DELAY_MS = 4000;
 
-const key = (name: string) => name.trim().toLowerCase().replace(/ё/g, "е");
+/** Портрет NPC по имени: точно или по похожему имени («Эзра» = «Эзра Кроу») — так же, как сервер. */
+function npcView(scene: SceneView | undefined, name: string | null | undefined) {
+  if (!scene || !name) return undefined;
+  const all = Object.values(scene.npcs);
+  const i = matchName(name, all.map((n) => n.name));
+  return i >= 0 ? all[i] : undefined;
+}
+
+/** Противник на сцене: выбранная цель, если жива, иначе первый живой. */
+const foeOf = (cb: CombatState) => cb.enemies.find((e) => e.id === cb.target && e.hp > 0) ?? cb.enemies.find((e) => e.hp > 0) ?? cb.enemies[0];
 
 export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -117,7 +126,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       await streamTurn(`/api/campaigns/${id}/turn`, input, (e) => {
         if (e.type === "beats") setLive((l) => l && { ...l, beats: e.beats });
         else if (e.type === "arrive") {
-          setEnter((x) => x && x.to === e.location ? { ...x, imageId: e.imageId } : x);
+          // Переход по рассказу (мастер довёл героя до другого места посреди хода): без заставки — сразу новая сцена.
+          setEnter((x) => (x ? (x.to === e.location ? { ...x, imageId: e.imageId } : x) : { to: e.location, name: e.name, type: e.locType, phase: "open", imageId: e.imageId }));
           const img = e.image;
           if (img) setView((v) => v && { ...v, scene: { ...v.scene, locations: { ...v.scene.locations, [e.location]: img } } });
         }
@@ -218,10 +228,11 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const pending = useMemo(() => {
     if (!view || !scene) return false;
     const bg = scene.locations[enter?.to ?? view.campaign.current];
-    const npc = view.campaign.npc ? scene.npcs[key(view.campaign.npc.name)] : undefined;
-    // Все, кто говорит в текущих репликах, — их портреты тоже ждём.
-    const speakers = all.flatMap((b) => (b.speaker ? [scene.npcs[key(b.speaker)]] : []));
-    return [bg, npc, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"));
+    const npc = npcView(scene, view.campaign.npc?.name);
+    // Все, кто говорит в текущих репликах, — их портреты тоже ждём. И противника в бою.
+    const speakers = all.map((b) => npcView(scene, b.speaker));
+    const foe = view.campaign.combat ? npcView(scene, foeOf(view.campaign.combat)?.name) : undefined;
+    return [bg, npc, foe, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"));
   }, [view, scene, all, enter?.to]);
   // Пока ход не сохранён, сервер не знает фон новой локации — передаём его явно.
   const sceneUrl = `/api/campaigns/${id}/scene` + (enter?.imageId ? `?loc=${encodeURIComponent(enter.to)}&bg=${enter.imageId}` : "");
@@ -250,8 +261,10 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   // При входе в локацию прежний собеседник остался позади: до выхода NPC сцена пуста, потом — тот, кто заговорит.
   const nextNpc = all.find((b) => b.speaker)?.speaker ?? null;
   const onStage = enter ? (enter.phase === "open" ? (speakerName ?? nextNpc) : null) : (speakerName ?? (w.combat ? null : (w.npc?.name ?? null)));
-  const stage = onStage ? scene?.npcs[key(onStage)] : undefined;
-  const role = speakerName && w.npc && key(w.npc.name) === key(speakerName) ? w.npc.role : undefined;
+  const stage = npcView(scene, onStage);
+  const role = speakerName && w.npc && matchName(speakerName, [w.npc.name]) === 0 ? w.npc.role : undefined;
+  const foe = w.combat ? foeOf(w.combat) : undefined;
+  const foeImg = npcView(scene, foe?.name);
   const lastWithSuggestions = [...view.turns].reverse().find((t) => t.suggestions.length);
   const suggestions = !w.combat && lastWithSuggestions ? lastWithSuggestions.suggestions : [];
   const showChoices = !busy && !enter && atEnd && !w.combat;
@@ -266,7 +279,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       {titleCard ? null : w.combat ? (
         <>
           <Bust url={scene?.hero?.url} name={c.name} side="left" />
-          <Bust url={null} name="Противник" side="right" />
+          <Bust url={foeImg?.url} name={foe?.name ?? "Противник"} side="right" failed={!foeImg || foeImg.status === "failed" || foeImg.status === "none"} />
         </>
       ) : (
         onStage && <Bust url={stage?.url} name={onStage} side="left" dim={!speakerName} failed={!stage || stage.status === "failed" || stage.status === "none"} />

@@ -1,6 +1,7 @@
 import type { CharacterDraft } from "@ash/engine";
 import { secureRng } from "@ash/engine";
-import { attachHeroPortrait, createCampaign, listCampaigns, loadCampaign, newGame, type GenProgress } from "@ash/game";
+import { attachHeroPortrait, createCampaign, listCampaigns, loadCampaign, newGame, prefetchVisuals, saveFreshState, type GenProgress } from "@ash/game";
+import { worldOf } from "@ash/worlds";
 import { currentUser, errorResponse, getDb, getPregen, getRouter, sseStream } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,12 @@ export async function POST(req: Request) {
       }
       g ??= await fresh(onProgress);
       const id = await createCampaign(getDb(), user.id, g);
+      // Картинки про запас — пока рассказчик пишет завязку: фон старта, фоны известных мест, портреты жителей дела.
+      try {
+        if (await prefetchVisuals(getDb(), id, worldOf(g.character), g.campaign)) await saveFreshState(getDb(), id, g.campaign);
+      } catch (e) {
+        console.error("[images] prefetch", e);
+      }
       if (portraitId) {
         // Портрет не обязателен: если с ним что-то не так, герой просто начнёт без него.
         const c = await loadCampaign(getDb(), user.id, id, 0);
