@@ -112,6 +112,7 @@ export class OpenRouterProvider implements LlmProvider {
     }
 
     let text = "";
+    let reasoningChars = 0;
     let model = req.model;
     let finishReason = "";
     const usage = emptyUsage();
@@ -125,6 +126,12 @@ export class OpenRouterProvider implements LlmProvider {
       if (delta?.content) {
         text += delta.content;
         req.onText?.(delta.content, text);
+      }
+      // Рассуждения приходят в delta.reasoning (и дублем в reasoning_details) — считаем только первое.
+      const thought = typeof delta?.reasoning === "string" ? delta.reasoning : "";
+      if (thought && req.onReasoning) {
+        reasoningChars += thought.length;
+        req.onReasoning(reasoningChars);
       }
       for (const tc of delta?.tool_calls ?? []) {
         const idx = tc.index ?? 0;

@@ -48,12 +48,22 @@ export async function api<T>(url: string, body?: unknown): Promise<T> {
   return data as T;
 }
 
+/** Полоса загрузки при создании кампании — см. genProgress в @ash/game. */
+export type CreateStreamEvent =
+  | { type: "progress"; value: number; phase: "thinking" | "writing" | "retry"; label: string; etaSec: number | null }
+  | { type: "done"; id: string; usedFallback: boolean; costUsd: number }
+  | { type: "error"; message: string };
+
 /** POST с ответом по SSE: каждое событие отдаётся в onEvent по мере прихода. */
 export async function streamTurn(url: string, body: unknown, onEvent: (e: TurnStreamEvent) => void): Promise<void> {
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return streamSse<TurnStreamEvent>(url, body, onEvent);
+}
+
+export async function streamSse<E extends { type: string }>(url: string, body: unknown, onEvent: (e: E) => void): Promise<void> {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify(body) });
   if (!res.ok || !res.body) {
     const data = await res.json().catch(() => ({}));
-    onEvent({ type: "error", message: data.error ?? `Ошибка ${res.status}` });
+    onEvent({ type: "error", message: data.error ?? `Ошибка ${res.status}` } as unknown as E);
     return;
   }
   const reader = res.body.getReader();
@@ -71,7 +81,7 @@ export async function streamTurn(url: string, body: unknown, onEvent: (e: TurnSt
       const data = /^data: (.+)$/m.exec(block)?.[1];
       if (!type || !data) continue;
       try {
-        onEvent({ ...JSON.parse(data), type } as TurnStreamEvent);
+        onEvent({ ...JSON.parse(data), type } as E);
       } catch {}
     }
   }

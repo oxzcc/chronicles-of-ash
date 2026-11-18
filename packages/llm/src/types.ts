@@ -52,6 +52,8 @@ export interface CompletionRequest {
   signal?: AbortSignal;
   /** Каждый новый кусок текста по мере генерации. */
   onText?: (delta: string, full: string) => void;
+  /** Скрытые рассуждения по мере генерации: сколько символов пришло всего (для полосы загрузки). */
+  onReasoning?: (totalChars: number) => void;
 }
 
 export interface CompletionResult {

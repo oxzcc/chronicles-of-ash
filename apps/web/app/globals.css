@@ -299,3 +299,15 @@ textarea { resize: vertical; }
 .vn-sanity { margin-top: 0; }
 .vn-sanity > span { background: linear-gradient(90deg, #4f6b5a, #8fb59a); }
 .vn-sanity.low > span { background: linear-gradient(90deg, #4b3a5e, #8a6fae); animation: vnPulse 1.6s ease-in-out infinite; }
+
+/* Полоса загрузки при создании кампании */
+.gen-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(34, 25, 18, 0.97), rgba(10, 8, 6, 0.99)); animation: vnFade 0.4s ease; }
+.gen-card { width: min(520px, 100%); text-align: center; }
+.gen-title { font-family: var(--display); font-size: 30px; color: var(--gold-hi); letter-spacing: 0.03em; }
+.gen-label { margin: 10px 0 18px; min-height: 1.5em; font-family: var(--text); font-style: italic; color: var(--ink); }
+.gen-bar { position: relative; height: 6px; border: 1px solid var(--line); background: #120e0b; overflow: hidden; }
+.gen-fill { height: 100%; background: linear-gradient(90deg, #8a5a2b, var(--gold) 70%, var(--gold-hi)); transition: width 0.45s linear;
+  box-shadow: 0 0 12px rgba(217, 178, 92, 0.45); }
+.gen-meta { display: flex; justify-content: space-between; margin-top: 8px; font-family: var(--ui); font-size: 13px; color: var(--muted); }
+.gen-hint { margin-top: 22px; font-family: var(--ui); font-size: 13px; color: var(--muted); }
