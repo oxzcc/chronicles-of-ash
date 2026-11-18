@@ -56,6 +56,12 @@ describe("дело: ходы", () => {
     expect(r.revealed).toEqual(["L5"]);
     expect(r.rejected.join()).toMatch(/нет места L77/);
   });
+  it("reveal по названию: мастер написал «Бакалея» вместо L4 — место открывается, если подходит ровно одно", () => {
+    const w = fresh();
+    const r = applyCaseChanges(w, { reveal: ["Бакалея ", "особняк доктора Хоу", "Ки", "Ратуша"] });
+    expect(r.revealed).toEqual(["L4", "L5"]);
+    expect(r.rejected).toEqual(["reveal: нет места Ки", "reveal: нет места Ратуша"]);
+  });
   it("справочник: по фамилии, имени или названию; открывает адрес", () => {
     const w = fresh();
     expect(lookup(w, "Финнеган")).toMatchObject({ person: { name: "Тео Финнеган" }, place: "L4", revealed: true });

@@ -24,12 +24,14 @@ export async function newGame(o: { router: ModelRouter; tier: Tier; draft: Chara
   const { provider, model } = o.router.route("narrator", o.tier);
   let usage = emptyUsage();
   let campaign: Campaign | null = null;
-  // Дело больше квеста: разгадка, улики, жители, газета — модели нужно больше места.
+  // Лимит — с запасом на скрытые рассуждения: DeepSeek V4.1 Flash тратит на дело 6–10 тыс. токенов
+  // рассуждений даже при effort low; с прежними 6000 ответ обрывался пустым, и каждая игра шла на запасном деле.
+  // Квест фэнтези — до 2,5 тыс. из прежних 3000, тоже впритык.
   const isCase = !!world.features.case;
   const layout = (seed: object) => (isCase ? layoutCase(world.rules, seed as CaseSeed, o.seed) : layoutCampaign(world.rules, seed as QuestSeed, o.seed));
   for (let attempt = 0; attempt < 2 && !campaign; attempt++) {
     const r = await provider.complete({
-      model, signal: o.signal, maxTokens: isCase ? 6000 : 3000, temperature: 1,
+      model, signal: o.signal, maxTokens: isCase ? 16000 : 6000, temperature: 1,
       messages: [{ role: "user", content: isCase ? casePrompt(world, character) : questPrompt(world, character) }],
     });
     usage = addUsage(usage, r.usage);

@@ -259,16 +259,30 @@ export function applyCaseChanges(w: Campaign, p: CaseChanges): AppliedCaseChange
       out.notes.push(`улика: ${clue.text}`);
     }
   }
-  for (const id of p.reveal ?? []) {
-    const l = locationById(w, id);
-    if (!l) out.rejected.push(`reveal: нет места ${id}`);
-    else if (!c.known.includes(id)) {
-      c.known.push(id);
-      out.revealed.push(id);
+  for (const raw of p.reveal ?? []) {
+    const l = locationById(w, raw) ?? placeByName(w, raw);
+    if (!l) out.rejected.push(`reveal: нет места ${raw}`);
+    else if (!c.known.includes(l.id)) {
+      c.known.push(l.id);
+      out.revealed.push(l.id);
       out.notes.push(`новый адрес: ${l.name}`);
     }
   }
   return out;
+}
+
+/**
+ * Место по названию — когда мастер пишет в reveal «Бакалея» вместо «L4». Мастеру это можно
+ * (он и так знает дело), поэтому годится и начало названия; но только если подходит ровно одно место.
+ */
+function placeByName(w: Campaign, raw: string) {
+  const q = normName(String(raw));
+  if (q.length < 3) return undefined;
+  const hits = w.locations.filter((l) => {
+    const n = normName(l.name);
+    return n === q || n.startsWith(q) || q.startsWith(n);
+  });
+  return hits.length === 1 ? hits[0] : undefined;
 }
 
 const normName = (s: string) => s.trim().toLowerCase().replace(/ё/g, "е").replace(/[«»"'.,]/g, "").replace(/\s+/g, " ");
