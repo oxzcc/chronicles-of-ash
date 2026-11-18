@@ -220,8 +220,20 @@ const POSES = [
   "hands clasped in front, head tilted to one side",
   "one hand raised to the collar, the other holding the object at the side",
   "holding the object up close to the face",
-  "walking forward mid-step, coat swinging",
 ];
+// Без «walking»: в шаге FLUX рисует человека в полный рост и мелко — портрет выпадает из кадра остальных.
+
+/**
+ * Цвет волос и приметы на лице тоже раздаёт код: сама модель из прогона в прогон рисует одну четвёрку
+ * (рыжие кудри, седина, чёрные волосы, пепельный блонд) и всем ставит шрам или ожог.
+ */
+const HAIR = [
+  "copper-red", "auburn", "chestnut-brown", "dark brown", "jet-black", "honey-blond",
+  "platinum-blond", "ash-blond", "mousy light brown", "strawberry-blond",
+];
+/** Игрок сам написал о волосах или приметах — не спорим. */
+const HAIR_NOTE = /рыж|блонд|светлов|темновол|тёмновол|черновол|чёрн|брюнет|шатен|сед|русы|русая|каштан|волос|лыс|кос[аыу]\b|косич|стриж|кудр|каре|пучок/i;
+const MARK_NOTE = /шрам|ожог|родинк|веснуш|татуир|отметин|оспин|рубц|порез/i;
 
 /** Первые n элементов в случайном порядке (без повторов). */
 const shuffled = <T>(arr: readonly T[], rng: Rng): T[] => {
@@ -267,6 +279,19 @@ export async function heroVariants(
   const outfitList = world.art.heroOutfitsEn?.[d.cls];
   const outfits = outfitList && outfitList.length >= 4 && !CLOTHES_NOTE.test(notes) ? shuffled(outfitList, rng).slice(0, 4) : undefined;
   const poses = shuffled(POSES, rng).slice(0, 4);
+  const hair = HAIR_NOTE.test(notes) ? undefined : shuffled(HAIR, rng).slice(0, 4);
+  // Примета на лице — у одного-двух из четырёх, остальные с чистым лицом.
+  const marks = MARK_NOTE.test(notes) ? undefined : (() => {
+    const n = rng() < 0.5 ? 1 : 2;
+    const order = shuffled([0, 1, 2, 3], rng);
+    return [0, 1, 2, 3].map((i) => order.indexOf(i) < n);
+  })();
+  const specs = [0, 1, 2, 3]
+    .map((i) => {
+      const parts = [hair && `${hair[i]} hair`, marks && (marks[i] ? "one noticeable scar, burn or mark on the face" : "a clean face without scars, burns or marks")].filter(Boolean);
+      return parts.length ? `${i + 1}) ${parts.join("; ")}` : "";
+    })
+    .filter(Boolean);
   const finish = (v: LookVariant[]) =>
     v.map((x, i) => ({
       // Подпись — без телосложения, даже если модель его всё же вписала.
@@ -279,10 +304,10 @@ export async function heroVariants(
     const raw = await ask(
       router,
       `You design 4 clearly DIFFERENT looks for a ${world.art.genreEn} player character. Base: ${baseHero(world, d)} (${world.rules.races[d.race]?.name ?? d.race}, ${world.rules.classes[d.cls]?.name ?? d.cls}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
-Vary age, hair colour and style, face shape, scars or marks${outfits ? "" : ", a clothing detail"} and expression so that the 4 people are easy to tell apart.
+Vary age, hair${hair ? " style (colour is set below)" : " colour and style"}, face shape${marks ? "" : ", scars or marks"}${outfits ? "" : ", a clothing detail"} and expression so that the 4 people are easy to tell apart.${specs.length ? `\nSet by the game, in this order: ${specs.join("; ")}.` : ""}
 ${fixed} are set by the game — do not describe them.${builds ? ` Body builds, in this order: ${builds.map((b, i) => `${i + 1}) ${b}`).join("; ")}; pick ages that suit them: a curvy, voluptuous or hourglass look is 20 to 45 years old.` : ""}
 Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and an age.
-Return JSON only: [{"label":"3-6 слов по-русски: возраст, волосы, примета на лице; без фигуры и одежды","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,
+Return JSON only: [{"label":"3-6 слов по-русски: возраст, волосы и примета на лице, если она есть; без фигуры и одежды","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,
       signal,
     );
     const arr = extractJson(`{"v":${raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1)}}`) as { v?: unknown[] } | null;

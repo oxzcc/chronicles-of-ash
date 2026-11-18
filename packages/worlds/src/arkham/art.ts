@@ -22,7 +22,7 @@ export const arkhamArt: ArtStyle = {
   raceEn: () => "ordinary 1920s American",
   classEn: {
     detective: "private detective in a belted trench coat and fedora, revolver holster",
-    journalist: "newspaper reporter in a flat cap and waistcoat with a notebook and a press camera",
+    journalist: "newspaper reporter in a flat cap and waistcoat with a notebook and a boxy 1920s folding bellows press camera",
     professor: "university professor in a tweed three-piece suit with round spectacles and a cane",
     doctor: "doctor in shirt sleeves and waistcoat with a leather medical bag, stethoscope",
     veteran: "Great War veteran in a worn army greatcoat, weathered face",
@@ -37,10 +37,10 @@ export const arkhamArt: ArtStyle = {
       "private detective in a leather car coat over a knitted vest, flat cap, holding a small notebook and a pencil",
     ],
     journalist: [
-      "newspaper reporter in a flat cap and waistcoat with a notebook and a press camera",
-      "newspaper reporter in a checked tweed jacket and wide trousers, a press card tucked in the hatband, holding a folded newspaper",
-      "newspaper reporter in a light raincoat over a sweater, a camera on a strap, holding a pencil behind the ear",
-      "newspaper reporter in shirt sleeves with arm garters and a loose tie, a green eyeshade visor, holding typed pages",
+      "newspaper reporter in a flat cap and waistcoat with a notebook and a boxy 1920s folding bellows press camera",
+      "newspaper reporter in a checked tweed jacket and wide trousers, a fedora with a press card in its hatband, holding a folded newspaper",
+      "newspaper reporter in a light raincoat over a sweater, a boxy 1920s folding bellows press camera on a leather strap, a pencil tucked behind the ear",
+      "newspaper reporter in shirt sleeves with arm garters and a loose tie, a pencil tucked behind the ear, holding typed pages",
     ],
     professor: [
       "university professor in a tweed three-piece suit with round spectacles and a cane",
@@ -130,7 +130,7 @@ export const arkhamArt: ArtStyle = {
         "voluptuous hourglass figure with a very large bust, a narrow cinched waist and wide hips",
         "plump full-figured build, soft rounded body with a thick waist, full arms and a round soft face",
         "slim slender build, narrow shoulders and a flat figure",
-        "slim athletic build, toned arms and broad straight shoulders",
+        "slim athletic build, lean and fit, not muscular",
       ],
       m: ["tall muscular athletic build", "broad burly build", "wiry lean build", "heavyset stocky build"],
     },

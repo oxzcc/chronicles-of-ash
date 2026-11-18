@@ -206,6 +206,21 @@ describe("LoRA стиля", () => {
     // Модель всё же вписала фигуру в подпись — убираем.
     const chatty: any = { route: () => ({ model: "m", provider: { complete: async () => ({ text: JSON.stringify(Array.from({ length: 4 }, (_, i) => ({ label: `Молодая, рыжая ${i}, с формами`, prompt: `woman in her twenties, red hair ${i}` }))) }) } }) };
     for (const x of await heroVariants(chatty, arkham, d, "", undefined, mulberry32(1))) expect(x.label).toMatch(/^Молодая, рыжая \d$/);
+    // Цвет волос и приметы раздаёт код: четыре разных цвета, примета у одного-двух; без «walking» в позах.
+    let asked = "";
+    const spy: any = { route: () => ({ model: "m", provider: { complete: async (r: any) => { asked = r.messages[0].content; throw new Error("down"); } } }) };
+    for (let seed = 1; seed <= 20; seed++) {
+      const vv = await heroVariants(spy, arkham, d, "", undefined, mulberry32(seed));
+      const hairs = [...asked.matchAll(/\d\) ([a-z -]+) hair/g)].map((m) => m[1]);
+      expect(new Set(hairs).size).toBe(4);
+      const marked = (asked.match(/one noticeable scar/g) ?? []).length;
+      expect(marked).toBeGreaterThanOrEqual(1);
+      expect(marked).toBeLessThanOrEqual(2);
+      for (const x of vv) expect(x.prompt).not.toMatch(/walking/);
+    }
+    // Свои слова игрока о волосах и приметах — важнее.
+    await heroVariants(spy, arkham, d, "рыжая, шрам через бровь", undefined, mulberry32(5));
+    expect(asked).not.toMatch(/ hair;|noticeable scar|clean face/);
     // Игрок сам описал фигуру и одежду — их не навязываем.
     const own = await heroVariants(failing, arkham, d, "худая, высокая, в потёртом кожаном плаще", undefined, mulberry32(3));
     for (const x of own) {
