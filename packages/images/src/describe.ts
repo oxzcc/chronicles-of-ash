@@ -35,6 +35,8 @@ export interface NpcCard {
   role: string;
   /** Внешность по-русски — из ответа мастера. */
   look?: string;
+  /** Зверь или чудовище (враг в бою): без расы и пола героев мира. */
+  creature?: boolean;
 }
 
 /**
@@ -77,6 +79,7 @@ Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","r
 }
 
 export async function describeNpc(router: ModelRouter, world: World, npc: NpcCard, signal?: AbortSignal): Promise<string> {
+  if (npc.creature) return describeCreature(router, world, npc, signal);
   const fallback = `${genderEn(npc.gender)}, ${raceEn(world, npc.race, npc.gender)}, ${npc.role ? world.art.localEn : "a traveller"}, weathered face, period clothing`;
   try {
     const text = oneLine(
@@ -87,6 +90,23 @@ export async function describeNpc(router: ModelRouter, world: World, npc: NpcCar
       ),
     );
     return text && !CYR.test(text) ? `${genderEn(npc.gender)}, ${raceEn(world, npc.race, npc.gender)}, ${text}` : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Зверь или чудовище: облик целиком из описания мастера. */
+async function describeCreature(router: ModelRouter, world: World, npc: NpcCard, signal?: AbortSignal): Promise<string> {
+  const fallback = `a menacing creature, ${world.art.genreEn} monster, full figure`;
+  try {
+    const text = oneLine(
+      await ask(
+        router,
+        `Write an English image prompt fragment (15-35 words, no style words, no names) describing how this ${world.art.genreEn} creature looks: size, shape, body, skin or fur, one distinctive detail, menace.\nCreature: ${npc.name}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
+        signal,
+      ),
+    );
+    return text && !CYR.test(text) ? text : fallback;
   } catch {
     return fallback;
   }

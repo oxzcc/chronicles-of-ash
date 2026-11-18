@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { characters, images, npcs, type Db } from "@ash/db";
-import { hashStr, locationById, type Campaign, type CharacterDraft, type LocationType } from "@ash/engine";
+import { hashStr, locationById, matchName, neighbors, sameName, type Campaign, type CharacterDraft, type LocationType } from "@ash/engine";
 import {
   baseHero, describeLocation, describeNpc, guessNpc, heroVariants, renderBackground, renderPortrait,
   type ImageProvider, type ImageStorage, type NpcCard, type TimeOfDay,
@@ -43,13 +43,28 @@ const wakeWorker = () => {
   sleepers.clear();
 };
 
-async function enqueue(db: Db, v: { kind: string; job: Job; tags?: string[]; userId?: string; campaignId?: string }): Promise<string> {
+/**
+ * Заранее, «про запас»: портреты жителей дела и фоны мест, куда герой ещё не пришёл.
+ * Такие задачи воркер берёт после срочных (тех, кто на экране прямо сейчас).
+ */
+export const PREFETCH_TAG = "prefetch";
+
+async function enqueue(db: Db, v: { kind: string; job: Job; tags?: string[]; userId?: string; campaignId?: string; prefetch?: boolean }): Promise<string> {
+  const tags = [...(v.tags ?? []), ...(v.prefetch ? [PREFETCH_TAG] : [])];
   const [row] = await db
     .insert(images)
-    .values({ kind: v.kind, job: v.job as Record<string, unknown>, tags: v.tags ?? [], userId: v.userId, campaignId: v.campaignId, prompt: "", model: "", status: "queued" })
+    .values({ kind: v.kind, job: v.job as Record<string, unknown>, tags, userId: v.userId, campaignId: v.campaignId, prompt: "", model: "", status: "queued" })
     .returning({ id: images.id });
   wakeWorker();
   return row!.id;
+}
+
+/** Картинка про запас понадобилась прямо сейчас — в начало очереди. */
+async function promote(db: Db, imageId: string) {
+  await db
+    .update(images)
+    .set({ tags: sql`array_remove(${images.tags}, ${PREFETCH_TAG})` })
+    .where(and(eq(images.id, imageId), eq(images.status, "queued"), sql`${images.tags} @> ARRAY[${PREFETCH_TAG}]::text[]`));
 }
 
 /** Время суток для фона — по типу места, без отдельной системы времени. Интерьеры — ночью. */
@@ -74,10 +89,17 @@ export const libraryTag = (world: World, type: LocationType) => {
   return world.id === DEFAULT_WORLD ? `${v}:${type}` : `${v}:${world.id}:${type}`;
 };
 
-/** Фон текущей локации: ключевым местам — свой, остальным — из общей библиотеки по типу. */
-export async function ensureBackground(db: Db, campaignId: string, world: World, w: Campaign) {
-  const loc = locationById(w, w.current);
-  if (!loc || loc.imageId) return;
+/**
+ * Фон места (по умолчанию — текущего): ключевым местам — свой, остальным — из общей библиотеки по типу.
+ * prefetch — заранее, для места, куда герой ещё не пришёл; при входе такой фон поднимается в начало очереди.
+ */
+export async function ensureBackground(db: Db, campaignId: string, world: World, w: Campaign, o: { locId?: string; prefetch?: boolean } = {}) {
+  const loc = locationById(w, o.locId ?? w.current);
+  if (!loc) return;
+  if (loc.imageId) {
+    if (!o.prefetch) await promote(db, loc.imageId);
+    return;
+  }
   const seed = hashStr(campaignId + loc.id);
   const key = loc.id === w.target || loc.id === "L0";
   if (!key) {
@@ -95,41 +117,77 @@ export async function ensureBackground(db: Db, campaignId: string, world: World,
     kind: "background",
     tags: key ? [`loc:${campaignId}:${loc.id}`] : [libraryTag(world, loc.type)],
     campaignId: key ? campaignId : undefined,
+    prefetch: o.prefetch,
     job: { world: world.id, type: "background", locType: loc.type, name: loc.name, desc: loc.desc, time: timeFor(world, loc.type, seed) },
   });
 }
 
+type NpcRow = { id: string; name: string; img: string | null };
+
+async function npcRows(db: Db, campaignId: string): Promise<NpcRow[]> {
+  return db.select({ id: npcs.id, name: npcs.name, img: npcs.portraitImageId }).from(npcs).where(eq(npcs.campaignId, campaignId));
+}
+
+/** Уже известный NPC под этим или похожим именем («Эзра» = «Эзра Кроу»). */
+function knownNpc(rows: NpcRow[], name: string): NpcRow | undefined {
+  const i = matchName(name, rows.map((r) => r.name));
+  return i >= 0 ? rows[i] : undefined;
+}
+
+/** NPC для портрета: карточка мастера, житель дела или враг. creature — зверь или чудовище. */
+export type NpcSpec = Speaker & { creature?: boolean };
+
 /**
- * Новый NPC → карточка и портрет в очередь. Уже известный — ничего не делаем.
+ * Новый NPC → карточка и портрет в очередь. Уже известный (в том числе под коротким именем) — ничего
+ * не рисуем, а его портрет, если он ждал в очереди про запас, поднимаем: он нужен прямо сейчас.
  * Зовётся дважды: из потока хода, как только карточка дописана, и после хода (на случай,
  * если ранний вызов не случился); уникальный индекс не даёт задвоить.
  */
-export async function ensureNpc(db: Db, campaignId: string, world: World, s: Speaker) {
-    const [row] = await db
-      .insert(npcs)
-      .values({ campaignId, name: s.name, nameKey: npcKey(s.name), race: s.race, gender: s.gender, role: s.role, appearance: s.look ?? "" })
-      .onConflictDoNothing()
-      .returning({ id: npcs.id });
-    if (!row) return;
-    const imageId = await enqueue(db, {
-      kind: "npc",
-      campaignId,
-      job: { world: world.id, type: "npc", npcId: row.id, card: { name: s.name, race: s.race, gender: s.gender, role: s.role, look: s.look } },
-    });
-    await db.update(npcs).set({ portraitImageId: imageId }).where(eq(npcs.id, row.id));
+export async function ensureNpc(db: Db, campaignId: string, world: World, s: NpcSpec, o: { prefetch?: boolean; rows?: NpcRow[] } = {}) {
+  const known = knownNpc(o.rows ?? (await npcRows(db, campaignId)), s.name);
+  if (known) {
+    if (!o.prefetch && known.img) await promote(db, known.img);
+    return;
+  }
+  const [row] = await db
+    .insert(npcs)
+    .values({ campaignId, name: s.name, nameKey: npcKey(s.name), race: s.race, gender: s.gender, role: s.role, appearance: s.look ?? "" })
+    .onConflictDoNothing()
+    .returning({ id: npcs.id });
+  if (!row) return;
+  const imageId = await enqueue(db, {
+    kind: "npc",
+    campaignId,
+    prefetch: o.prefetch,
+    job: { world: world.id, type: "npc", npcId: row.id, card: { name: s.name, race: s.race, gender: s.gender, role: s.role, look: s.look, ...(s.creature ? { creature: true } : {}) } },
+  });
+  await db.update(npcs).set({ portraitImageId: imageId }).where(eq(npcs.id, row.id));
+  o.rows?.push({ id: row.id, name: s.name, img: imageId });
 }
 
 /**
  * Каждому, кто говорит в репликах, — портрет. Карточку (раса, пол, облик) мастер даёт только
  * главному собеседнику; остальных говорящих раньше пропускали — и на экране висел силуэт.
+ * Враги в бою — тоже: знакомый NPC остаётся со своим портретом, новому рисуется свой по look.
  */
 async function ensureNpcs(db: Db, campaignId: string, world: World, records: TurnRecord[], heroName: string) {
   for (const r of records) if (r.response?.speaker) await ensureNpc(db, campaignId, world, r.response.speaker);
+  const rows = await npcRows(db, campaignId);
+  const human = Object.keys(world.rules.races)[0]!;
+  for (const r of records)
+    for (const e of r.response?.combat?.enemies ?? [])
+      if (e.name && !sameName(e.name, heroName))
+        await ensureNpc(db, campaignId, world, { name: e.name, race: human, gender: e.gender ?? "m", role: e.creature ? "чудовище" : "противник", look: e.look || undefined, creature: e.creature }, { rows });
   const lines = new Map<string, { name: string; lines: string[]; scene: string }>();
   for (const r of records) {
     const scene = r.beats.filter((b) => !b.speaker).map((b) => b.text).join(" ");
     for (const b of r.beats) {
-      if (!b.speaker || npcKey(b.speaker) === npcKey(heroName)) continue;
+      if (!b.speaker || sameName(b.speaker, heroName)) continue;
+      const known = knownNpc(rows, b.speaker);
+      if (known) {
+        if (known.img) await promote(db, known.img);
+        continue;
+      }
       const k = npcKey(b.speaker);
       const e = lines.get(k) ?? { name: b.speaker, lines: [], scene };
       e.lines.push(b.text);
@@ -139,7 +197,7 @@ async function ensureNpcs(db: Db, campaignId: string, world: World, records: Tur
   for (const [k, e] of lines) {
     const [row] = await db
       .insert(npcs)
-      .values({ campaignId, name: e.name, nameKey: k, race: Object.keys(world.rules.races)[0]!, gender: "m", role: "", appearance: "" })
+      .values({ campaignId, name: e.name, nameKey: k, race: human, gender: "m", role: "", appearance: "" })
       .onConflictDoNothing()
       .returning({ id: npcs.id });
     if (!row) continue;
@@ -148,19 +206,40 @@ async function ensureNpcs(db: Db, campaignId: string, world: World, records: Tur
   }
 }
 
+/**
+ * Про запас: фоны мест, куда герой может пойти сразу, и портреты жителей дела, которых там можно встретить.
+ * Зовётся при создании кампании (пока рассказчик пишет завязку) и после каждого хода — для новых адресов.
+ * Все задачи — с низким приоритетом: срочные портреты и фоны идут первыми.
+ * Возвращает true, если в состояние кампании записаны новые фоны.
+ */
+export async function prefetchVisuals(db: Db, campaignId: string, world: World, w: Campaign): Promise<boolean> {
+  const before = w.locations.filter((l) => l.imageId).length;
+  const places = new Set<string>([w.current, ...(w.case ? w.case.known : neighbors(w, w.current).map((l) => l.id))]);
+  for (const id of places) await ensureBackground(db, campaignId, world, w, { locId: id, prefetch: id !== w.current });
+  if (w.case) {
+    const rows = await npcRows(db, campaignId);
+    // Сначала те, кто здесь, потом — по известным адресам; про неизвестные адреса рисовать рано.
+    const people = w.case.people.filter((p) => p.gender && p.look && places.has(p.at)).sort((a, b) => Number(b.at === w.current) - Number(a.at === w.current));
+    const race = Object.keys(world.rules.races)[0]!;
+    for (const p of people) await ensureNpc(db, campaignId, world, { name: p.name, race, gender: p.gender!, role: p.role, look: p.look }, { prefetch: true, rows });
+  }
+  return w.locations.filter((l) => l.imageId).length > before;
+}
+
 /** Вызывается после хода, до сохранения: может записать фон в состояние кампании. */
 export async function prepareVisuals(db: Db, campaignId: string, state: GameState, records: TurnRecord[]) {
   const world = worldOf(state.character);
   await ensureNpcs(db, campaignId, world, records, state.character.name);
   await ensureBackground(db, campaignId, world, state.campaign);
+  await prefetchVisuals(db, campaignId, world, state.campaign);
 }
 
 /** Фон текущей локации для клиента — сразу при входе, ещё до рассказа мастера. */
-export async function arrivalView(db: Db, w: Campaign): Promise<{ location: string; imageId: string | null; image: ImageView | null }> {
-  const loc = locationById(w, w.current);
-  if (!loc?.imageId) return { location: w.current, imageId: null, image: null };
+export async function arrivalView(db: Db, w: Campaign): Promise<{ location: string; name: string; locType: LocationType; imageId: string | null; image: ImageView | null }> {
+  const loc = locationById(w, w.current)!;
+  if (!loc.imageId) return { location: loc.id, name: loc.name, locType: loc.type, imageId: null, image: null };
   const [row] = await db.select({ status: images.status, url: images.url }).from(images).where(eq(images.id, loc.imageId));
-  return { location: loc.id, imageId: loc.imageId, image: row ?? null };
+  return { location: loc.id, name: loc.name, locType: loc.type, imageId: loc.imageId, image: row ?? null };
 }
 
 /**
@@ -232,14 +311,14 @@ export async function attachHeroPortrait(db: Db, userId: string, characterId: st
   await db.update(characters).set({ portraitImageId: imageId }).where(eq(characters.id, characterId));
 }
 
-/** Забрать одну задачу. Зависшие больше 3 минут в работе возвращаются в очередь. */
+/** Забрать одну задачу: сначала срочные, потом про запас. Зависшие больше 3 минут в работе возвращаются в очередь. */
 async function claimNext(db: Db) {
   const res = await db.execute(sql`
     UPDATE images SET status = 'working', attempts = attempts + 1, updated_at = now()
     WHERE id = (
       SELECT id FROM images
       WHERE status = 'queued' OR (status = 'working' AND updated_at < now() - interval '3 minutes')
-      ORDER BY created_at
+      ORDER BY (tags @> ARRAY[${PREFETCH_TAG}]::text[]), created_at
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )

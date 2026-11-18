@@ -4,6 +4,7 @@ import { locationTypeKeys, startLocationTypes, type LocationType, type Ruleset }
 import type { CombatState } from "./combat";
 import type { Gender } from "./character";
 import type { CaseState } from "./case";
+import { normName } from "./names";
 
 export interface Objective {
   id: string;
@@ -185,6 +186,24 @@ export function travel(r: Ruleset, w: Campaign, toId: string, rng: Rng): TravelR
   to.visited = true;
   w.npc = null;
   return { from, to, encounter };
+}
+
+/**
+ * Место по id или по названию — мастер пишет то «L4», то «Бакалея Финнегана», то «бакалею».
+ * Годится и начало названия, но только если подходит ровно одно место.
+ */
+export function findPlace(w: Campaign, ref: string): MapLocation | undefined {
+  const byId = locationById(w, ref.trim());
+  if (byId) return byId;
+  const q = normName(String(ref));
+  if (q.length < 3) return undefined;
+  const exact = w.locations.filter((l) => normName(l.name) === q);
+  if (exact.length === 1) return exact[0];
+  const hits = w.locations.filter((l) => {
+    const n = normName(l.name);
+    return n.startsWith(q) || q.startsWith(n);
+  });
+  return hits.length === 1 ? hits[0] : undefined;
 }
 
 export const locationTypeName = (r: Ruleset, t: LocationType) => r.locationTypes[t]?.name ?? t;

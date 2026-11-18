@@ -1,6 +1,6 @@
 import {
   applyCaseChanges, applyChanges, breakDown, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
-  playerMove, skillCheck, startCombat, travel, travelCase,
+  playerMove, skillCheck, startCombat, storyMove, travel, travelCase,
   type CombatEvent, type CombatOutcome, type Verdict,
 } from "@ash/engine";
 import {
@@ -29,7 +29,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const history = (): HistoryEntry[] => toHistory([...prior, ...records]);
 
   /** Ход рассказчика: промпт, проверки, применение изменений, бой, если модель его объявила. */
-  const narrate = async (kind: TurnRecord["kind"], label: string, action: string, opts: { keepHp?: boolean; keepSanity?: boolean; preRolls?: TurnRecord["rolls"]; extraUsage?: Usage } = {}) => {
+  const narrate = async (kind: TurnRecord["kind"], label: string, action: string, opts: { keepHp?: boolean; keepSanity?: boolean; preRolls?: TurnRecord["rolls"]; extraUsage?: Usage; allowMove?: boolean } = {}) => {
     const { provider, model } = deps.router.route("narrator", deps.tier);
     const r = await runNarratorTurn({
       provider, model, world, worldBible: deps.worldBible, rng: deps.rng, signal: deps.signal,
@@ -53,6 +53,15 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       applied.notes.push(...found.notes);
       applied.rejected.push(...found.rejected);
       if (applied.sanity < 0) w.case.sanityLost += -applied.sanity;
+    }
+    // Мастер довёл героя до другого места прямо в рассказе — движок проверяет и переносит (после reveal: адрес мог открыться в этом же ответе).
+    if (opts.allowMove) {
+      const m = storyMove(R, w, resp.move, deps.rng);
+      if (m && "error" in m) applied.rejected.push(m.error);
+      else if (m) {
+        applied.notes.push(`переход: ${m.to.name}${m.timeUp ? " (визиты кончились)" : ""}`);
+        await deps.onArrive?.();
+      }
     }
     w.npc = resp.speaker;
     w.turn++;
@@ -153,7 +162,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       if (w.combat) throw new GameError("Идёт бой — выбери действие в бою.");
       const text = input.text.trim().slice(0, MAX_ACTION_LENGTH);
       if (!text) throw new GameError("Напиши, что делает герой.");
-      const { resp } = await narrate("action", text, text);
+      const { resp } = await narrate("action", text, text, { allowMove: true });
       await maybeStartCombat(resp);
       await checkDowned();
       await checkBroken();
@@ -173,7 +182,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
         preRolls.push(roll);
         action = systemActions.checked(pick.text, roll.summary);
       }
-      const { resp } = await narrate("choice", pick.text, action, { preRolls });
+      const { resp } = await narrate("choice", pick.text, action, { preRolls, allowMove: true });
       await maybeStartCombat(resp);
       await checkDowned();
       await checkBroken();

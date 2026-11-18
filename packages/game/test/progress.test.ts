@@ -16,10 +16,10 @@ describe("полоса загрузки: оценка", () => {
     expect(a.value).toBeGreaterThan(0.25);
     expect(b.value).toBeGreaterThan(a.value);
     expect(snap({ reasoningChars: 80000 }).value).toBeLessThan(0.85);
-    // Четверть рассуждений за 12 с: осталось около 36 с + 10 с на запись.
+    // Четверть рассуждений за 12 с: осталось около 36 с + 11 с на запись.
     expect(a.etaSec).toBe(45);
     // Рассуждений столько, сколько обычно: осталось дописать хвост и сам JSON.
-    expect(b.etaSec).toBe(15);
+    expect(b.etaSec).toBe(20);
     expect(snap({ reasoningChars: 40000, elapsedMs: 50000 }).etaSec).toBeGreaterThan(0);
   });
   it("без рассуждений от провайдера — по времени", () => {

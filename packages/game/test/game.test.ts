@@ -31,6 +31,7 @@ async function freshGame(seed = "t") {
 }
 const deps = (over: Partial<TurnDeps> = {}): TurnDeps => ({ router: fakeRouter(), tier: "free", worldBible: "", rng: mulberry32(5), ...over });
 const dpsFake = () => deps();
+const deps0 = deps;
 
 describe("новая игра", () => {
   it("герой и квест от фейковой модели", async () => {
@@ -62,7 +63,7 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-3+arkham-4");
+    expect(a.records[0]!.promptVersion).toBe("gm-4+arkham-4");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
@@ -172,6 +173,27 @@ describe("ход", () => {
     expect(g.campaign.current).toBe(to);
     expect(r.records[0]!.action).toMatch(/^Путь в/);
   });
+  it("переход по рассказу: мастер довёл до соседнего места — герой там, фон заказан; в чужое место — нет", async () => {
+    const g = await freshGame();
+    const start = g.campaign.current;
+    const nb = neighbors(g.campaign, start)[0]!;
+    const far = g.campaign.locations.find((l) => l.id !== start && !neighbors(g.campaign, start).some((n) => n.id === l.id))!;
+    let arrived = 0;
+    const bad = await playTurn(deps({ router: scriptedRouter([{ move: far.name }]), onArrive: async () => void arrived++ }), g, [], { kind: "action", text: "Иду туда" });
+    expect(g.campaign.current).toBe(start);
+    expect(arrived).toBe(0);
+    expect(bad.records[0]!.applied!.rejected.join()).toMatch(/нет прямой дороги/);
+    const ok = await playTurn(deps({ router: scriptedRouter([{ move: nb.name, speaker: { name: "Сторож", race: "human", gender: "m", role: "сторож" } }]), onArrive: async () => void arrived++ }), g, [], { kind: "action", text: "Иду к соседям" });
+    expect(g.campaign.current).toBe(nb.id);
+    expect(arrived).toBe(1);
+    expect(ok.records[0]!.applied!.notes.join()).toMatch(/переход/);
+    // Собеседник — уже из нового места.
+    expect(g.campaign.npc?.name).toBe("Сторож");
+    // Служебные ходы (путь по карте, отдых) не переносят героя по рассказу.
+    const back = g.campaign.current;
+    await playTurn(deps({ router: scriptedRouter([{ move: g.campaign.locations.find((l) => l.id === start)!.name }]) }), g, [], { kind: "rest" });
+    expect(g.campaign.current).toBe(back);
+  });
   it("бой: объявлен мастером, идёт по ходам движка, итог рассказывает мастер", async () => {
     const g = await freshGame();
     const r = await playTurn(deps(), g, [], { kind: "action", text: "Нападаю на культиста" });
@@ -259,7 +281,13 @@ describe.skipIf(!url)("картинки", async () => {
     expect(r.state.campaign.locations[0]!.imageId).toBeTruthy();
     let scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
     expect(scene.npcs["старый ведун"]!.status).toBe("queued");
-    expect(await drain(d)).toBe(2);
+    // Сначала срочное — портрет собеседника и фон, где стоит герой; фоны соседних мест — про запас, потом.
+    expect(await v.processOne(d)).toBe(true);
+    expect(await v.processOne(d)).toBe(true);
+    scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
+    expect(scene.npcs["старый ведун"]!.status).toBe("ready");
+    expect(scene.locations.L0!.status).toBe("ready");
+    await drain(d);
     scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
     expect(scene.npcs["старый ведун"]!.url).toMatch(/^\/api\/images\/npc\/.+\.webp$/);
     expect(scene.locations.L0!.status).toBe("ready");
@@ -267,6 +295,60 @@ describe.skipIf(!url)("картинки", async () => {
     const r2 = await playTurn(dpsFake(), r.state, r.records, { kind: "action", text: "Спрашиваю ещё" });
     await v.prepareVisuals(db, id, r2.state, r2.records);
     expect(await drain(d)).toBe(0);
+  });
+
+  it("про запас: при создании дела — фоны известных адресов и портреты жителей; срочное и узнанное — вперёд", async () => {
+    const d = await deps();
+    await drain(d);
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const arkham = getWorld("arkham");
+    const draftA: CharacterDraft = { world: "arkham", phobia: "Мертвецы", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: draftA, rng: mulberry32(1), seed: "pre" });
+    const id = await createCampaign(db, uid, g);
+    const w = g.campaign;
+    expect(await v.prefetchVisuals(db, id, arkham, w)).toBe(true);
+    // Фоны: старт и все известные адреса; неизвестные — нет.
+    for (const l of w.locations) expect(!!l.imageId).toBe(w.case!.known.includes(l.id));
+    const c = await loadCampaign(db, uid, id);
+    let scene = await v.sceneView(db, id, c.characterId, w);
+    // Жители известных адресов — в очереди; жители неизвестных — ещё нет.
+    const atKnown = w.case!.people.filter((p) => w.case!.known.includes(p.at)).map((p) => p.name.toLowerCase());
+    expect(Object.keys(scene.npcs).sort()).toEqual(atKnown.sort());
+    // Новый собеседник — срочно: его берут сразу после фона, где стоит герой, раньше всех заготовок.
+    await v.ensureNpc(db, id, arkham, { name: "Человек в кепке", race: "human", gender: "m", role: "громила", look: "кепка, нож" });
+    expect(await v.processOne(d)).toBe(true);
+    expect(await v.processOne(d)).toBe(true);
+    expect((await v.sceneView(db, id, c.characterId, w)).locations[w.current]!.status).toBe("ready");
+    scene = await v.sceneView(db, id, c.characterId, w);
+    expect(scene.npcs["человек в кепке"]!.status).toBe("ready");
+    expect(Object.values(scene.npcs).filter((n) => n.status === "ready")).toHaveLength(1);
+    // Мастер называет жителя коротко — новый портрет не рисуется, заготовка поднимается в начало.
+    const lorraine = w.case!.people.find((p) => p.name === "Лорейн Вейл")!;
+    expect(w.case!.known).toContain(lorraine.at);
+    const before = Object.keys(scene.npcs).length;
+    await v.ensureNpc(db, id, arkham, { name: "Лорейн", race: "human", gender: "f", role: "дочь", look: "другое лицо" });
+    expect(await v.processOne(d)).toBe(true);
+    scene = await v.sceneView(db, id, c.characterId, w);
+    expect(Object.keys(scene.npcs)).toHaveLength(before);
+    expect(scene.npcs["лорейн вейл"]!.status).toBe("ready");
+  });
+
+  it("враг в бою получает портрет; знакомый NPC в роли врага — свой прежний", async () => {
+    const d = await deps();
+    await drain(d);
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const g = await freshGame("foe");
+    const id = await createCampaign(db, uid, g);
+    const c = await loadCampaign(db, uid, id);
+    const r = await playTurn(deps0({ router: scriptedRouter([{ speaker: { name: "Брам Кривой", race: "human", gender: "m", role: "разбойник", look: "шрам" } }]) }), c.state, c.recent, { kind: "start" });
+    await v.prepareVisuals(db, id, r.state, r.records);
+    const r2 = await playTurn(deps0({ router: scriptedRouter([{ combat: { enemies: [{ name: "Брам", hp: 8, ac: 11, attack: 2, damage: "1d4", look: "шрам" }, { name: "Волк", hp: 6, ac: 11, attack: 2, damage: "1d4", creature: true, look: "серый, худой" }] } }]) }), r.state, r.records, { kind: "action", text: "Бью Брама" });
+    await v.prepareVisuals(db, id, r2.state, r2.records);
+    const scene = await v.sceneView(db, id, c.characterId, r2.state.campaign);
+    expect(Object.keys(scene.npcs).sort()).toEqual(["брам кривой", "волк"]);
+    await drain(d);
   });
 
   it("второй говорящий без карточки тоже получает портрет", async () => {

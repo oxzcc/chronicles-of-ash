@@ -1,7 +1,9 @@
 import { clamp } from "./dice";
-import { layoutCampaign, locationById, type Campaign, type QuestSeed } from "./world";
+import { findPlace, layoutCampaign, locationById, travel, type Campaign, type MapLocation, type QuestSeed } from "./world";
+import { normName, sameWord } from "./names";
 import type { Rng } from "./rng";
 import type { Ruleset } from "./rules";
+import type { Gender } from "./character";
 
 /**
  * Детективное дело (мир Аркхэма, по мотивам Mythos Tales и Call of Cthulhu).
@@ -29,6 +31,9 @@ export interface CasePerson {
   role: string;
   /** Где его найти: id места. */
   at: string;
+  /** Пол и внешность — чтобы нарисовать портрет заранее, ещё до встречи. */
+  gender?: Gender;
+  look?: string;
 }
 
 export interface CaseQuestion {
@@ -152,7 +157,9 @@ export function layoutCase(r: Ruleset, seed: CaseSeed, layoutSeed: string): Camp
     const at = idx(p?.at, n);
     const name = str(p?.name, 40);
     if (at === null || !name) continue;
-    people.push({ name, role: str(p?.role, 60), at: loc(at) });
+    const look = str(p?.look, 200);
+    const gender = p?.gender === "f" || p?.gender === "m" ? (p.gender as Gender) : undefined;
+    people.push({ name, role: str(p?.role, 60), at: loc(at), ...(gender ? { gender } : {}), ...(look ? { look } : {}) });
   }
 
   const questions: CaseQuestion[] = [];
@@ -260,7 +267,7 @@ export function applyCaseChanges(w: Campaign, p: CaseChanges): AppliedCaseChange
     }
   }
   for (const raw of p.reveal ?? []) {
-    const l = locationById(w, raw) ?? placeByName(w, raw);
+    const l = findPlace(w, raw);
     if (!l) out.rejected.push(`reveal: нет места ${raw}`);
     else if (!c.known.includes(l.id)) {
       c.known.push(l.id);
@@ -270,31 +277,6 @@ export function applyCaseChanges(w: Campaign, p: CaseChanges): AppliedCaseChange
   }
   return out;
 }
-
-/**
- * Место по названию — когда мастер пишет в reveal «Бакалея» вместо «L4». Мастеру это можно
- * (он и так знает дело), поэтому годится и начало названия; но только если подходит ровно одно место.
- */
-function placeByName(w: Campaign, raw: string) {
-  const q = normName(String(raw));
-  if (q.length < 3) return undefined;
-  const hits = w.locations.filter((l) => {
-    const n = normName(l.name);
-    return n === q || n.startsWith(q) || q.startsWith(n);
-  });
-  return hits.length === 1 ? hits[0] : undefined;
-}
-
-const normName = (s: string) => s.trim().toLowerCase().replace(/ё/g, "е").replace(/[«»"'.,]/g, "").replace(/\s+/g, " ");
-
-/** Одно слово имени с учётом падежей: «Финнеган» = «Финнегана», короткие («Хоу», «Кит») — только целиком. */
-const sameWord = (a: string, b: string) => {
-  if (a.length < 3 || b.length < 3) return false;
-  if (a.length <= 4 || b.length <= 4) return a === b;
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  return i >= Math.max(4, Math.min(a.length, b.length) - 2);
-};
 
 /**
  * Справочник Аркхэма: по имени жителя или названию места — адрес. Как в Mythos Tales:
@@ -407,3 +389,22 @@ export function publicCampaign(w: Campaign): PublicCampaign {
 
 /** Сколько визитов осталось — для подсказок мастеру и игроку. */
 export const visitsLeft = (w: Campaign) => (w.case ? clamp(w.case.limit - w.case.visits, 0, 99) : 0);
+
+/**
+ * Переход по рассказу: мастер увёл героя в другое место прямо в ответе (move).
+ * Правила те же, что у перехода по карте: в квесте — только к соседям по дороге,
+ * в деле — только по известному адресу, визит на счету, время не вышло.
+ * null — переходить некуда (то же место или пусто).
+ */
+export function storyMove(r: Ruleset, w: Campaign, ref: string | null | undefined, rng: Rng): { to: MapLocation; timeUp: boolean } | { error: string } | null {
+  if (!ref?.trim()) return null;
+  const to = findPlace(w, ref);
+  if (!to) return { error: `move: нет места «${ref}»` };
+  if (to.id === w.current) return null;
+  try {
+    const t = w.case ? travelCase(r, w, to.id, rng) : travel(r, w, to.id, rng);
+    return { to: t.to, timeUp: "timeUp" in t && t.timeUp === true };
+  } catch (e) {
+    return { error: `move в «${to.name}»: ${(e as Error).message}` };
+  }
+}
