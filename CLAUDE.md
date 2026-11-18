@@ -33,6 +33,9 @@ pnpm check:apis         # доступ к OpenRouter и fal.ai (--images — п�
 pnpm arena:run -- <model> <model> …   # 10 тестовых сцен на моделях (фэнтези)
 pnpm arena:run -- --world arkham <model> …   # 9 сцен мира Аркхэма (на запасном деле)
 pnpm arena:ballot <файл прогона>      # анонимный бюллетень для оценки
+pnpm lora:dataset -- --world arkham   # датасет LoRA стиля: data/lora/<мир>/ + подписи → zip
+pnpm lora:train -- --world arkham     # обучить LoRA на fal (спросит подтверждение)
+pnpm lora:compare -- --world arkham   # картинки с LoRA и без → data/lora/compare/…/index.html
 ```
 
 Схема БД меняется так: правка `packages/db/src/schema.ts` → `pnpm --filter @ash/db generate` → проверить SQL в `migrations/` → `pnpm db:migrate`.
@@ -53,6 +56,7 @@ pnpm arena:ballot <файл прогона>      # анонимный бюлле
 - Ключи и пароли — только в `.env` / переменных окружения сервера. Никогда в коде, коммитах и чате.
 - Без ключа OpenRouter всё работает на `FakeProvider`, без ключа fal — на `FakeImageProvider`: интерфейс разрабатывается без трат.
 - Картинки никогда не задерживают ход: текст идёт сразу, картинки — из очереди; клиент показывает силуэт и опрашивает `/api/campaigns/:id/scene`.
+- LoRA стиля мира: триггер и короткий префикс — в `art.lora` мира, веса и сила — только в окружении (`FAL_LORA_<ID>_URL`, `FAL_LORA_<ID>_SCALE`). Датасеты — в `data/lora/` (не в git).
 - Готовые картинки лежат в `data/images/` (в git не попадают); в фазе 4 — S3 + CDN за тем же интерфейсом `ImageStorage`.
 
 ## Что временное

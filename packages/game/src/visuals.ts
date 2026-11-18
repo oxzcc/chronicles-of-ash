@@ -59,10 +59,20 @@ function timeFor(world: World, type: LocationType, seed: number): TimeOfDay {
 }
 
 /**
- * Тег общей библиотеки фонов. У фэнтези — без id мира: так библиотека, нарисованная до миров,
- * остаётся в деле. У остальных миров — свой тег, чтобы «город» Аркхэма не взял средневековую улицу.
+ * Версия библиотеки фонов. Поднимать, когда фоны рисуются заметно иначе (размер, стиль):
+ * старые перестают выдаваться, новые рисуются сами при входе в место.
+ * v2 (18 ноября): 1920×1088 вместо 1024×576 и LoRA Аркхэма.
  */
-export const libraryTag = (world: World, type: LocationType) => (world.id === DEFAULT_WORLD ? `bg:${type}` : `bg:${world.id}:${type}`);
+export const LIBRARY_VERSION = 2;
+
+/**
+ * Тег общей библиотеки фонов. У фэнтези — без id мира (так было до миров),
+ * у остальных миров — свой тег, чтобы «город» Аркхэма не взял средневековую улицу.
+ */
+export const libraryTag = (world: World, type: LocationType) => {
+  const v = `bg${LIBRARY_VERSION}`;
+  return world.id === DEFAULT_WORLD ? `${v}:${type}` : `${v}:${world.id}:${type}`;
+};
 
 /** Фон текущей локации: ключевым местам — свой, остальным — из общей библиотеки по типу. */
 export async function ensureBackground(db: Db, campaignId: string, world: World, w: Campaign) {

@@ -18,9 +18,13 @@
     "check:apis": "tsx --env-file-if-exists=.env tools/check-apis.ts",
     "arena:run": "tsx --env-file-if-exists=.env tools/arena/run.ts",
     "arena:ballot": "tsx tools/arena/ballot.ts",
-    "playtest": "tsx --env-file-if-exists=.env tools/playtest.ts"
+    "playtest": "tsx --env-file-if-exists=.env tools/playtest.ts",
+    "lora:dataset": "tsx tools/lora/dataset.ts",
+    "lora:train": "tsx --env-file-if-exists=.env tools/lora/train.ts",
+    "lora:compare": "tsx --env-file-if-exists=.env tools/lora/compare.ts"
   },
   "devDependencies": {
+    "@fal-ai/client": "^1.11.0",
     "@types/node": "^22.10.0",
     "tsx": "^4.23.0",
     "typescript": "~6.0.3",
@@ -39,6 +43,7 @@
   "dependencies": {
     "@ash/engine": "workspace:^",
     "@ash/game": "workspace:^",
+    "@ash/images": "workspace:^",
     "@ash/llm": "workspace:^",
     "@ash/worlds": "workspace:^"
   }

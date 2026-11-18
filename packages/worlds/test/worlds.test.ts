@@ -53,6 +53,11 @@ describe.each(WORLDS.map((w) => [w.id, w] as const))("мир %s", (_id, w) => {
     for (const t of w.art.interiorTypes) expect(types).toContain(t);
     for (const k of classKeys(R)) expect(w.art.classEn[k], k).toBeTruthy();
   });
+  it("LoRA стиля: триггер одним словом-сочетанием, префикс без описания техники", () => {
+    if (!w.art.lora) return;
+    expect(w.art.lora.trigger).toMatch(/^[a-z0-9]+( [a-z0-9]+)?$/);
+    expect(w.art.lora.stylePrefix).toMatch(/no text/);
+  });
   it("запасной квест раскладывается без исправлений", () => {
     const camp = layoutCampaign(R, w.fallbackQuest, "t");
     const raw = w.fallbackQuest.locations as { type: string }[];

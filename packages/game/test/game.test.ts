@@ -124,10 +124,10 @@ describe("мир Аркхэма", () => {
     expect(g.campaign.case!.visits).toBe(visits + 2);
     expect(g.campaign.case!.sanityLost).toBe(7);
   });
-  it("фоны Аркхэма — в своей библиотеке, фэнтези — в старой", async () => {
+  it("фоны Аркхэма — в своей библиотеке, фэнтези — в общей; версия библиотеки в теге", async () => {
     const { libraryTag } = await import("../src/visuals");
-    expect(libraryTag(getWorld("fantasy"), "city")).toBe("bg:city");
-    expect(libraryTag(getWorld("arkham"), "street")).toBe("bg:arkham:street");
+    expect(libraryTag(getWorld("fantasy"), "city")).toBe("bg2:city");
+    expect(libraryTag(getWorld("arkham"), "street")).toBe("bg2:arkham:street");
   });
 });
 

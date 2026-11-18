@@ -49,4 +49,11 @@ export const arkhamArt: ArtStyle = {
     farm: "an isolated New England farmhouse with a barn and a dry field",
   },
   interiorTypes: ["office", "hotel", "diner", "police", "library", "newspaper", "church", "speakeasy", "warehouse", "cellar"],
+  // Датасет: data/lora/arkham_dataset (58 картинок владельца, подписи — data/lora/arkham_captions.json).
+  lora: {
+    trigger: "mthnr style",
+    // «painterly…» обязательно: без слов о технике 9B рисует фотографию, и слабая LoRA её не перебивает.
+    stylePrefix:
+      "painterly digital illustration, visible brushstrokes, New England in 1926, period-accurate clothing and objects, no fantasy elements, no modern objects, no text, no watermark, no signature",
+  },
 };

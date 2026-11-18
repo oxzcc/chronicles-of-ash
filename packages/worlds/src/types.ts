@@ -82,4 +82,14 @@ export interface ArtStyle {
   locationEn: Record<LocationType, string>;
   /** Места, которые рисуются изнутри (и ночью). */
   interiorTypes: LocationType[];
+  /**
+   * Своя LoRA стиля (обучена на картинках мира). Веса и сила — только в окружении:
+   * FAL_LORA_<ID>_URL и FAL_LORA_<ID>_SCALE. Пока URL не задан, мир рисуется по stylePrefix.
+   */
+  lora?: {
+    /** Триггер из подписей датасета — ставится первым словом промпта. */
+    trigger: string;
+    /** Префикс вместо stylePrefix: эпоха и запреты без описания техники — технику держит LoRA. */
+    stylePrefix: string;
+  };
 }
