@@ -10,7 +10,7 @@ try {
 
 const config: NextConfig = {
   // Пакеты монорепозитория — исходники на TypeScript, Next собирает их сам.
-  transpilePackages: ["@ash/engine", "@ash/llm", "@ash/db", "@ash/game", "@ash/images"],
+  transpilePackages: ["@ash/engine", "@ash/worlds", "@ash/llm", "@ash/db", "@ash/game", "@ash/images"],
   serverExternalPackages: ["pg", "sharp"],
 };
 

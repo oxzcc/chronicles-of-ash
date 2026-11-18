@@ -12,6 +12,7 @@
   "dependencies": {
     "@ash/engine": "workspace:*",
     "@ash/llm": "workspace:*",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "@ash/worlds": "workspace:*"
   }
 }

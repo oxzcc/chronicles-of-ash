@@ -10,7 +10,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hashStr, mulberry32 } from "@ash/engine";
 import { configFromEnv, createRouter, runNarratorTurn } from "@ash/llm";
-import { buildScene, SCENES } from "./scenes";
+import { getWorld, worldBiblePath } from "@ash/worlds";
+import { buildScene, SCENES, SCENES_WORLD } from "./scenes";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2).filter((a) => a !== "--");
@@ -26,9 +27,10 @@ if (!models.length) {
   process.exit(1);
 }
 
+const world = getWorld(SCENES_WORLD);
 let worldBible = "";
 try {
-  worldBible = readFileSync(join(here, "..", "..", "docs", "world.md"), "utf8");
+  worldBible = readFileSync(join(here, "..", "..", worldBiblePath(world.id)), "utf8");
 } catch {}
 
 const scenes = SCENES.filter((s) => !only || only.some((o) => s.id.startsWith(o)));
@@ -41,7 +43,7 @@ for (const scene of scenes) {
     const t0 = Date.now();
     process.stdout.write(`${scene.id} × ${model} … `);
     try {
-      const r = await runNarratorTurn({ provider, model: id, worldBible, scene: buildScene(scene), rng: mulberry32(hashStr(scene.id)) });
+      const r = await runNarratorTurn({ provider, model: id, world, worldBible, scene: buildScene(scene, world), rng: mulberry32(hashStr(scene.id)) });
       total += r.usage.costUsd;
       results.push({ scene: scene.id, model, ms: Date.now() - t0, response: r.response, rolls: r.rolls.map((x) => x.summary), usage: r.usage, degraded: r.degraded, requests: r.requests });
       console.log(`${Date.now() - t0} мс, $${r.usage.costUsd.toFixed(4)}${r.degraded ? ", JSON не разобран" : ""}`);

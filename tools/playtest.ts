@@ -9,7 +9,8 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { neighbors, RECOMMENDED_STATS, secureRng, type CharacterDraft } from "@ash/engine";
+import { isHealing, neighbors, secureRng, type CharacterDraft } from "@ash/engine";
+import { getWorld, worldBiblePath, worldOf } from "@ash/worlds";
 import { configFromEnv, createRouter, type Tier } from "@ash/llm";
 import { newGame, playTurn, type GameState, type TurnInput, type TurnRecord } from "@ash/game";
 
@@ -27,7 +28,7 @@ const router = createRouter(configFromEnv());
 if (router.isFake) console.warn("⚠ Нет OPENROUTER_API_KEY — играет фейковая модель.");
 let worldBible = "";
 try {
-  worldBible = readFileSync("docs/world.md", "utf8");
+  worldBible = readFileSync(worldBiblePath(getWorld().id), "utf8");
 } catch {}
 
 interface Save {
@@ -43,7 +44,7 @@ let save: Save;
 if (existsSync(savePath)) save = JSON.parse(readFileSync(savePath, "utf8"));
 else {
   const draft: CharacterDraft = {
-    name: "Ровена", gender: "f", race: "human", cls: "ranger", base: { ...RECOMMENDED_STATS.ranger },
+    world: getWorld().id, name: "Ровена", gender: "f", race: "human", cls: "ranger", base: { ...getWorld().rules.recommended.ranger! },
     skills: ["Внимательность", "Убеждение"], backstory: "Охотница с пограничья. Её брат ушёл с караваном на север и не вернулся.",
   };
   const g = await newGame({ router, tier, draft, rng: secureRng, seed: String(Date.now()) });
@@ -56,7 +57,7 @@ function nextInput(s: Save): TurnInput {
   const w = s.state.campaign;
   const c = s.state.character;
   if (s.records.length === 0) return { kind: "start" };
-  if (w.combat) return { kind: "combat", move: c.hp < c.hpMax / 3 && c.items.some((i) => /зелье лечения/i.test(i)) ? "potion" : c.abilityUses > 0 ? "ability" : "attack" };
+  if (w.combat) return { kind: "combat", move: c.hp < c.hpMax / 3 && c.items.some((i) => isHealing(worldOf(c).rules, i)) ? "potion" : c.abilityUses > 0 ? "ability" : "attack" };
   const n = s.playerTurns;
   if (c.hp < c.hpMax / 2 && n % 4 === 3) return { kind: "rest" };
   if (n % 5 === 4) {

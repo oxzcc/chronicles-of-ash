@@ -1,6 +1,6 @@
 import { clamp } from "./dice";
 import { hashStr, mulberry32, type Rng } from "./rng";
-import { LOCATION_TYPES, LOCATION_TYPE_KEYS, START_LOCATION_TYPES, type LocationType } from "./rules";
+import { locationTypeKeys, startLocationTypes, type LocationType, type Ruleset } from "./rules";
 import type { CombatState } from "./combat";
 import type { Gender } from "./character";
 
@@ -62,15 +62,15 @@ export const MAX_OBJECTIVES = 4;
 const str = (v: unknown, max: number, fallback = "") => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : fallback);
 
 /** Приводит ответ модели к допустимому квесту. Бросает ошибку, если локаций слишком мало. */
-export function normalizeQuest(seed: QuestSeed) {
+export function normalizeQuest(r: Ruleset, seed: QuestSeed) {
   const rawLocs = Array.isArray(seed.locations) ? seed.locations : [];
   if (rawLocs.length < MIN_LOCATIONS) throw new Error(`Quest needs at least ${MIN_LOCATIONS} locations`);
   const locations = rawLocs.slice(0, MAX_LOCATIONS).map((l: any) => ({
     name: str(l?.name, 40, "Безымянное место"),
-    type: (LOCATION_TYPE_KEYS.includes(l?.type) ? l.type : "road") as LocationType,
+    type: (locationTypeKeys(r).includes(l?.type) ? l.type : r.defaultLocationType) as LocationType,
     desc: str(l?.desc, 200),
   }));
-  if (!START_LOCATION_TYPES.includes(locations[0]!.type)) locations[0]!.type = "village";
+  if (!startLocationTypes(r).includes(locations[0]!.type)) locations[0]!.type = r.defaultStartType;
   const objectives = (Array.isArray(seed.objectives) ? seed.objectives : [])
     .map((o) => str(o, 160))
     .filter(Boolean)
@@ -89,8 +89,8 @@ export function normalizeQuest(seed: QuestSeed) {
  * дороги — минимальное остовное дерево + 2 коротких дополнительных ребра.
  * Старт и финал никогда не соединены напрямую.
  */
-export function layoutCampaign(seed: QuestSeed, layoutSeed: string): Campaign {
-  const q = normalizeQuest(seed);
+export function layoutCampaign(r: Ruleset, seed: QuestSeed, layoutSeed: string): Campaign {
+  const q = normalizeQuest(r, seed);
   const R = mulberry32(hashStr(layoutSeed));
   const n = q.locations.length;
   const pos: [number, number][] = new Array(n);
@@ -159,12 +159,9 @@ export function neighbors(w: Campaign, id: string): MapLocation[] {
     .filter((l): l is MapLocation => !!l);
 }
 
-/** Места, где на дороге к ним встречи редки. */
-const SAFE_TYPES: LocationType[] = ["tavern", "village", "city", "temple"];
-
-/** Шанс встречи задаёт код, а не модель. */
-export function encounterChance(to: MapLocation): number {
-  return SAFE_TYPES.includes(to.type) ? 0.1 : 0.3;
+/** Шанс встречи задаёт код, а не модель. На дороге к безопасным местам встречи редки. */
+export function encounterChance(r: Ruleset, to: MapLocation): number {
+  return r.locationTypes[to.type]?.safe ? 0.1 : 0.3;
 }
 
 export interface TravelResult {
@@ -174,17 +171,17 @@ export interface TravelResult {
 }
 
 /** Перемещение только в соседнюю локацию и не во время боя. Меняет кампанию. */
-export function travel(w: Campaign, toId: string, rng: Rng): TravelResult {
+export function travel(r: Ruleset, w: Campaign, toId: string, rng: Rng): TravelResult {
   if (w.combat) throw new Error("Нельзя уйти посреди боя.");
   const from = locationById(w, w.current)!;
   const to = locationById(w, toId);
   if (!to) throw new Error("Такого места нет на карте.");
   if (!neighbors(w, w.current).some((l) => l.id === toId)) throw new Error("Туда нет прямой дороги.");
-  const encounter = rng() < encounterChance(to);
+  const encounter = rng() < encounterChance(r, to);
   w.current = to.id;
   to.visited = true;
   w.npc = null;
   return { from, to, encounter };
 }
 
-export const locationTypeName = (t: LocationType) => LOCATION_TYPES[t];
+export const locationTypeName = (r: Ruleset, t: LocationType) => r.locationTypes[t]?.name ?? t;

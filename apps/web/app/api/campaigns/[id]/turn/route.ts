@@ -1,5 +1,6 @@
 import { secureRng, type CombatMove } from "@ash/engine";
 import { arrivalView, ensureBackground, ensureNpc, GameError, loadCampaign, playTurn, prepareVisuals, saveTurn, sceneView, type TurnInput } from "@ash/game";
+import { worldOf } from "@ash/worlds";
 import { currentUser, errorResponse, getDb, getRouter, getWorldBible, sseStream, withCampaignLock } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -47,15 +48,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     withCampaignLock(id, async () => {
       const db = getDb();
       const c = await loadCampaign(db, userId, id);
+      const world = worldOf(c.state.character);
       const out = await playTurn(
         {
-          router: getRouter(), tier, worldBible: getWorldBible(), rng: secureRng, signal: req.signal, emit: (e) => send(e.type, e),
+          router: getRouter(), tier, worldBible: getWorldBible(world), rng: secureRng, signal: req.signal, emit: (e) => send(e.type, e),
           // Портрет нового NPC начинает рисоваться, пока мастер ещё дописывает ход.
-          onSpeaker: (s) => void ensureNpc(db, c.id, s).catch((e) => console.error("[images] early npc", e)),
+          onSpeaker: (s) => void ensureNpc(db, c.id, world, s).catch((e) => console.error("[images] early npc", e)),
           // Фон новой локации — в очередь до рассказа; клиент показывает его, как только он готов.
           onArrive: async () => {
             try {
-              await ensureBackground(db, c.id, c.state.campaign);
+              await ensureBackground(db, c.id, world, c.state.campaign);
               send("arrive", await arrivalView(db, c.state.campaign));
             } catch (e) {
               console.error("[images] arrive", e);

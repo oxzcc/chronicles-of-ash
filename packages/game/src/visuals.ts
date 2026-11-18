@@ -6,6 +6,7 @@ import {
   type ImageProvider, type ImageStorage, type NpcCard, type TimeOfDay,
 } from "@ash/images";
 import type { ModelRouter, Speaker } from "@ash/llm";
+import { DEFAULT_WORLD, getWorld, isWorldId, worldOf, type World } from "@ash/worlds";
 import { GameError, type GameState, type TurnRecord } from "./types";
 
 /**
@@ -13,12 +14,14 @@ import { GameError, type GameState, type TurnRecord } from "./types";
  * (status queued → working → ready | failed), забираются через FOR UPDATE SKIP LOCKED.
  */
 
-type Job =
+/** world — id мира, в стиле которого рисовать; в задачах до миров его нет — это фэнтези. */
+type Job = { world?: string } & (
   | { type: "npc"; npcId: string; card: NpcCard }
   /** NPC без карточки: расу, пол и облик угадывает служебная модель по репликам. */
   | { type: "npc-guess"; npcId: string; name: string; lines: string[]; scene: string }
   | { type: "background"; locType: LocationType; name: string; desc: string; time: TimeOfDay }
-  | { type: "hero"; description: string; label: string; seed: number };
+  | { type: "hero"; description: string; label: string; seed: number }
+);
 
 export interface VisualDeps {
   db: Db;
@@ -49,14 +52,20 @@ async function enqueue(db: Db, v: { kind: string; job: Job; tags?: string[]; use
   return row!.id;
 }
 
-/** Время суток для фона — по типу места, без отдельной системы времени. */
-function timeFor(type: LocationType, seed: number): TimeOfDay {
-  if (["tavern", "temple", "cave"].includes(type)) return "night";
+/** Время суток для фона — по типу места, без отдельной системы времени. Интерьеры — ночью. */
+function timeFor(world: World, type: LocationType, seed: number): TimeOfDay {
+  if (world.art.interiorTypes.includes(type)) return "night";
   return (["dusk", "night", "dusk", "day"] as const)[seed % 4]!;
 }
 
+/**
+ * Тег общей библиотеки фонов. У фэнтези — без id мира: так библиотека, нарисованная до миров,
+ * остаётся в деле. У остальных миров — свой тег, чтобы «город» Аркхэма не взял средневековую улицу.
+ */
+export const libraryTag = (world: World, type: LocationType) => (world.id === DEFAULT_WORLD ? `bg:${type}` : `bg:${world.id}:${type}`);
+
 /** Фон текущей локации: ключевым местам — свой, остальным — из общей библиотеки по типу. */
-export async function ensureBackground(db: Db, campaignId: string, w: Campaign) {
+export async function ensureBackground(db: Db, campaignId: string, world: World, w: Campaign) {
   const loc = locationById(w, w.current);
   if (!loc || loc.imageId) return;
   const seed = hashStr(campaignId + loc.id);
@@ -65,7 +74,7 @@ export async function ensureBackground(db: Db, campaignId: string, w: Campaign) 
     const lib = await db
       .select({ id: images.id })
       .from(images)
-      .where(and(eq(images.kind, "background"), sql`${images.tags} @> ARRAY[${`bg:${loc.type}`}]::text[]`, inArray(images.status, ["queued", "working", "ready"])))
+      .where(and(eq(images.kind, "background"), sql`${images.tags} @> ARRAY[${libraryTag(world, loc.type)}]::text[]`, inArray(images.status, ["queued", "working", "ready"])))
       .orderBy(images.createdAt);
     if (lib.length >= LIBRARY_PER_TYPE) {
       loc.imageId = lib[seed % lib.length]!.id;
@@ -74,9 +83,9 @@ export async function ensureBackground(db: Db, campaignId: string, w: Campaign) 
   }
   loc.imageId = await enqueue(db, {
     kind: "background",
-    tags: key ? [`loc:${campaignId}:${loc.id}`] : [`bg:${loc.type}`],
+    tags: key ? [`loc:${campaignId}:${loc.id}`] : [libraryTag(world, loc.type)],
     campaignId: key ? campaignId : undefined,
-    job: { type: "background", locType: loc.type, name: loc.name, desc: loc.desc, time: timeFor(loc.type, seed) },
+    job: { world: world.id, type: "background", locType: loc.type, name: loc.name, desc: loc.desc, time: timeFor(world, loc.type, seed) },
   });
 }
 
@@ -85,7 +94,7 @@ export async function ensureBackground(db: Db, campaignId: string, w: Campaign) 
  * Зовётся дважды: из потока хода, как только карточка дописана, и после хода (на случай,
  * если ранний вызов не случился); уникальный индекс не даёт задвоить.
  */
-export async function ensureNpc(db: Db, campaignId: string, s: Speaker) {
+export async function ensureNpc(db: Db, campaignId: string, world: World, s: Speaker) {
     const [row] = await db
       .insert(npcs)
       .values({ campaignId, name: s.name, nameKey: npcKey(s.name), race: s.race, gender: s.gender, role: s.role, appearance: s.look ?? "" })
@@ -95,7 +104,7 @@ export async function ensureNpc(db: Db, campaignId: string, s: Speaker) {
     const imageId = await enqueue(db, {
       kind: "npc",
       campaignId,
-      job: { type: "npc", npcId: row.id, card: { name: s.name, race: s.race, gender: s.gender, role: s.role, look: s.look } },
+      job: { world: world.id, type: "npc", npcId: row.id, card: { name: s.name, race: s.race, gender: s.gender, role: s.role, look: s.look } },
     });
     await db.update(npcs).set({ portraitImageId: imageId }).where(eq(npcs.id, row.id));
 }
@@ -104,8 +113,8 @@ export async function ensureNpc(db: Db, campaignId: string, s: Speaker) {
  * Каждому, кто говорит в репликах, — портрет. Карточку (раса, пол, облик) мастер даёт только
  * главному собеседнику; остальных говорящих раньше пропускали — и на экране висел силуэт.
  */
-async function ensureNpcs(db: Db, campaignId: string, records: TurnRecord[], heroName: string) {
-  for (const r of records) if (r.response?.speaker) await ensureNpc(db, campaignId, r.response.speaker);
+async function ensureNpcs(db: Db, campaignId: string, world: World, records: TurnRecord[], heroName: string) {
+  for (const r of records) if (r.response?.speaker) await ensureNpc(db, campaignId, world, r.response.speaker);
   const lines = new Map<string, { name: string; lines: string[]; scene: string }>();
   for (const r of records) {
     const scene = r.beats.filter((b) => !b.speaker).map((b) => b.text).join(" ");
@@ -120,19 +129,20 @@ async function ensureNpcs(db: Db, campaignId: string, records: TurnRecord[], her
   for (const [k, e] of lines) {
     const [row] = await db
       .insert(npcs)
-      .values({ campaignId, name: e.name, nameKey: k, race: "human", gender: "m", role: "", appearance: "" })
+      .values({ campaignId, name: e.name, nameKey: k, race: Object.keys(world.rules.races)[0]!, gender: "m", role: "", appearance: "" })
       .onConflictDoNothing()
       .returning({ id: npcs.id });
     if (!row) continue;
-    const imageId = await enqueue(db, { kind: "npc", campaignId, job: { type: "npc-guess", npcId: row.id, name: e.name, lines: e.lines.slice(0, 4), scene: e.scene } });
+    const imageId = await enqueue(db, { kind: "npc", campaignId, job: { world: world.id, type: "npc-guess", npcId: row.id, name: e.name, lines: e.lines.slice(0, 4), scene: e.scene } });
     await db.update(npcs).set({ portraitImageId: imageId }).where(eq(npcs.id, row.id));
   }
 }
 
 /** Вызывается после хода, до сохранения: может записать фон в состояние кампании. */
 export async function prepareVisuals(db: Db, campaignId: string, state: GameState, records: TurnRecord[]) {
-  await ensureNpcs(db, campaignId, records, state.character.name);
-  await ensureBackground(db, campaignId, state.campaign);
+  const world = worldOf(state.character);
+  await ensureNpcs(db, campaignId, world, records, state.character.name);
+  await ensureBackground(db, campaignId, world, state.campaign);
 }
 
 /** Фон текущей локации для клиента — сразу при входе, ещё до рассказа мастера. */
@@ -184,13 +194,16 @@ export async function sceneView(db: Db, campaignId: string, characterId: string,
 }
 
 /** Четыре разных облика героя: тексты пишет служебная модель, картинки — очередь. */
-export async function createHeroOptions(db: Db, router: ModelRouter, userId: string, draft: Pick<CharacterDraft, "race" | "cls" | "gender">, notes: string, signal?: AbortSignal) {
-  const variants = await heroVariants(router, draft, notes, signal);
-  const base = baseHero(draft);
+export async function createHeroOptions(db: Db, router: ModelRouter, userId: string, draft: Pick<CharacterDraft, "world" | "race" | "cls" | "gender">, notes: string, signal?: AbortSignal) {
+  if (draft.world !== undefined && !isWorldId(draft.world)) throw new GameError("Неизвестный мир.");
+  const world = worldOf(draft);
+  if (!(draft.race in world.rules.races) || !(draft.cls in world.rules.classes)) throw new GameError("Сначала выбери расу и класс.");
+  const variants = await heroVariants(router, world, draft, notes, signal);
+  const base = baseHero(world, draft);
   const extra = notes.trim() ? `, ${notes.trim().slice(0, 200)}` : "";
   return Promise.all(
     variants.map(async (v, i) => ({
-      id: await enqueue(db, { kind: "hero", userId, job: { type: "hero", description: `${base}, ${v.prompt}${extra}`, label: v.label, seed: 1000 + i } }),
+      id: await enqueue(db, { kind: "hero", userId, job: { world: world.id, type: "hero", description: `${base}, ${v.prompt}${extra}`, label: v.label, seed: 1000 + i } }),
       label: v.label,
     })),
   );
@@ -230,19 +243,20 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
   if (!row) return false;
   try {
     const j = row.job;
+    const world = getWorld(isWorldId(j.world) ? j.world : DEFAULT_WORLD);
     let r;
     if (j.type === "npc") {
-      const description = await describeNpc(d.router, j.card, signal);
-      r = await renderPortrait({ provider: d.provider, storage: d.storage, description, key: `npc/${row.id}`, signal });
+      const description = await describeNpc(d.router, world, j.card, signal);
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description, key: `npc/${row.id}`, signal });
     } else if (j.type === "npc-guess") {
-      const g = await guessNpc(d.router, j, signal);
+      const g = await guessNpc(d.router, world, j, signal);
       await d.db.update(npcs).set({ race: g.card.race, gender: g.card.gender, role: g.card.role }).where(eq(npcs.id, j.npcId));
-      r = await renderPortrait({ provider: d.provider, storage: d.storage, description: g.description, key: `npc/${row.id}`, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: g.description, key: `npc/${row.id}`, signal });
     } else if (j.type === "hero") {
-      r = await renderPortrait({ provider: d.provider, storage: d.storage, description: j.description, key: `hero/${row.id}`, seed: j.seed, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `hero/${row.id}`, seed: j.seed, signal });
     } else {
-      const description = await describeLocation(d.router, { name: j.name, type: j.locType, desc: j.desc }, signal);
-      r = await renderBackground({ provider: d.provider, storage: d.storage, description, time: j.time, key: `bg/${row.id}`, signal });
+      const description = await describeLocation(d.router, world, { name: j.name, type: j.locType, desc: j.desc }, signal);
+      r = await renderBackground({ world, provider: d.provider, storage: d.storage, description, time: j.time, key: `bg/${row.id}`, signal });
     }
     await d.db
       .update(images)

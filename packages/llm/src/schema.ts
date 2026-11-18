@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CHECKABLE, DC_MAX, DC_MIN, RACE_KEYS } from "@ash/engine";
+import { checkable, DC_MAX, DC_MIN, raceKeys, type Ruleset } from "@ash/engine";
 
 /**
  * JSON-контракт ответа мастера (gm-2). Ответ — последовательность реплик (beats):
@@ -14,17 +14,27 @@ const int = z.coerce.number().transform((n) => (Number.isFinite(n) ? Math.round(
 const strList = (maxItems: number, maxLen: number) =>
   z.array(z.unknown()).transform((a) => a.map(String).map((s) => s.trim().slice(0, maxLen)).filter(Boolean).slice(0, maxItems)).catch([]);
 
-const SpeakerSchema = z
-  .object({
-    name: str(40),
-    race: z.enum(RACE_KEYS).catch("human"),
-    gender: z.enum(["m", "f"]).catch("m"),
-    role: str(60),
-    look: str(200).optional(),
-  })
-  .nullable()
-  .catch(null)
-  .transform((s) => (s && s.name ? s : null));
+/** Раса NPC — только из рас мира; неизвестная становится первой (человеком). */
+const buildSpeakerSchema = (r: Ruleset) => {
+  const races = raceKeys(r);
+  return z
+    .object({
+      name: str(40),
+      race: z.enum(races as [string, ...string[]]).catch(races[0]!),
+      gender: z.enum(["m", "f"]).catch("m"),
+      role: str(60),
+      look: str(200).optional(),
+    })
+    .nullable()
+    .catch(null)
+    .transform((s) => (s && s.name ? s : null));
+};
+const speakerSchemas = new Map<string, ReturnType<typeof buildSpeakerSchema>>();
+function speakerSchema(r: Ruleset) {
+  let s = speakerSchemas.get(r.id);
+  if (!s) speakerSchemas.set(r.id, (s = buildSpeakerSchema(r)));
+  return s;
+}
 
 export interface Beat {
   /** null — голос рассказчика; иначе имя говорящего NPC. */
@@ -48,12 +58,12 @@ export interface Suggestion {
   check?: { skill: string; dc: number };
 }
 
-const SuggestionSchema = z.union([
+const suggestionSchema = (checks: string[]) => z.union([
   z.string().transform((text): Suggestion => ({ text })),
   z
     .object({ text: z.string(), skill: z.string().optional().catch(undefined), dc: z.coerce.number().optional().catch(undefined) })
     .transform((s): Suggestion => {
-      const skill = s.skill && CHECKABLE.includes(s.skill.trim()) ? s.skill.trim() : null;
+      const skill = s.skill && checks.includes(s.skill.trim()) ? s.skill.trim() : null;
       const dc = Number.isFinite(s.dc) ? Math.min(DC_MAX, Math.max(DC_MIN, Math.round(s.dc!))) : 13;
       return skill ? { text: s.text, check: { skill, dc } } : { text: s.text };
     }),
@@ -67,12 +77,12 @@ const EnemySchema = z.object({
   damage: z.string().catch("1d6+1"),
 });
 
-const RawResponseSchema = z.object({
+const rawResponseSchema = (r: Ruleset) => z.object({
   beats: z.array(z.unknown()).catch([]).default([]),
   /** Старый формат gm-1 — на случай, если модель его вспомнит. */
   narration: z.string().optional().catch(undefined),
   line: z.string().optional().catch(undefined),
-  speaker: SpeakerSchema.default(null),
+  speaker: speakerSchema(r).default(null),
   changes: z
     .object({
       hp: int.default(0),
@@ -92,29 +102,40 @@ const RawResponseSchema = z.object({
   suggestions: z.array(z.unknown()).catch([]).default([]),
 });
 
-export const GmResponseSchema = RawResponseSchema.transform((r) => {
-  let beats = r.beats.map((b) => BeatSchema.safeParse(b)).flatMap((x) => (x.success && x.data.text ? [x.data] : [])).slice(0, 12);
-  if (!beats.length && r.narration?.trim()) {
-    beats = r.narration.split(/\n\s*\n/).map((t) => ({ speaker: null, text: t.trim() })).filter((b) => b.text);
-    if (r.line?.trim()) beats.push({ speaker: r.speaker?.name ?? "Голос", text: unquote(r.line) });
-  }
-  const suggestions = r.suggestions
-    .map((s) => SuggestionSchema.safeParse(s))
-    .flatMap((x) => (x.success && x.data.text.trim() ? [{ ...x.data, text: x.data.text.trim().slice(0, 100) }] : []))
-    .slice(0, 4);
-  return {
-    beats,
-    narration: beatsText(beats),
-    speaker: r.speaker,
-    changes: r.changes,
-    combat: r.combat,
-    questDone: r.questDone,
-    questComplete: r.questComplete,
-    suggestions,
-  };
-});
+/** Схема ответа мастера для правил мира: расы NPC и навыки проверок — из мира. */
+function buildGmResponseSchema(rules: Ruleset) {
+  const SuggestionSchema = suggestionSchema(checkable(rules));
+  return rawResponseSchema(rules).transform((r) => {
+    let beats = r.beats.map((b) => BeatSchema.safeParse(b)).flatMap((x) => (x.success && x.data.text ? [x.data] : [])).slice(0, 12);
+    if (!beats.length && r.narration?.trim()) {
+      beats = r.narration.split(/\n\s*\n/).map((t) => ({ speaker: null, text: t.trim() })).filter((b) => b.text);
+      if (r.line?.trim()) beats.push({ speaker: r.speaker?.name ?? "Голос", text: unquote(r.line) });
+    }
+    const suggestions = r.suggestions
+      .map((s) => SuggestionSchema.safeParse(s))
+      .flatMap((x) => (x.success && x.data.text.trim() ? [{ ...x.data, text: x.data.text.trim().slice(0, 100) }] : []))
+      .slice(0, 4);
+    return {
+      beats,
+      narration: beatsText(beats),
+      speaker: r.speaker,
+      changes: r.changes,
+      combat: r.combat,
+      questDone: r.questDone,
+      questComplete: r.questComplete,
+      suggestions,
+    };
+  });
+}
 
-export type GmResponse = z.output<typeof GmResponseSchema>;
+const schemas = new Map<string, ReturnType<typeof buildGmResponseSchema>>();
+export function gmResponseSchema(rules: Ruleset) {
+  let s = schemas.get(rules.id);
+  if (!s) schemas.set(rules.id, (s = buildGmResponseSchema(rules)));
+  return s;
+}
+
+export type GmResponse = z.output<ReturnType<typeof buildGmResponseSchema>>;
 
 /** Реплики одной строкой — для журнала, истории в промпте и стенограмм. */
 export function beatsText(beats: Beat[]): string {
@@ -176,19 +197,19 @@ export function partialBeats(text: string): Beat[] {
   return [];
 }
 
-export type Speaker = NonNullable<z.output<typeof SpeakerSchema>>;
+export type Speaker = NonNullable<z.output<ReturnType<typeof speakerSchema>>>;
 
 /**
  * Карточка NPC из недописанного ответа — как только она дописана целиком
  * (после неё в JSON уже начались другие поля). Нужна, чтобы портрет начинал рисоваться
  * до конца хода. undefined — ещё рано; null — в ответе NPC нет.
  */
-export function partialSpeaker(text: string): Speaker | null | undefined {
+export function partialSpeaker(text: string, rules: Ruleset): Speaker | null | undefined {
   const raw = parsePartialJson(text) as Record<string, unknown> | null;
   if (!raw || !("speaker" in raw)) return undefined;
   const keys = Object.keys(raw);
   if (keys.indexOf("speaker") === keys.length - 1) return undefined;
-  return SpeakerSchema.parse(raw.speaker);
+  return speakerSchema(rules).parse(raw.speaker);
 }
 
 /** Первый годный JSON-объект в тексте (модели иногда пишут что-то до или после). */
@@ -205,7 +226,8 @@ export function extractJson(text: string): unknown | null {
 
 export type ParseResult = { ok: true; value: GmResponse } | { ok: false; error: string; fallback: GmResponse };
 
-export function parseGmResponse(text: string): ParseResult {
+export function parseGmResponse(text: string, rules: Ruleset): ParseResult {
+  const GmResponseSchema = gmResponseSchema(rules);
   const raw = extractJson(text);
   if (raw && typeof raw === "object") {
     const r = GmResponseSchema.safeParse(raw);

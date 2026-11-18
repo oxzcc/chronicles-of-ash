@@ -17,6 +17,9 @@ importers:
       '@ash/llm':
         specifier: workspace:^
         version: link:packages/llm
+      '@ash/worlds':
+        specifier: workspace:^
+        version: link:packages/worlds
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -48,6 +51,9 @@ importers:
       '@ash/llm':
         specifier: workspace:^
         version: link:../../packages/llm
+      '@ash/worlds':
+        specifier: workspace:^
+        version: link:../../packages/worlds
       next:
         specifier: 16.4.6
         version: 16.4.6(@types/node@22.20.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -103,6 +109,9 @@ importers:
       '@ash/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ash/worlds':
+        specifier: workspace:*
+        version: link:../worlds
       drizzle-orm:
         specifier: ^0.45.0
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
@@ -115,6 +124,9 @@ importers:
       '@ash/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ash/worlds':
+        specifier: workspace:*
+        version: link:../worlds
       sharp:
         specifier: ^0.35.5
         version: 0.35.5(@types/node@22.20.5)
@@ -124,9 +136,18 @@ importers:
       '@ash/engine':
         specifier: workspace:*
         version: link:../engine
+      '@ash/worlds':
+        specifier: workspace:*
+        version: link:../worlds
       zod:
         specifier: ^4.6.0
         version: 4.6.7
+
+  packages/worlds:
+    dependencies:
+      '@ash/engine':
+        specifier: workspace:*
+        version: link:../engine
 
 packages:
 

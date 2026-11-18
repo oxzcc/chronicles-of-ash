@@ -1,8 +1,12 @@
 import {
-  createCharacter, layoutCampaign, mulberry32, RECOMMENDED_STATS,
+  createCharacter, layoutCampaign, mulberry32,
   type Campaign, type Character, type CharacterDraft, type ClassKey, type RaceKey, type SkillName,
 } from "@ash/engine";
 import type { HistoryEntry } from "@ash/llm";
+import { getWorld, type World } from "@ash/worlds";
+
+/** Сцены этого файла — мира «Хроники Пепла». */
+export const SCENES_WORLD = "fantasy";
 
 /**
  * 10 тестовых сцен для слепого сравнения рассказчиков и для проверки промптов перед выкаткой.
@@ -110,12 +114,13 @@ export const SCENES: Scene[] = [
   },
 ];
 
-export function buildScene(s: Scene): { character: Character; campaign: Campaign; history: HistoryEntry[]; action: string } {
-  const draft: CharacterDraft = { ...s.hero, base: { ...RECOMMENDED_STATS[s.hero.cls] }, skills: [...s.hero.skills] };
-  const character = createCharacter(draft, mulberry32(7));
+export function buildScene(s: Scene, world: World = getWorld(SCENES_WORLD)): { character: Character; campaign: Campaign; history: HistoryEntry[]; action: string } {
+  const R = world.rules;
+  const draft: CharacterDraft = { world: world.id, ...s.hero, base: { ...R.recommended[s.hero.cls]! }, skills: [...s.hero.skills] };
+  const character = createCharacter(R, draft, mulberry32(7));
   character.gold = 18;
   s.tweak?.(character);
-  const campaign = layoutCampaign(QUEST, "arena");
+  const campaign = layoutCampaign(R, QUEST, "arena");
   campaign.current = `L${s.at}`;
   for (const o of campaign.objectives) o.done = !!s.done?.includes(o.id);
   campaign.summary = s.summary ?? "";

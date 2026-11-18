@@ -1,14 +1,15 @@
 import {
-  applyChanges, CLASSES, combatSummary, knockOut, locationById, playerMove, skillCheck, startCombat, travel,
+  applyChanges, combatSummary, knockOut, locationById, playerMove, skillCheck, startCombat, travel,
   type CombatEvent, type CombatOutcome,
 } from "@ash/engine";
 import { emptyUsage, runNarratorTurn, systemActions, type HistoryEntry } from "@ash/llm";
+import { worldOf } from "@ash/worlds";
 import { GameError, type GameState, type TurnDeps, type TurnInput, type TurnOutcome, type TurnRecord } from "./types";
 import { toHistory, type Recordish } from "./history";
 
 export const MAX_ACTION_LENGTH = 500;
 
-const MOVE_LABELS = { attack: "Атака", ability: "Умение", potion: "Зелье", dodge: "Защита", flee: "Бегство" } as const;
+const MOVE_LABELS = { attack: "Атака", ability: "Умение", dodge: "Защита", flee: "Бегство" } as const;
 
 /**
  * Один ход игры: проверяет, можно ли его сделать, зовёт рассказчика, применяет изменения движком.
@@ -17,6 +18,8 @@ const MOVE_LABELS = { attack: "Атака", ability: "Умение", potion: "З
  */
 export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordish[], input: TurnInput): Promise<TurnOutcome> {
   const { character: c, campaign: w } = state;
+  const world = worldOf(c);
+  const R = world.rules;
   const records: TurnRecord[] = [];
   const history = (): HistoryEntry[] => toHistory([...prior, ...records]);
 
@@ -24,7 +27,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const narrate = async (kind: TurnRecord["kind"], label: string, action: string, opts: { keepHp?: boolean; preRolls?: TurnRecord["rolls"] } = {}) => {
     const { provider, model } = deps.router.route("narrator", deps.tier);
     const r = await runNarratorTurn({
-      provider, model, worldBible: deps.worldBible, rng: deps.rng, signal: deps.signal,
+      provider, model, world, worldBible: deps.worldBible, rng: deps.rng, signal: deps.signal,
       scene: { character: c, campaign: w, history: history(), action },
       onBeats: (beats) => deps.emit?.({ type: "beats", beats }),
       onRoll: (roll) => deps.emit?.({ type: "roll", roll }),
@@ -32,7 +35,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       allowChecks: !opts.preRolls?.length,
     });
     const resp = r.response;
-    const applied = applyChanges(c, w, {
+    const applied = applyChanges(R, c, w, {
       ...resp.changes,
       hp: opts.keepHp ? 0 : resp.changes.hp,
       questDone: resp.questDone,
@@ -71,7 +74,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
 
   const knockedOut = async (foes?: string) => {
     const { goldLost } = knockOut(c);
-    await narrate("knockout", "Герой потерял сознание", systemActions.knockedOut(goldLost, foes), { keepHp: true });
+    await narrate("knockout", "Герой потерял сознание", systemActions.knockedOut(R.money.amount(goldLost), foes), { keepHp: true });
   };
 
   /** Если ответ мастера объявил бой — начинаем его; враги могут ударить первыми. */
@@ -115,7 +118,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       let action = pick.text;
       const preRolls: TurnRecord["rolls"] = [];
       if (pick.check) {
-        const roll = skillCheck(c, { skill: pick.check.skill, dc: pick.check.dc }, deps.rng);
+        const roll = skillCheck(R, c, { skill: pick.check.skill, dc: pick.check.dc }, deps.rng);
         deps.emit?.({ type: "roll", roll });
         preRolls.push(roll);
         action = systemActions.checked(pick.text, roll.summary);
@@ -128,7 +131,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     case "travel": {
       let t;
       try {
-        t = travel(w, input.to, deps.rng);
+        t = travel(R, w, input.to, deps.rng);
       } catch (e) {
         throw new GameError((e as Error).message);
       }
@@ -143,7 +146,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const missing = c.hpMax - c.hp;
       const { resp, applied } = await narrate("rest", "Привал", systemActions.rest(missing));
       // Отдых удался, если мастер вернул здоровье (или его и так хватало) и не начался бой.
-      if (!resp.combat && (applied.hp > 0 || missing === 0)) c.abilityUses = CLASSES[c.cls].ability.uses;
+      if (!resp.combat && (applied.hp > 0 || missing === 0)) c.abilityUses = R.classes[c.cls]?.ability.uses ?? 0;
       await maybeStartCombat(resp);
       break;
     }
@@ -151,11 +154,11 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       if (!w.combat) throw new GameError("Сейчас нет боя.");
       let step;
       try {
-        step = playerMove(w.combat, c, input.move, deps.rng, input.target);
+        step = playerMove(R, w.combat, c, input.move, deps.rng, input.target);
       } catch (e) {
         throw new GameError((e as Error).message);
       }
-      combatRecord(MOVE_LABELS[input.move], step.events, step.outcome);
+      combatRecord(input.move === "potion" ? R.healing.label : MOVE_LABELS[input.move], step.events, step.outcome);
       await finishCombat(step.outcome);
       break;
     }
