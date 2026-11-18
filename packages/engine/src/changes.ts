@@ -45,6 +45,15 @@ export const LIMITS = {
 const norm = (s: string) => s.trim().toLowerCase().replace(/ё/g, "е");
 
 /** Применяет изменения к герою и кампании (мутирует их) и возвращает, что реально применилось. */
+/** Название предмета до лимита: режем по слову и без висящей кавычки («футляр с экслибрисом «Из» → «футляр с экслибрисом»). */
+export function itemName(raw: unknown): string {
+  const s = String(raw).trim().replace(/\s+/g, " ");
+  if (s.length <= LIMITS.itemNameMax) return s;
+  const cut = s.slice(0, LIMITS.itemNameMax + 1);
+  const atWord = cut.lastIndexOf(" ") > 10 ? cut.slice(0, cut.lastIndexOf(" ")) : cut.slice(0, LIMITS.itemNameMax);
+  return atWord.replace(/[\s«"(„,:;—-]+$/, "").replace(/\s+«[^»]*$/, "").trim();
+}
+
 export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedChanges): AppliedChanges {
   const out: AppliedChanges = { hp: 0, sanity: 0, gold: 0, added: [], removed: [], questDone: [], questComplete: false, rejected: [], notes: [] };
 
@@ -115,7 +124,7 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
   }
 
   for (const raw of p.addItems ?? []) {
-    const name = String(raw).trim().slice(0, LIMITS.itemNameMax);
+    const name = itemName(raw);
     if (!name) continue;
     if (out.added.length >= LIMITS.itemsPerTurn) {
       out.rejected.push(`addItems: больше ${LIMITS.itemsPerTurn} за ход («${name}»)`);

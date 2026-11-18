@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyChanges, createCharacter, layoutCampaign, mulberry32, neighbors, normalizeEnemies, playerMove, pointsSpent,
+  applyChanges, itemName, createCharacter, layoutCampaign, mulberry32, neighbors, normalizeEnemies, playerMove, pointsSpent,
   rollExpr, scriptedRng, skillCheck, startCombat, travel, validateDraft, knockOut, isDiceExpr, sheetText, isUnhinged, breakDown,
   type CharacterDraft, type QuestSeed,
 } from "../src/index";
@@ -237,5 +237,13 @@ describe("рассудок", () => {
     c.sanity = 0;
     expect(breakDown(c).restored).toBe(7);
     expect(c.sanity).toBe(7);
+  });
+});
+
+describe("название предмета", () => {
+  it("длинное режется по слову, без висящей кавычки", () => {
+    expect(itemName("Пустой футляр с экслибрисом «Из собрания А. Хоу»")).toBe("Пустой футляр с экслибрисом");
+    expect(itemName("  Револьвер   «Смит-Вессон»  ")).toBe("Револьвер «Смит-Вессон»");
+    expect(itemName("x".repeat(60))).toHaveLength(40);
   });
 });

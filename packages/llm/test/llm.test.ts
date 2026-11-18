@@ -199,7 +199,7 @@ describe("промпты по мирам", () => {
     expect(a).toContain('"race":"human"');
     expect(a).not.toMatch(/Baldur|тёмно-фэнтезийн|золот/);
     expect(gmRules(world)).not.toContain("РАССЛЕДОВАНИЕ:");
-    expect(promptVersion(arkham)).toBe("gm-3+arkham-3");
+    expect(promptVersion(arkham)).toBe("gm-3+arkham-4");
     expect(promptVersion(world)).toBe("gm-3");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
@@ -218,7 +218,7 @@ describe("промпты по мирам", () => {
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-3+arkham-3");
+    expect(r.promptVersion).toBe("gm-3+arkham-4");
   });
 });
 
