@@ -1,4 +1,4 @@
-import { hashStr, mulberry32, raceKeys, type CharacterDraft, type Gender, type LocationType, type RaceKey, type Rng } from "@ash/engine";
+import { hashStr, mulberry32, raceKeys, secureRng, type CharacterDraft, type Gender, type LocationType, type RaceKey, type Rng } from "@ash/engine";
 import { extractJson, type ModelRouter } from "@ash/llm";
 import type { BuildOption, World } from "@ash/worlds";
 import { isInterior, raceEn } from "./style";
@@ -199,10 +199,39 @@ export interface LookVariant {
   label: string;
   /** Английский фрагмент промпта. */
   prompt: string;
+  /** Одежда и предмет в руках вместо classEn — у каждого облика свои. */
+  outfit?: string;
 }
 
 /** Игрок сам написал о фигуре — не спорим с ним. */
 const BUILD_NOTE = /худ|строй|полн|пышн|форм|толст|спортив|атлет|мускул|миниатюр|хрупк|крепк|груз|жилист/i;
+/** Игрок сам написал об одежде — все четыре облика одеты по его словам. */
+const CLOTHES_NOTE = /плащ|пальто|костюм|шляп|кепк|платье|пиджак|жилет|куртк|шинел|мантии|мантия|ряс|доспех|кольчуг|броня|броне|камзол|сюртук|рубаш|блуз|юбк|брюк|шарф|перчат|очк|пенсне|монокл|капюшон|накидк/i;
+
+/**
+ * Позы четырёх обликов — разные, выбирает код: служебная модель сама ставит всех одинаково.
+ * Нейтральные к предмету в руках: «the object» — то, что даёт наряд.
+ */
+const POSES = [
+  "standing in three-quarter view with arms crossed",
+  "turned half away, looking back over the shoulder",
+  "seen from a low angle, chin raised, one hand on the hip",
+  "leaning forward slightly, studying the object in hand",
+  "hands clasped in front, head tilted to one side",
+  "one hand raised to the collar, the other holding the object at the side",
+  "holding the object up close to the face",
+  "walking forward mid-step, coat swinging",
+];
+
+/** Первые n элементов в случайном порядке (без повторов). */
+const shuffled = <T>(arr: readonly T[], rng: Rng): T[] => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+};
 
 /** Запасные отличия, если служебная модель не ответила: четыре разных человека, а не один. */
 const VARIETY = [
@@ -212,35 +241,55 @@ const VARIETY = [
   { label: "Светлые волосы, суровый взгляд", prompt: "ash-blond hair tied back, sharp cheekbones, wind-burned skin, cold determined gaze" },
 ];
 
-export function baseHero(world: World, d: Pick<CharacterDraft, "race" | "cls" | "gender">): string {
+/** Основа облика героя; outfit — наряд конкретного варианта вместо classEn. */
+export function baseHero(world: World, d: Pick<CharacterDraft, "race" | "cls" | "gender">, outfit?: string): string {
+  const cls = outfit ?? world.art.classEn[d.cls] ?? "";
   // С LoRA — как в подписях датасета: «a woman private detective in a belted trench coat…».
-  if (captionStyle(world)) return `${d.gender === "f" ? "a woman" : "a man"} ${world.art.classEn[d.cls] ?? ""}`.trim();
-  return `${genderEn(d.gender)}, ${raceEn(world, d.race, d.gender)}, ${world.art.classEn[d.cls] ?? ""}`;
+  if (captionStyle(world)) return `${d.gender === "f" ? "a woman" : "a man"} ${cls}`.trim();
+  return `${genderEn(d.gender)}, ${raceEn(world, d.race, d.gender)}, ${cls}`;
 }
 
 /**
  * Четыре заметно разных облика по выбору игрока: общая основа (раса, класс, пол, заметки игрока)
- * плюс разные возраст, волосы, черты лица, детали одежды и выражение.
+ * плюс разные возраст, волосы, черты лица и выражение (пишет служебная модель), а телосложение,
+ * наряд и поза — из списков мира, по одному на облик (выбирает код, иначе все четверо одинаковые).
+ * Подпись — только про лицо и возраст: фигуру в подпись не пишем.
  */
-export async function heroVariants(router: ModelRouter, world: World, d: Pick<CharacterDraft, "race" | "cls" | "gender">, notes: string, signal?: AbortSignal): Promise<LookVariant[]> {
-  // Четыре облика — четыре разные фигуры мира (у героини: две с формами, две без), если игрок сам не задал фигуру.
+export async function heroVariants(
+  router: ModelRouter,
+  world: World,
+  d: Pick<CharacterDraft, "race" | "cls" | "gender">,
+  notes: string,
+  signal?: AbortSignal,
+  rng: Rng = secureRng,
+): Promise<LookVariant[]> {
   const builds = BUILD_NOTE.test(notes) ? undefined : world.art.figures?.hero[d.gender];
-  const withBuild = (v: LookVariant[]) =>
-    builds ? v.map((x, i) => (builds[i] ? { label: `${x.label}, ${builds[i]!.ru}`, prompt: `${x.prompt}, ${builds[i]!.en}` } : x)) : v;
+  const outfitList = world.art.heroOutfitsEn?.[d.cls];
+  const outfits = outfitList && outfitList.length >= 4 && !CLOTHES_NOTE.test(notes) ? shuffled(outfitList, rng).slice(0, 4) : undefined;
+  const poses = shuffled(POSES, rng).slice(0, 4);
+  const finish = (v: LookVariant[]) =>
+    v.map((x, i) => ({
+      // Подпись — без телосложения, даже если модель его всё же вписала.
+      label: x.label.split(/,\s*/).filter((part) => !BUILD_NOTE.test(part)).join(", ") || x.label,
+      prompt: [x.prompt, builds?.[i], poses[i]].filter(Boolean).join(", "),
+      ...(outfits ? { outfit: outfits[i] } : {}),
+    }));
+  const fixed = [builds && "body build", outfits && "clothing", "pose"].filter(Boolean).join(", ");
   try {
     const raw = await ask(
       router,
       `You design 4 clearly DIFFERENT looks for a ${world.art.genreEn} player character. Base: ${baseHero(world, d)} (${world.rules.races[d.race]?.name ?? d.race}, ${world.rules.classes[d.cls]?.name ?? d.cls}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
-Vary age, hair colour and style, face shape, scars or marks, a clothing detail and expression so that the 4 people are easy to tell apart.${builds ? `\nBody builds are fixed by the game, in this order: ${builds.map((b, i) => `${i + 1}) ${b.en}`).join("; ")}. Do not describe build or figure yourself, but pick ages that suit them: a curvy, voluptuous or hourglass look is 20 to 45 years old.` : ""}
+Vary age, hair colour and style, face shape, scars or marks${outfits ? "" : ", a clothing detail"} and expression so that the 4 people are easy to tell apart.
+${fixed} are set by the game — do not describe them.${builds ? ` Body builds, in this order: ${builds.map((b, i) => `${i + 1}) ${b}`).join("; ")}; pick ages that suit them: a curvy, voluptuous or hourglass look is 20 to 45 years old.` : ""}
 Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and an age.
-Return JSON only: [{"label":"4-7 слов по-русски","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,
+Return JSON only: [{"label":"3-6 слов по-русски: возраст, волосы, примета на лице; без фигуры и одежды","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,
       signal,
     );
     const arr = extractJson(`{"v":${raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1)}}`) as { v?: unknown[] } | null;
     const items = (arr?.v ?? [])
       .map((x: any) => ({ label: String(x?.label ?? "").trim().slice(0, 60), prompt: oneLine(String(x?.prompt ?? "")) }))
       .filter((x) => x.label && x.prompt && !CYR.test(x.prompt));
-    if (items.length >= 4) return withBuild(items.slice(0, 4));
+    if (items.length >= 4) return finish(items.slice(0, 4));
   } catch {}
-  return withBuild(VARIETY);
+  return finish(VARIETY);
 }

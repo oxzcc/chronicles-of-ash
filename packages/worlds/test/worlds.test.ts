@@ -90,7 +90,7 @@ describe("постоянные лица мира", () => {
 
 
 describe("телосложение мира", () => {
-  it("у Аркхэма: веса положительные, слова по-английски, у героя — четыре разные фигуры с подписью по-русски", async () => {
+  it("у Аркхэма: веса положительные, слова по-английски, у героя — четыре разные фигуры", async () => {
     const { getWorld } = await import("../src/index");
     const fig = getWorld("arkham").art.figures!;
     for (const opts of [fig.young.f, fig.young.m, fig.elderly.f, fig.elderly.m])
@@ -100,10 +100,28 @@ describe("телосложение мира", () => {
       }
     for (const g of ["f", "m"] as const) {
       expect(fig.hero[g]).toHaveLength(4);
-      expect(new Set(fig.hero[g].map((h) => h.en)).size).toBe(4);
-      for (const h of fig.hero[g]) expect(h.ru).toMatch(/^[а-яё ]+$/);
+      expect(new Set(fig.hero[g]).size).toBe(4);
+      for (const h of fig.hero[g]) expect(h).not.toMatch(/[а-яё]/i);
     }
-    // Две героини из четырёх — с формами, две — без.
-    expect(fig.hero.f.filter((h) => /bust/.test(h.en))).toHaveLength(2);
+    // Одна героиня — с талией и изгибами, одна — полная целиком, две — без форм.
+    expect(fig.hero.f.filter((h) => /bust/.test(h))).toHaveLength(1);
+    expect(fig.hero.f.filter((h) => /plump/.test(h))).toHaveLength(1);
+  });
+});
+
+describe("наряды героя", () => {
+  it("у каждого класса — четыре разных наряда по-английски, первый совпадает с classEn", async () => {
+    const { WORLDS } = await import("../src/index");
+    for (const w of WORLDS) {
+      const outfits = w.art.heroOutfitsEn;
+      if (!outfits) continue;
+      for (const [cls, en] of Object.entries(w.art.classEn)) {
+        const list = outfits[cls];
+        expect(list, `${w.id}/${cls}`).toHaveLength(4);
+        expect(new Set(list).size).toBe(4);
+        expect(list![0]).toBe(en);
+        for (const o of list!) expect(o).not.toMatch(/[а-яё]/i);
+      }
+    }
   });
 });
