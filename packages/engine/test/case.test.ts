@@ -65,6 +65,9 @@ describe("дело: ходы", () => {
     expect(r.rejected.join()).toMatch(/неизвестная улика c99/);
     expect(r.revealed).toEqual(["L5"]);
     expect(r.rejected.join()).toMatch(/нет места L77/);
+    // Плашки — только принятое: две улики этого места и новый адрес.
+    expect(r.effects.map((e) => [e.kind, e.ref])).toEqual([["clue", "c1"], ["clue", "c4"], ["address", "L5"]]);
+    expect(r.effects[0]!.text).toBe(w.case!.clues.find((x) => x.id === "c1")!.text);
   });
   it("reveal по названию: мастер написал «Бакалея» вместо L4 — место открывается, если подходит ровно одно", () => {
     const w = fresh();

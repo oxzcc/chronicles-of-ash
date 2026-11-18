@@ -1,4 +1,5 @@
 import { clamp } from "./dice";
+import { effect, type TurnEffect } from "./effects";
 import { findPlace, layoutCampaign, locationById, travel, type Campaign, type MapLocation, type QuestSeed } from "./world";
 import { normName, sameWord } from "./names";
 import type { Rng } from "./rng";
@@ -243,6 +244,7 @@ export interface AppliedCaseChanges {
   revealed: string[];
   rejected: string[];
   notes: string[];
+  effects: TurnEffect[];
 }
 
 /**
@@ -250,7 +252,7 @@ export interface AppliedCaseChanges {
  * вывод так не находится — только реконструкцией. Открыть можно только место из дела.
  */
 export function applyCaseChanges(w: Campaign, p: CaseChanges): AppliedCaseChanges {
-  const out: AppliedCaseChanges = { clues: [], revealed: [], rejected: [], notes: [] };
+  const out: AppliedCaseChanges = { clues: [], revealed: [], rejected: [], notes: [], effects: [] };
   const c = w.case;
   if (!c) return out;
   for (const id of p.clues ?? []) {
@@ -264,6 +266,7 @@ export function applyCaseChanges(w: Campaign, p: CaseChanges): AppliedCaseChange
       clue.found = true;
       out.clues.push(id);
       out.notes.push(`улика: ${clue.text}`);
+      out.effects.push(effect.clue(clue.id, clue.text));
     }
   }
   for (const raw of p.reveal ?? []) {
@@ -273,6 +276,7 @@ export function applyCaseChanges(w: Campaign, p: CaseChanges): AppliedCaseChange
       c.known.push(l.id);
       out.revealed.push(l.id);
       out.notes.push(`новый адрес: ${l.name}`);
+      out.effects.push(effect.address(l.id, l.name));
     }
   }
   return out;

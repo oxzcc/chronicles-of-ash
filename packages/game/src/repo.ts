@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { campaigns, characters, turns, users, type Db } from "@ash/db";
-import type { Campaign, Character } from "@ash/engine";
+import type { Campaign, Character, TurnEffect } from "@ash/engine";
 import type { Tier } from "@ash/llm";
 import { DEFAULT_WORLD } from "@ash/worlds";
 import { HISTORY_WINDOW } from "./history";
@@ -42,6 +42,8 @@ export interface LoadedCampaign {
 export type TurnRow = Pick<TurnRecord, "kind" | "action" | "narration" | "beats" | "speaker" | "line" | "rolls" | "suggestions"> & {
   turnNo: number;
   combatEvents: TurnRecord["combatEvents"];
+  /** Что изменил ход — плашки для игрока. У ходов до плашек — пусто. */
+  effects: TurnEffect[];
   createdAt: Date;
 };
 
@@ -54,7 +56,8 @@ function toRow(t: typeof turns.$inferSelect): TurnRow {
   return {
     turnNo: t.turnNo, kind: t.kind as TurnRow["kind"], action: t.action, narration: t.narration,
     beats, speaker: t.speaker, line: t.line ?? "", rolls: t.rolls ?? [],
-    suggestions: (resp.suggestions ?? []).map((x) => (typeof x === "string" ? { text: x } : x)), combatEvents: resp.combatEvents ?? [], createdAt: t.createdAt,
+    suggestions: (resp.suggestions ?? []).map((x) => (typeof x === "string" ? { text: x } : x)), combatEvents: resp.combatEvents ?? [],
+    effects: ((t.applied ?? null) as { effects?: TurnEffect[] } | null)?.effects ?? [], createdAt: t.createdAt,
   };
 }
 

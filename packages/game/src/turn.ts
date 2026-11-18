@@ -1,7 +1,7 @@
 import {
-  applyCaseChanges, applyChanges, breakDown, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
+  applyCaseChanges, applyChanges, breakDown, effect, emptyApplied, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
   playerMove, skillCheck, startCombat, storyMove, travel, travelCase,
-  type CombatEvent, type CombatOutcome, type Verdict,
+  type CombatEvent, type CombatOutcome, type TurnEffect, type Verdict,
 } from "@ash/engine";
 import {
   addUsage, caseActions, deducePrompt, emptyUsage, gradePrompt, parseDeduction, parseVerdicts, roughVerdict, runNarratorTurn, systemActions,
@@ -51,6 +51,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     if (w.case) {
       const found = applyCaseChanges(w, { clues: resp.clues, reveal: resp.reveal });
       applied.notes.push(...found.notes);
+      applied.effects.push(...found.effects);
       applied.rejected.push(...found.rejected);
       if (applied.sanity < 0) w.case.sanityLost += -applied.sanity;
     }
@@ -76,10 +77,10 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   };
 
   /** Запись без модели (справочник): журнал и история для мастера. */
-  const engineRecord = (kind: TurnRecord["kind"], label: string, text: string) => {
+  const engineRecord = (kind: TurnRecord["kind"], label: string, text: string, effects: TurnEffect[] = []) => {
     records.push({
       kind, action: label, narration: text, beats: [{ speaker: null, text }], speaker: null, line: "",
-      suggestions: [], response: null, applied: null, rolls: [], combatEvents: [],
+      suggestions: [], response: null, applied: effects.length ? { ...emptyApplied(), notes: effects.map((e) => e.text), effects } : null, rolls: [], combatEvents: [],
       model: "engine", promptVersion: "-", usage: emptyUsage(), degraded: false,
     });
   };
@@ -117,9 +118,18 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     else await knockedOut(foes);
   };
 
+  /** Плашка к последней записи: то, что изменил сам движок, а не мастер (поражение, срыв, вывод). */
+  const addEffect = (e: TurnEffect, first = false) => {
+    const a = records.at(-1)?.applied;
+    if (!a) return;
+    if (first) a.effects.unshift(e);
+    else a.effects.push(e);
+  };
+
   const knockedOut = async (foes?: string) => {
     const { goldLost } = knockOut(c);
     await narrate("knockout", "Герой потерял сознание", systemActions.knockedOut(R.money.amount(goldLost), foes), { keepHp: true });
+    if (goldLost) addEffect(effect.gold(-goldLost, R.money.amount(goldLost)));
   };
 
   /** Если ответ мастера объявил бой — начинаем его; враги могут ударить первыми. */
@@ -139,13 +149,14 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   /** Рассудок кончился — срыв: половина рассудка возвращается, в деле теряется время. */
   const checkBroken = async () => {
     if (c.sanity !== 0 || w.combat) return;
-    breakDown(c);
+    const { restored } = breakDown(c);
     let lost = 0;
     if (w.case && !w.case.result) {
       lost = Math.min(CASE_LIMITS.breakdownVisits, Math.max(0, w.case.limit - w.case.visits));
       w.case.visits += lost;
     }
     await narrate("breakdown", "Срыв", systemActions.breakdown(lost), { keepHp: true, keepSanity: true });
+    if (restored) addEffect(effect.sanity(restored));
   };
 
   switch (input.kind) {
@@ -225,7 +236,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       }
       const place = locationById(w, hit.place)!;
       const who = hit.person ? `${hit.person.name}, ${hit.person.role}. ` : "";
-      engineRecord("lookup", `Справочник: «${q}»`, `${who}Адрес: ${place.name}.${hit.revealed ? " Новый адрес отмечен на карте." : ""}`);
+      engineRecord("lookup", `Справочник: «${q}»`, `${who}Адрес: ${place.name}.${hit.revealed ? " Новый адрес отмечен на карте." : ""}`, hit.revealed ? [effect.address(place.id, place.name)] : []);
       break;
     }
     case "reconstruct": {
@@ -238,7 +249,10 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const id = parseDeduction(r.text, candidates.map((d) => d.id));
       const d = id ? markDeduction(w, id) : null;
       await narrate("reconstruct", `Реконструкция: ${text}`, caseActions.reconstruct(text, d?.text ?? null), { extraUsage: r.usage });
-      if (d) records.at(-1)!.applied?.notes.unshift(`вывод: ${d.text}`);
+      if (d) {
+        records.at(-1)!.applied?.notes.unshift(`вывод: ${d.text}`);
+        addEffect(effect.deduction(d.id, d.text), true);
+      }
       await checkBroken();
       break;
     }

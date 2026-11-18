@@ -4,9 +4,9 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { locationById, locationTypeName, matchName, type CheckResult, type CombatEvent, type CombatMove, type CombatState, type LocationType } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
-import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnView } from "@/lib/client";
+import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnEffect, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
-import { beatsOf, Bust, Drawer, Icon, Pips, TextFrame } from "@/components/vn";
+import { beatsOf, Bust, Drawer, Effects, Icon, Pips, TextFrame } from "@/components/vn";
 import { CaseFile, CloseCase, Directory, Newspaper } from "@/components/case";
 
 type Input =
@@ -271,6 +271,15 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const submit = () => text.trim() && send({ kind: "action", text: text.trim() }, text.trim());
   const R = worldOf(c).rules;
   const ab = R.classes[c.cls]!.ability;
+  // Итог последнего действия: плашки появляются, когда игрок дочитал ход.
+  const fx = batch.flatMap((t) => t.effects ?? []);
+  const showFx = !busy && !enter && atEnd && fx.length > 0;
+  const hurt = (kind: TurnEffect["kind"]) => fx.some((e) => e.kind === kind && !e.good);
+  const openFx = (e: TurnEffect) => {
+    if (e.kind === "address") setPanel(w.case ? "directory" : "map");
+    else if (e.kind === "clue" || e.kind === "deduction" || e.kind === "objective" || e.kind === "quest") setPanel("quest");
+    else setPanel("hero");
+  };
 
   return (
     <div className="vn">
@@ -295,11 +304,11 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
             {scene?.hero?.url ? <img src={scene.hero.url} alt="" /> : <span className="vn-hero-ph">{c.name[0]}</span>}
             <span className="vn-hero-info">
               <span className="n">{c.name}</span>
-              <span className="vn-hp" role="img" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
+              <span key={`hp${view.turnNo}`} className={`vn-hp ${hurt("hp") ? "hurt" : ""}`} role="img" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
                 <span style={{ width: `${(100 * c.hp) / c.hpMax}%` }} />
               </span>
               {c.sanity !== undefined && c.sanityMax ? (
-                <span className={`vn-hp vn-sanity ${c.sanity * 3 <= c.sanityMax ? "low" : ""}`} role="img" aria-label={`Рассудок ${c.sanity} из ${c.sanityMax}`}>
+                <span key={`sn${view.turnNo}`} className={`vn-hp vn-sanity ${c.sanity * 3 <= c.sanityMax ? "low" : ""} ${hurt("sanity") ? "hurt" : ""}`} role="img" aria-label={`Рассудок ${c.sanity} из ${c.sanityMax}`}>
                   <span style={{ width: `${(100 * c.sanity) / c.sanityMax}%` }} />
                 </span>
               ) : null}
@@ -341,6 +350,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         )}
         <Pips total={beats.length} at={cursor} />
         {error && <p className="error small">{error}</p>}
+        {showFx && <Effects key={view.turnNo} items={fx} isCase={!!w.case} onOpen={openFx} />}
 
         {w.combat && atEnd && !streaming && !enter && <CombatPanel w={w} c={c} disabled={busy} onMove={(move, target) => send({ kind: "combat", move, target }, move)} />}
 
@@ -407,7 +417,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       {panel === "history" && (
         <Drawer title="История" onClose={() => setPanel(null)}>
           {view.turns.map((t) => (
-            <Entry key={t.turnNo} t={t} />
+            <Entry key={t.turnNo} t={t} isCase={!!w.case} />
           ))}
         </Drawer>
       )}

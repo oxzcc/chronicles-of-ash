@@ -2,6 +2,7 @@ import type { Character } from "./character";
 import { clamp } from "./dice";
 import type { Ruleset } from "./rules";
 import type { Campaign } from "./world";
+import { effect, type TurnEffect } from "./effects";
 
 /** Изменения, которые предлагает модель. Код применяет их с ограничениями. */
 export interface ProposedChanges {
@@ -25,9 +26,14 @@ export interface AppliedChanges {
   questComplete: boolean;
   /** Что отклонено и почему — в лог для разбора промптов. */
   rejected: string[];
-  /** Короткие строки для игрока: «+5 золота · получено: Ключ». */
+  /** Короткие строки для журнала: «+5 золота · получено: Ключ». */
   notes: string[];
+  /** То же для экрана игрока — плашки в сцене и в истории. */
+  effects: TurnEffect[];
 }
+
+/** Пустой итог — для ходов без изменений от мастера (справочник). */
+export const emptyApplied = (): AppliedChanges => ({ hp: 0, sanity: 0, gold: 0, added: [], removed: [], questDone: [], questComplete: false, rejected: [], notes: [], effects: [] });
 
 export const LIMITS = {
   /** Максимум золота, которое можно получить за обычный ход, на уровень героя. */
@@ -55,7 +61,7 @@ export function itemName(raw: unknown): string {
 }
 
 export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedChanges): AppliedChanges {
-  const out: AppliedChanges = { hp: 0, sanity: 0, gold: 0, added: [], removed: [], questDone: [], questComplete: false, rejected: [], notes: [] };
+  const out = emptyApplied();
 
   // Цели квеста — первыми: от них зависит лимит золота.
   for (const id of p.questDone ?? []) {
@@ -65,6 +71,7 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
       o.done = true;
       out.questDone.push(id);
       out.notes.push(`цель выполнена: ${o.text}`);
+      out.effects.push(effect.objective(o.id, o.text));
     }
   }
   if (p.questComplete && !w.complete) {
@@ -75,6 +82,7 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
       for (const o of open) o.done = true;
       out.questComplete = true;
       out.notes.push("квест выполнен!");
+      out.effects.push(effect.quest());
     } else out.rejected.push(`questComplete: открыто целей ${open.length}`);
   }
 
@@ -83,7 +91,10 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
     const before = c.hp;
     c.hp = clamp(c.hp + delta, 0, c.hpMax);
     out.hp = c.hp - before;
-    if (out.hp) out.notes.push(out.hp > 0 ? `+${out.hp} здоровья` : `${out.hp} здоровья`);
+    if (out.hp) {
+      out.notes.push(out.hp > 0 ? `+${out.hp} здоровья` : `${out.hp} здоровья`);
+      out.effects.push(effect.hp(out.hp));
+    }
   }
 
   if (Number.isFinite(p.sanity) && p.sanity) {
@@ -96,7 +107,10 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
       const before = c.sanity;
       c.sanity = clamp(c.sanity + delta, 0, c.sanityMax);
       out.sanity = c.sanity - before;
-      if (out.sanity) out.notes.push(out.sanity > 0 ? `+${out.sanity} рассудка` : `${out.sanity} рассудка`);
+      if (out.sanity) {
+        out.notes.push(out.sanity > 0 ? `+${out.sanity} рассудка` : `${out.sanity} рассудка`);
+        out.effects.push(effect.sanity(out.sanity));
+      }
     }
   }
 
@@ -111,7 +125,10 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
     const before = c.gold;
     c.gold = Math.max(0, c.gold + delta);
     out.gold = c.gold - before;
-    if (out.gold) out.notes.push(`${out.gold > 0 ? "+" : "-"}${r.money.amount(Math.abs(out.gold))}`);
+    if (out.gold) {
+      out.notes.push(`${out.gold > 0 ? "+" : "-"}${r.money.amount(Math.abs(out.gold))}`);
+      out.effects.push(effect.gold(out.gold, r.money.amount(Math.abs(out.gold))));
+    }
   }
 
   for (const raw of p.removeItems ?? []) {
@@ -120,6 +137,7 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
       out.removed.push(c.items[i]!);
       c.items.splice(i, 1);
       out.notes.push(`потеряно: ${out.removed.at(-1)}`);
+      out.effects.push(effect.lost(out.removed.at(-1)!));
     } else out.rejected.push(`removeItems: нет предмета «${raw}»`);
   }
 
@@ -137,6 +155,7 @@ export function applyChanges(r: Ruleset, c: Character, w: Campaign, p: ProposedC
     c.items.push(name);
     out.added.push(name);
     out.notes.push(`получено: ${name}`);
+    out.effects.push(effect.item(name));
   }
 
   return out;

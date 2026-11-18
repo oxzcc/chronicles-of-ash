@@ -6,6 +6,7 @@ import {
 } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
 import type { Beat, Suggestion, TurnView } from "@/lib/client";
+import { EffectChips } from "./vn";
 
 /** Кубик на экране — из проверки навыка или из боя. */
 export type DiceView = { label: string; d20: number; calc: string; verdict: string; tone: "crit" | "ok" | "bad" };
@@ -58,7 +59,7 @@ export function Beats({ beats }: { beats: Beat[] }) {
   );
 }
 
-export function Entry({ t }: { t: Pick<TurnView, "kind" | "action" | "beats" | "rolls" | "combatEvents"> }) {
+export function Entry({ t, isCase }: { t: Pick<TurnView, "kind" | "action" | "beats" | "rolls" | "combatEvents" | "effects">; isCase?: boolean }) {
   const player = t.kind === "action" || t.kind === "choice";
   return (
     <div className="entry">
@@ -79,6 +80,7 @@ export function Entry({ t }: { t: Pick<TurnView, "kind" | "action" | "beats" | "
         </div>
       )}
       <Beats beats={t.beats} />
+      <EffectChips items={t.effects} isCase={isCase} />
     </div>
   );
 }

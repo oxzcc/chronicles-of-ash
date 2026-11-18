@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { Beat, TurnView } from "@/lib/client";
+import { sortEffects, type EffectKind } from "@ash/engine";
+import type { Beat, TurnEffect, TurnView } from "@/lib/client";
 
 /** Реплики хода в порядке показа: ответ мастера, раунды боя — голосом рассказчика. */
 export function beatsOf(t: Pick<TurnView, "beats" | "combatEvents" | "narration" | "kind">): Beat[] {
@@ -60,6 +61,67 @@ export function TextFrame({ speaker, role, children, onAdvance, hint }: { speake
           </svg>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Подпись плашки. Пусто — текст говорит сам за себя («+5 золота»). */
+const FX_LABEL: Record<EffectKind, string> = {
+  clue: "Улика", deduction: "Вывод", address: "Новый адрес", objective: "Цель выполнена", quest: "",
+  hp: "Здоровье", sanity: "Рассудок", gold: "", item: "Получено", lost: "Потеряно",
+};
+/** В деле цель — то, что нужно выяснить. */
+const fxLabel = (e: TurnEffect, isCase?: boolean) => (e.kind === "objective" && isCase ? "Выяснено" : FX_LABEL[e.kind]);
+/** Крупные плашки — находки, мелкие — числа и вещи. */
+const BIG: EffectKind[] = ["clue", "deduction", "address", "objective", "quest"];
+
+/**
+ * Итог хода в сцене: что нашёл герой и что потерял. Находки — отдельными строками
+ * (по клику — досье или справочник), числа и вещи — фишками в ряд.
+ */
+export function Effects({ items, isCase, onOpen }: { items: TurnEffect[]; isCase?: boolean; onOpen?: (e: TurnEffect) => void }) {
+  if (!items.length) return null;
+  const all = sortEffects(items);
+  const big = all.filter((e) => BIG.includes(e.kind));
+  const small = all.filter((e) => !BIG.includes(e.kind));
+  const label = (e: TurnEffect) => fxLabel(e, isCase);
+  let n = 0;
+  const delay = () => ({ animationDelay: `${0.12 * n++}s` });
+  return (
+    <div className="vn-effects" aria-live="polite">
+      {big.map((e, i) => (
+        <button key={`b${i}`} type="button" className={`vn-fx ${e.kind}`} style={delay()} onClick={onOpen ? () => onOpen(e) : undefined} title={e.text}>
+          {label(e) && <span className="k">{label(e)}</span>}
+          <span className="t">{e.text}</span>
+        </button>
+      ))}
+      {small.length > 0 && (
+        <div className="vn-fx-row">
+          {small.map((e, i) => (
+            <span key={`s${i}`} className={`vn-fx-chip ${e.kind} ${e.good ? "" : "bad"}`} style={delay()}>
+              {label(e) && `${label(e)}${e.kind === "item" || e.kind === "lost" ? ":" : ""} `}
+              {e.text}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Те же плашки в «Истории» — тихо, без анимации. */
+export function EffectChips({ items, isCase }: { items: TurnEffect[] | undefined; isCase?: boolean }) {
+  if (!items?.length) return null;
+  return (
+    <div className="fx-chips">
+      {sortEffects(items).map((e, i) => {
+        const k = fxLabel(e, isCase);
+        return (
+          <span key={i} className={`vn-fx-chip still ${e.kind} ${e.good ? "" : "bad"}`}>
+            {k ? `${k}: ${e.text}` : e.text}
+          </span>
+        );
+      })}
     </div>
   );
 }

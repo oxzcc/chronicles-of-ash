@@ -82,6 +82,7 @@ describe("мир Аркхэма", () => {
     expect(look.records[0]).toMatchObject({ kind: "lookup", model: "engine" });
     expect(look.records[0]!.narration).toMatch(/Бакалея Финнегана/);
     expect(w.case!.known).toContain("L4");
+    expect(look.records[0]!.applied!.effects).toEqual([{ kind: "address", text: "Бакалея Финнегана", good: true, ref: "L4" }]);
     recs = [...recs, ...look.records];
     await expect(playTurn(deps(), g, recs, { kind: "travel", to: "L5" })).rejects.toThrow(/не знаешь/);
     // Мастер нашёл улику в доме Вейлов — движок принимает её только там.
@@ -92,12 +93,14 @@ describe("мир Аркхэма", () => {
     expect(w.case!.clues.find((x) => x.id === "c3")!.found).toBe(false);
     expect(t.records[0]!.applied!.rejected.join()).toMatch(/c3 лежит не здесь/);
     expect(w.case!.known).toContain("L5");
+    expect(t.records[0]!.applied!.effects.map((e) => [e.kind, e.ref])).toEqual([["clue", "c1"], ["address", "L5"]]);
     // Реконструкция: без нужных улик — понятная ошибка; с ними — вывод от служебной модели.
     await expect(playTurn(deps(), g, recs, { kind: "reconstruct", text: "Кит отравил тётю ради денег" })).rejects.toThrow(/мало/);
     for (const id of ["c2", "c3"]) w.case!.clues.find((x) => x.id === id)!.found = true;
     const rc = await playTurn(deps(), g, recs, { kind: "reconstruct", text: "Кит подал отравленный чай, потому что ему нужны были деньги на долги" });
     expect(rc.records[0]!.kind).toBe("reconstruct");
     expect(w.case!.clues.find((x) => x.id === "c9")!.found).toBe(true);
+    expect(rc.records[0]!.applied!.effects[0]).toMatchObject({ kind: "deduction", ref: "c9", good: true });
     // Закрытие: оценка (фейковая модель — по словам), счёт, разбор.
     const close = await playTurn(deps(), g, recs, { kind: "close", answers: { a1: "Племянник Кит Ларкин отравил её наперстянкой ради наследства", a2: "Не знаю" } });
     expect(close.records[0]!.kind).toBe("close");
@@ -122,6 +125,8 @@ describe("мир Аркхэма", () => {
     const visits = g.campaign.case!.visits;
     r = await playTurn(deps({ router: scriptedRouter([{ changes: { sanity: -4 } }, { changes: { sanity: -2 } }]) }), g, [], { kind: "action", text: "Смотрю в круг" });
     expect(r.records.map((x) => x.kind)).toEqual(["action", "breakdown"]);
+    expect(r.records[0]!.applied!.effects).toContainEqual({ kind: "sanity", text: "−4", good: false, delta: -4 });
+    expect(r.records[1]!.applied!.effects).toContainEqual(expect.objectContaining({ kind: "sanity", good: true }));
     expect(c.sanity).toBe(Math.ceil(c.sanityMax! / 2)); // мастер в срыве рассудок не трогает
     expect(g.campaign.case!.visits).toBe(visits + 2);
     expect(g.campaign.case!.sanityLost).toBe(7);
@@ -219,6 +224,7 @@ describe("ход", () => {
     const r = await playTurn(deps({ router: scriptedRouter([{ changes: { hp: -99 } }, { changes: { hp: 50 } }]) }), g, [], { kind: "action", text: "Прыгаю со скалы" });
     expect(r.records.map((x) => x.kind)).toEqual(["action", "knockout"]);
     expect(g.character.hp).toBe(1); // мастер не может «вылечить» в сцене поражения
+    expect(r.records[1]!.applied!.effects).toContainEqual(expect.objectContaining({ kind: "gold", good: false }));
   });
   it("удачный отдых возвращает умение", async () => {
     const g = await freshGame();
@@ -249,6 +255,11 @@ describe.skipIf(!url)("база", () => {
     expect(again.recent[0]!.beats).toHaveLength(3);
     expect(again.recent[0]!.suggestions[2]!.check).toEqual({ skill: "Внимательность", dc: 12 });
     expect((await campaignTurns(db, id))[0]!.suggestions).toHaveLength(3);
+    // Плашки хода сохраняются и возвращаются при загрузке.
+    const c2 = await loadCampaign(db, uid, id);
+    const r2 = await playTurn(deps({ router: scriptedRouter([{ changes: { gold: 3, addItems: ["Ключ"] } }]) }), c2.state, c2.recent, { kind: "action", text: "Обыскиваю стол" });
+    await saveTurn(db, c2, r2.state, r2.records);
+    expect((await campaignTurns(db, id)).at(-1)!.effects.map((e) => e.kind)).toEqual(["gold", "item"]);
     await expect(loadCampaign(db, crypto.randomUUID(), id)).rejects.toThrow(/не найдена/);
   });
 });

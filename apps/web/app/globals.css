@@ -311,3 +311,26 @@ textarea { resize: vertical; }
   box-shadow: 0 0 12px rgba(217, 178, 92, 0.45); }
 .gen-meta { display: flex; justify-content: space-between; margin-top: 8px; font-family: var(--ui); font-size: 13px; color: var(--muted); }
 .gen-hint { margin-top: 22px; font-family: var(--ui); font-size: 13px; color: var(--muted); }
+
+/* Итог хода: плашки находок и изменений */
+.vn-effects { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.vn-fx { display: flex; gap: 12px; align-items: baseline; max-width: 100%; text-align: left; background: rgba(23, 17, 12, 0.92); border: 1px solid #5a4423; border-left: 3px solid var(--gold); border-radius: 3px 8px 8px 3px; padding: 8px 14px; font-family: var(--sans); font-size: 15px; line-height: 1.4; color: var(--ink); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); animation: vnFx 0.5s ease-out both; }
+.vn-fx:hover { border-color: var(--gold); }
+.vn-fx .k { flex: none; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
+.vn-fx .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vn-fx.clue, .vn-fx.deduction { border-left-color: var(--ember); box-shadow: 0 0 0 1px rgba(217, 119, 58, 0.25), 0 0 26px rgba(217, 119, 58, 0.2), 0 10px 30px rgba(0, 0, 0, 0.45); }
+.vn-fx.clue .k, .vn-fx.deduction .k { color: var(--ember); }
+.vn-fx-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.vn-fx-chip { font-family: var(--sans); font-size: 13px; border-radius: 999px; padding: 4px 11px; border: 1px solid #5a4423; background: rgba(42, 32, 20, 0.94); color: var(--gold); animation: vnFx 0.5s ease-out both; }
+.vn-fx-chip.bad { color: #f0a38f; border-color: #5a2a23; background: rgba(42, 23, 20, 0.94); }
+.vn-fx-chip.sanity { color: #b9d3c1; border-color: #3f5a4a; background: rgba(24, 36, 30, 0.94); }
+.vn-fx-chip.sanity.bad { color: #cdb6ea; border-color: #4a3560; background: rgba(34, 26, 44, 0.94); }
+.vn-fx-chip.still { animation: none; display: inline-block; margin: 2px 6px 4px 0; }
+.fx-chips { margin-top: 4px; }
+@keyframes vnFx { from { opacity: 0; transform: translateY(8px); } }
+.vn-hp.hurt { animation: vnHurt 0.8s ease-out 2; }
+.vn-sanity.hurt { animation: vnMind 0.9s ease-out 2; }
+@keyframes vnHurt { 30% { box-shadow: 0 0 0 2px rgba(196, 71, 59, 0.9), 0 0 14px rgba(196, 71, 59, 0.7); } }
+@keyframes vnMind { 30% { box-shadow: 0 0 0 2px rgba(138, 111, 174, 0.9), 0 0 14px rgba(138, 111, 174, 0.7); } }
+@media (prefers-reduced-motion: reduce) { .vn-fx, .vn-fx-chip, .vn-hp.hurt, .vn-sanity.hurt { animation: none; } }
+@media (max-width: 760px) { .vn-fx { font-size: 14px; padding: 7px 10px; } }
