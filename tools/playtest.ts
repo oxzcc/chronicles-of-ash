@@ -3,6 +3,7 @@
  * Проверка фазы 1 — 30 ходов подряд без сломанного JSON и без решений за игрока.
  *
  *   pnpm playtest -- --tier free --turns 30 --out tools/playtest/out/deepseek
+ *   pnpm playtest -- --world arkham --turns 10        (мир Аркхэма; по умолчанию — фэнтези)
  *
  * Состояние сохраняется после каждого хода, поэтому прогон можно прервать и продолжить
  * той же командой. --budget <сек> — остановиться после этого времени (по умолчанию без лимита).
@@ -21,14 +22,15 @@ const arg = (name: string, def: string) => {
 const tier = arg("tier", "free") as Tier;
 const target = Number(arg("turns", "30"));
 const budgetMs = Number(arg("budget", "0")) * 1000;
-const out = arg("out", `tools/playtest/out/${tier}`);
+const worldId = arg("world", "fantasy");
+const out = arg("out", `tools/playtest/out/${worldId === "fantasy" ? tier : `${worldId}-${tier}`}`);
 const started = Date.now();
 
 const router = createRouter(configFromEnv());
 if (router.isFake) console.warn("⚠ Нет OPENROUTER_API_KEY — играет фейковая модель.");
 let worldBible = "";
 try {
-  worldBible = readFileSync(worldBiblePath(getWorld().id), "utf8");
+  worldBible = readFileSync(worldBiblePath(getWorld(worldId).id), "utf8");
 } catch {}
 
 interface Save {
@@ -43,10 +45,14 @@ const savePath = join(out, "save.json");
 let save: Save;
 if (existsSync(savePath)) save = JSON.parse(readFileSync(savePath, "utf8"));
 else {
-  const draft: CharacterDraft = {
-    world: getWorld().id, name: "Ровена", gender: "f", race: "human", cls: "ranger", base: { ...getWorld().rules.recommended.ranger! },
-    skills: ["Внимательность", "Убеждение"], backstory: "Охотница с пограничья. Её брат ушёл с караваном на север и не вернулся.",
+  /** Герой-«игрок» для каждого мира. */
+  const HEROES: Record<string, Omit<CharacterDraft, "base">> = {
+    fantasy: { world: "fantasy", name: "Ровена", gender: "f", race: "human", cls: "ranger", skills: ["Внимательность", "Убеждение"], backstory: "Охотница с пограничья. Её брат ушёл с караваном на север и не вернулся." },
+    arkham: { world: "arkham", name: "Уолтер Грей", gender: "m", race: "human", cls: "detective", skills: ["Внимательность", "Психология"], backstory: "Бывший полицейский из Бостона. Ушёл со службы после дела, которое закрыли слишком быстро." },
   };
+  const hero = HEROES[worldId];
+  if (!hero) throw new Error(`Нет героя для мира ${worldId}`);
+  const draft: CharacterDraft = { ...hero, base: { ...getWorld(worldId).rules.recommended[hero.cls]! } };
   const g = await newGame({ router, tier, draft, rng: secureRng, seed: String(Date.now()) });
   console.log(`Квест: «${g.campaign.questTitle}»${g.usedFallback ? " (запасной)" : ""}, $${g.usage.costUsd.toFixed(4)}`);
   save = { state: { character: g.character, campaign: g.campaign }, records: [], playerTurns: 0 };

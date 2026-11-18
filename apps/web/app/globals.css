@@ -44,6 +44,12 @@ textarea { resize: vertical; }
 .choice b { display: block; margin-bottom: 4px; font-weight: 400; font-size: 17px; }
 .choice span { font-size: 13px; color: var(--muted); font-family: var(--sans); }
 .section { margin-top: 28px; }
+.choices.worlds { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.worlds-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-top: 20px; }
+.world-card { display: flex; flex-direction: column; gap: 8px; padding: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; text-decoration: none; color: inherit; }
+.world-card:hover { border-color: var(--ember); }
+.world-card .world-title { font-size: 26px; font-family: "Cormorant Garamond", Georgia, serif; font-weight: 700; }
+.world-card .btn { align-self: flex-start; margin-top: 6px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; text-align: center; }
 .stat .v { font-size: 26px; }

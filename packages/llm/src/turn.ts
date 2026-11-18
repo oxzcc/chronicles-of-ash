@@ -1,6 +1,6 @@
 import { skillCheck, type CheckResult, type Edge, type Rng } from "@ash/engine";
 import type { World } from "@ash/worlds";
-import { narratorSystemPrompt, narratorUserPrompt, rollCheckTool, PROMPT_VERSION, ROLL_CHECK, type SceneContext } from "./prompts/gm";
+import { narratorSystemPrompt, narratorUserPrompt, promptVersion, rollCheckTool, ROLL_CHECK, type SceneContext } from "./prompts/gm";
 import { parseGmResponse, partialBeats, partialSpeaker, type Beat, type GmResponse, type Speaker } from "./schema";
 import { addUsage, emptyUsage, type ChatMessage, type LlmProvider, type Usage } from "./types";
 
@@ -114,7 +114,7 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
 
     const parsed = parseGmResponse(res.text, rules);
     if (parsed.ok) {
-      return { response: parsed.value, rolls, usage, model, promptVersion: PROMPT_VERSION, requests, degraded: false, rawText: res.text };
+      return { response: parsed.value, rolls, usage, model, promptVersion: promptVersion(o.world), requests, degraded: false, rawText: res.text };
     }
     if (!retried) {
       retried = true;
@@ -125,7 +125,7 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
       });
       continue;
     }
-    return { response: parsed.fallback, rolls, usage, model, promptVersion: PROMPT_VERSION, requests, degraded: true, rawText: res.text };
+    return { response: parsed.fallback, rolls, usage, model, promptVersion: promptVersion(o.world), requests, degraded: true, rawText: res.text };
   }
   throw new Error("Narrator turn exceeded step limit");
 }

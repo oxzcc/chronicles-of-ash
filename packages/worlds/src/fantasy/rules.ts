@@ -91,6 +91,7 @@ export const fantasyRules: Ruleset = {
   money: {
     amount: (n) => `${n} золота`,
     sheet: (n) => `золото ${n}`,
+    short: (n) => `${n} зол.`,
   },
   healing: {
     pattern: /зелье лечения/i,

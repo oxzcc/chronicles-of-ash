@@ -167,3 +167,39 @@ describe("бой", () => {
     expect(() => playerMove(R, state, c, "potion", rng)).toThrow();
   });
 });
+
+describe("мир Аркхэма", () => {
+  const A = getWorld("arkham").rules;
+  const sleuth = (over: Partial<CharacterDraft> = {}): CharacterDraft => ({
+    world: "arkham", name: "Уолтер", gender: "m", race: "human", cls: "detective",
+    base: { ...A.recommended.detective! }, skills: ["Внимательность", "Психология"], ...over,
+  });
+  it("сыщик: без доспеха, доллары, аптечка, навыки своего мира", () => {
+    const c = createCharacter(A, sleuth(), mulberry32(1));
+    expect(c.world).toBe("arkham");
+    expect(c.ac).toBe(12 + 2); // пальто + ЛОВ 16 (+3, но не больше +2)
+    expect(c.items).toContain("Аптечка");
+    expect(validateDraft(A, sleuth({ skills: ["Магия", "Психология"] })).join()).toMatch(/Неизвестный навык: Магия/);
+    expect(validateDraft(A, sleuth({ race: "elf" }))).toContain("Неизвестная раса.");
+    const w = layoutCampaign(A, getWorld("arkham").fallbackQuest, "s");
+    expect(applyChanges(A, c, w, { gold: 7 }).notes).toContain("+$7");
+    expect(applyChanges(A, c, w, { gold: -3 }).notes).toContain("-$3");
+  });
+  it("выстрел пишется своими словами, аптечка лечит", () => {
+    const rng = mulberry32(11);
+    const c = createCharacter(A, sleuth(), rng);
+    const { state } = startCombat(c, [{ name: "Громила", hp: 20, ac: 5 }], scriptedRng([20, 1]));
+    const step = playerMove(A, state, c, "attack", scriptedRng([15, 4, 1]));
+    expect(step.events[0]!.text).toMatch(/Пуля попадает в «Громила»/);
+    c.hp = 1;
+    const heal = playerMove(A, state, c, "potion", scriptedRng([3, 3, 1]));
+    expect(heal.events[0]!.text).toMatch(/перевязываешь раны/);
+    c.items = c.items.filter((x) => !/аптечк/i.test(x));
+    expect(() => playerMove(A, state, c, "potion", rng)).toThrow(/Аптечек не осталось/);
+  });
+  it("неизвестный тип места — улица, старт — контора", () => {
+    const w = layoutCampaign(A, { ...getWorld("arkham").fallbackQuest, locations: (getWorld("arkham").fallbackQuest.locations as any[]).map((l) => ({ ...l, type: "tavern" })) }, "s");
+    expect(w.locations[0]!.type).toBe("office");
+    expect(w.locations[1]!.type).toBe("street");
+  });
+});

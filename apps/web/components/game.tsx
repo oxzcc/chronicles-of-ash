@@ -148,7 +148,8 @@ export function Sheet({ c }: { c: Character }) {
     <div className="card">
       <h3>{c.name}</h3>
       <div className="small muted">
-        {R.races[c.race]?.name}, {R.classes[c.cls]?.name} {c.level} уровня
+        {Object.keys(R.races).length > 1 ? `${R.races[c.race]?.name}, ` : ""}
+        {R.classes[c.cls]?.name} {c.level} уровня
       </div>
       <div className="bar" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
         <div style={{ width: `${(100 * c.hp) / c.hpMax}%` }} />
@@ -178,7 +179,7 @@ export function Sheet({ c }: { c: Character }) {
   );
 }
 
-export function Quest({ w }: { w: Campaign }) {
+export function Quest({ w, doneText = "Квест выполнен." }: { w: Campaign; doneText?: string }) {
   return (
     <div className="card">
       <h3>{w.questTitle}</h3>
@@ -187,7 +188,7 @@ export function Quest({ w }: { w: Campaign }) {
           {o.done ? "✓" : "○"} {o.text}
         </p>
       ))}
-      {w.complete && <p className="obj" style={{ color: "var(--gold)" }}>Квест выполнен.</p>}
+      {w.complete && <p className="obj" style={{ color: "var(--gold)" }}>{doneText}</p>}
     </div>
   );
 }

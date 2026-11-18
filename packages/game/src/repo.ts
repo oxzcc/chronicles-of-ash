@@ -69,7 +69,10 @@ export async function loadCampaign(db: Db, userId: string, id: string, limit = H
 
 export async function listCampaigns(db: Db, userId: string) {
   return db
-    .select({ id: campaigns.id, title: campaigns.title, turnNo: campaigns.turnNo, updatedAt: campaigns.updatedAt, hero: characters.name })
+    .select({
+      id: campaigns.id, title: campaigns.title, turnNo: campaigns.turnNo, updatedAt: campaigns.updatedAt, hero: characters.name,
+      world: sql<string>`coalesce(${characters.sheet}->>'world', ${DEFAULT_WORLD})`,
+    })
     .from(campaigns)
     .innerJoin(characters, eq(characters.id, campaigns.characterId))
     .where(eq(campaigns.userId, userId))

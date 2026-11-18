@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { isWorldId, getWorld, WORLDS } from "@ash/worlds";
 import { api } from "@/lib/client";
 
 interface Item {
   id: string;
   title: string;
   hero: string;
+  world: string;
   turnNo: number;
   updatedAt: string;
 }
@@ -26,12 +28,16 @@ export default function Home() {
   return (
     <main className="wrap">
       <h1 className="hero-title">Хроники Пепла</h1>
-      <p className="muted">Тёмное фэнтези, где историю пишет мастер, а исход решают кубики.</p>
+      <p className="muted">Ролевая игра, где историю пишет ИИ-мастер, а исход решают кубики. Выбери мир.</p>
       {llm === "fake" && <p className="small muted">Режим разработки: отвечает фейковая модель (нет ключа OpenRouter).</p>}
-      <div className="row" style={{ marginTop: 20 }}>
-        <Link href="/new" className="btn" style={{ textDecoration: "none" }}>
-          Новый герой
-        </Link>
+      <div className="worlds-list">
+        {WORLDS.map((w) => (
+          <Link key={w.id} href={`/new?world=${w.id}`} className={`world-card world-${w.id}`}>
+            <div className="world-title">{w.title}</div>
+            <div className="small muted">{w.tagline}</div>
+            <span className="btn small">Новый герой</span>
+          </Link>
+        ))}
       </div>
       {error && <p className="error">{error}</p>}
       {items && items.length > 0 && (
@@ -42,6 +48,7 @@ export default function Home() {
               <div className="card">
                 <div style={{ fontSize: 19 }}>{c.title}</div>
                 <div className="small muted">
+                  {isWorldId(c.world) ? `${getWorld(c.world).title} · ` : ""}
                   {c.hero} · ходов: {c.turnNo} · {new Date(c.updatedAt).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" })}
                 </div>
               </div>

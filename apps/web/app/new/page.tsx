@@ -7,29 +7,28 @@ import {
   skillNames, STATS, STAT_KEYS, validateDraft,
   type CharacterDraft, type ClassKey, type Gender, type RaceKey, type SkillName, type StatKey,
 } from "@ash/engine";
-import { getWorld, DEFAULT_WORLD } from "@ash/worlds";
+import { DEFAULT_WORLD, getWorld, isWorldId, WORLDS, type World } from "@ash/worlds";
 import { api } from "@/lib/client";
 
-// Выбор мира появится на этом экране отдельной задачей; пока герой создаётся в мире по умолчанию.
-const world = getWorld(DEFAULT_WORLD);
-const R = world.rules;
-const FIRST_RACE = raceKeys(R)[0]!;
-const FIRST_CLASS = classKeys(R)[0]!;
+const firstRace = (w: World) => raceKeys(w.rules)[0]!;
+const firstClass = (w: World) => classKeys(w.rules)[0]!;
 
-const randomName = (race: RaceKey, g: Gender) => {
-  const list = R.names[race]?.[g] ?? [];
+const randomName = (w: World, race: RaceKey, g: Gender) => {
+  const list = w.rules.names[race]?.[g] ?? [];
   return list[Math.floor(Math.random() * list.length)] ?? "";
 };
 
 export default function NewHero() {
   const router = useRouter();
-  const [race, setRace] = useState<RaceKey>(FIRST_RACE);
-  const [cls, setCls] = useState<ClassKey>(FIRST_CLASS);
+  const [worldId, setWorldId] = useState(DEFAULT_WORLD);
+  const world = getWorld(worldId);
+  const R = world.rules;
+  const [race, setRace] = useState<RaceKey>(firstRace(world));
+  const [cls, setCls] = useState<ClassKey>(firstClass(world));
   const [gender, setGender] = useState<Gender>("m");
   // Случайное имя — только на клиенте, иначе разметка сервера и браузера разойдётся.
-  const [name, setName] = useState(R.names[FIRST_RACE]?.m[0] ?? "");
-  useEffect(() => setName(randomName(FIRST_RACE, "m")), []);
-  const [base, setBase] = useState({ ...R.recommended[FIRST_CLASS]! });
+  const [name, setName] = useState(R.names[firstRace(world)]?.m[0] ?? "");
+  const [base, setBase] = useState({ ...R.recommended[firstClass(world)]! });
   const [skills, setSkills] = useState<SkillName[]>([]);
   const [backstory, setBackstory] = useState("");
   const [busy, setBusy] = useState<"" | "story" | "create" | "faces">("");
@@ -38,8 +37,28 @@ export default function NewHero() {
   const [face, setFace] = useState<string | null>(null);
   const [error, setError] = useState("");
 
+  /** Смена мира: расы, классы и навыки у миров свои — черновик начинается заново. */
+  const pickWorld = (id: string) => {
+    const w = getWorld(id);
+    setWorldId(id);
+    setRace(firstRace(w));
+    setCls(firstClass(w));
+    setBase({ ...w.rules.recommended[firstClass(w)]! });
+    setSkills([]);
+    setName(randomName(w, firstRace(w), gender));
+    setFaces([]);
+    setFace(null);
+    setBackstory("");
+  };
+  // Мир из ссылки с главной (/new?world=arkham) и случайное имя — после загрузки.
+  useEffect(() => {
+    const w = new URLSearchParams(window.location.search).get("world");
+    if (isWorldId(w) && w !== DEFAULT_WORLD) pickWorld(w);
+    else setName(randomName(world, firstRace(world), "m"));
+  }, []);
+
   const draft: CharacterDraft = { world: world.id, name, gender, race, cls, base, skills, backstory };
-  const errors = useMemo(() => validateDraft(R, draft), [name, gender, race, cls, base, skills, backstory]);
+  const errors = useMemo(() => validateDraft(R, draft), [worldId, name, gender, race, cls, base, skills, backstory]);
   const left = POINT_BUY_BUDGET - pointsSpent(base);
   const stats = finalStats(R, race, base);
   const classSkills = R.classes[cls]?.skills ?? [];
@@ -114,19 +133,34 @@ export default function NewHero() {
       <h1>Новый герой</h1>
 
       <div className="section">
-        <h2>Раса</h2>
-        <div className="choices">
-          {raceKeys(R).map((k) => (
-            <button key={k} className={`choice ${race === k ? "on" : ""}`} onClick={() => (setRace(k), setName(randomName(k, gender)))}>
-              <b>{R.races[k]!.name}</b>
-              <span>{R.races[k]!.desc}</span>
+        <h2>Мир</h2>
+        <div className="choices worlds">
+          {WORLDS.map((w) => (
+            <button key={w.id} className={`choice ${worldId === w.id ? "on" : ""}`} onClick={() => worldId !== w.id && pickWorld(w.id)} disabled={!!busy}>
+              <b>{w.title}</b>
+              <span>{w.tagline}</span>
             </button>
           ))}
         </div>
       </div>
 
+      {/* В мире с одним народом выбирать нечего — шаг скрыт. */}
+      {raceKeys(R).length > 1 && (
+        <div className="section">
+          <h2>Раса</h2>
+          <div className="choices">
+            {raceKeys(R).map((k) => (
+              <button key={k} className={`choice ${race === k ? "on" : ""}`} onClick={() => (setRace(k), setName(randomName(world, k, gender)))}>
+                <b>{R.races[k]!.name}</b>
+                <span>{R.races[k]!.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="section">
-        <h2>Класс</h2>
+        <h2>{raceKeys(R).length > 1 ? "Класс" : "Профессия"}</h2>
         <div className="choices">
           {classKeys(R).map((k) => (
             <button key={k} className={`choice ${cls === k ? "on" : ""}`} onClick={() => pickClass(k)}>
@@ -143,12 +177,12 @@ export default function NewHero() {
         <h2>Имя</h2>
         <div className="row">
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} style={{ minWidth: 240 }} />
-          <button className="btn ghost small" onClick={() => setName(randomName(race, gender))}>
+          <button className="btn ghost small" onClick={() => setName(randomName(world, race, gender))}>
             Случайное
           </button>
           <div className="chips">
             {(["m", "f"] as const).map((g) => (
-              <button key={g} className={`chip ${gender === g ? "on" : ""}`} onClick={() => (setGender(g), setName(randomName(race, g)))}>
+              <button key={g} className={`chip ${gender === g ? "on" : ""}`} onClick={() => (setGender(g), setName(randomName(world, race, g)))}>
                 {g === "m" ? "Мужчина" : "Женщина"}
               </button>
             ))}
@@ -159,7 +193,7 @@ export default function NewHero() {
       <div className="section">
         <h2>Характеристики</h2>
         <p className="small muted">
-          Осталось очков: <b style={{ color: left ? "var(--gold)" : "inherit" }}>{left}</b> из {POINT_BUY_BUDGET}. Значения до бонусов расы — от 8 до 15.
+          Осталось очков: <b style={{ color: left ? "var(--gold)" : "inherit" }}>{left}</b> из {POINT_BUY_BUDGET}. Значения{raceKeys(R).length > 1 ? " до бонусов расы" : ""} — от 8 до 15.
         </p>
         <div className="stats">
           {STAT_KEYS.map((k) => {
@@ -187,7 +221,9 @@ export default function NewHero() {
 
       <div className="section">
         <h2>Навыки</h2>
-        <p className="small muted">Класс даёт «{classSkills.join(", ")}». Выбери ещё {CHOSEN_SKILLS}.</p>
+        <p className="small muted">
+          {raceKeys(R).length > 1 ? "Класс" : "Профессия"} даёт «{classSkills.join(", ")}». Выбери ещё {CHOSEN_SKILLS}.
+        </p>
         <div className="chips">
           {skillNames(R).map((s) => {
             const fixed = classSkills.includes(s);
@@ -242,12 +278,12 @@ export default function NewHero() {
         <div className="row" style={{ justifyContent: "space-between" }}>
           <div>
             <div style={{ fontSize: 20 }}>
-              {name || "Безымянный"} — {R.races[race]?.name}, {R.classes[cls]?.name}
+              {name || "Безымянный"} — {raceKeys(R).length > 1 ? `${R.races[race]?.name}, ` : ""}{R.classes[cls]?.name}
             </div>
-            <div className="small muted">Мастер придумает квест под героя и его предысторию.</div>
+            <div className="small muted">{world.ui.newGameHint}</div>
           </div>
           <button className="btn" onClick={create} disabled={!!busy || errors.length > 0}>
-            {busy === "create" ? "Мастер готовит приключение…" : "Начать приключение"}
+            {busy === "create" ? world.ui.starting : world.ui.start}
           </button>
         </div>
         {errors.length > 0 && <p className="small error">{errors.join(" ")}</p>}

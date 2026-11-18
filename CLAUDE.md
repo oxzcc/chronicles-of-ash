@@ -30,7 +30,8 @@ pnpm test               # vitest по всем пакетам
 pnpm typecheck          # tsc по всем пакетам и tools
 pnpm build              # сборка Next.js
 pnpm check:apis         # доступ к OpenRouter и fal.ai (--images — пробная картинка)
-pnpm arena:run -- <model> <model> …   # 10 тестовых сцен на моделях
+pnpm arena:run -- <model> <model> …   # 10 тестовых сцен на моделях (фэнтези)
+pnpm arena:run -- --world arkham <model> …   # 8 сцен мира Аркхэма
 pnpm arena:ballot <файл прогона>      # анонимный бюллетень для оценки
 ```
 
@@ -43,6 +44,7 @@ pnpm arena:ballot <файл прогона>      # анонимный бюлле
 - Импорты внутри пакетов без расширений (`./dice`), между пакетами — `@ash/<пакет>`.
 - Любая случайность — через `Rng` из движка: `secureRng` на сервере, `mulberry32(seed)` в тестах и раскладке.
 - Всё, что зависит от мира (названия, валюта, жанр, стиль, типы мест), — в `packages/worlds`, а не в ядре. Новый мир: папка `src/<id>/` по образцу `fantasy`, запись в `WORLDS`; `worlds.test.ts` проверит его данные. Лист героя хранит `world`; листы без него — фэнтези.
+- Правка кусков промпта мира (`gm` в `src/<id>/index.ts`) → поднять `gm.version` этого мира и прогнать арену с `--world <id>`.
 - Изменение промпта мастера → поднять `PROMPT_VERSION` в `packages/llm/src/prompts/gm.ts` и прогнать `pnpm arena:run -- --scenes …` на текущих моделях.
 - Новое поле в ответе модели → zod-схема в `packages/llm/src/schema.ts` (снисходительная, с `.catch`) + лимит в движке + тест.
 - Модели не зашиваются в код: только через переменные окружения (`NARRATOR_MODEL_*`, `UTILITY_MODEL`).

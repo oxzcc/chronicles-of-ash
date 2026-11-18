@@ -17,6 +17,18 @@ export interface World {
   gm: GmText;
   /** Жанр для служебных промптов: «тёмного фэнтези (в духе Baldur's Gate 3)». */
   genre: string;
+  /** Слова интерфейса, которые зависят от мира. */
+  ui: {
+    /** Как называется задание: «Квест», «Дело». */
+    quest: string;
+    /** Задание выполнено: «Квест выполнен.» */
+    questDone: string;
+    /** Подсказка над кнопкой старта на экране героя. */
+    newGameHint: string;
+    /** Кнопка старта и её состояние ожидания. */
+    start: string;
+    starting: string;
+  };
   /** Запасной квест — если модель дважды не вернула годный JSON. */
   fallbackQuest: QuestSeed;
   art: ArtStyle;
@@ -33,6 +45,10 @@ export interface GmText {
   choicesNote: string;
   /** Пример варианта с проверкой в JSON-образце. */
   suggestionExample: { text: string; skill: string; dc: number };
+  /** Дополнительные разделы правил мира — идут перед формой ответа. */
+  extra?: string[];
+  /** Версия кусков мира: пишется к PROMPT_VERSION в каждый ход («gm-3+arkham-1»). Поднимать при правке. */
+  version?: string;
 }
 
 export type TimeOfDay = "day" | "dusk" | "night";

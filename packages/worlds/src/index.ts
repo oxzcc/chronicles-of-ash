@@ -1,10 +1,11 @@
+import { arkham } from "./arkham";
 import { fantasy } from "./fantasy";
 import type { World } from "./types";
 
 export * from "./types";
 
 /** Все миры игры. Порядок — порядок на экране выбора. */
-export const WORLDS: World[] = [fantasy];
+export const WORLDS: World[] = [fantasy, arkham];
 
 /** Мир кампаний, созданных до появления миров. */
 export const DEFAULT_WORLD = "fantasy";

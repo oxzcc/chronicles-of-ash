@@ -1,34 +1,8 @@
-import {
-  createCharacter, layoutCampaign, mulberry32,
-  type Campaign, type Character, type CharacterDraft, type ClassKey, type RaceKey, type SkillName,
-} from "@ash/engine";
-import type { HistoryEntry } from "@ash/llm";
-import { getWorld, type World } from "@ash/worlds";
+import type { QuestSeed } from "@ash/engine";
+import type { Scene, SceneSet } from "./scene";
 
-/** Сцены этого файла — мира «Хроники Пепла». */
-export const SCENES_WORLD = "fantasy";
-
-/**
- * 10 тестовых сцен для слепого сравнения рассказчиков и для проверки промптов перед выкаткой.
- * Каждая проверяет что-то своё — поле `checks` подсказывает оценщику, на что смотреть.
- */
-export interface Scene {
-  id: string;
-  title: string;
-  checks: string;
-  hero: { name: string; gender: "m" | "f"; race: RaceKey; cls: ClassKey; skills: [SkillName, SkillName]; backstory: string };
-  /** Индекс текущей локации на общей карте. */
-  at: number;
-  done?: string[];
-  summary?: string;
-  npc?: Campaign["npc"];
-  history?: HistoryEntry[];
-  /** Изменения героя перед сценой. */
-  tweak?: (c: Character) => void;
-  action: string;
-}
-
-const QUEST = {
+/** 10 сцен мира «Хроники Пепла». */
+const QUEST: QuestSeed = {
   questTitle: "Пепел над Чернолесьем",
   hook: "В деревне Вересковый Брод за месяц пропали шестеро. По ночам над Чернолесьем поднимается пепельный дым, а староста обещает 50 золотых тому, кто вернёт людей.",
   objectives: ["Расспросить жителей Брода о пропавших", "Найти источник пепельного дыма в Чернолесье", "Остановить того, кто похищает людей"],
@@ -114,16 +88,4 @@ export const SCENES: Scene[] = [
   },
 ];
 
-export function buildScene(s: Scene, world: World = getWorld(SCENES_WORLD)): { character: Character; campaign: Campaign; history: HistoryEntry[]; action: string } {
-  const R = world.rules;
-  const draft: CharacterDraft = { world: world.id, ...s.hero, base: { ...R.recommended[s.hero.cls]! }, skills: [...s.hero.skills] };
-  const character = createCharacter(R, draft, mulberry32(7));
-  character.gold = 18;
-  s.tweak?.(character);
-  const campaign = layoutCampaign(R, QUEST, "arena");
-  campaign.current = `L${s.at}`;
-  for (const o of campaign.objectives) o.done = !!s.done?.includes(o.id);
-  campaign.summary = s.summary ?? "";
-  campaign.npc = s.npc ?? null;
-  return { character, campaign, history: s.history ?? [], action: s.action };
-}
+export const FANTASY_SCENES: SceneSet = { world: "fantasy", quest: QUEST, scenes: SCENES };

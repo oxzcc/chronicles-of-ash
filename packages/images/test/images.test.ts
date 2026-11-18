@@ -94,3 +94,23 @@ describe("clippedShare", () => {
     expect(await clippedShare(await png(`<rect x="20" y="0" width="160" height="300" fill="#800"/>`))).toBeGreaterThan(CLIP_LIMIT);
   });
 });
+
+describe("стиль по мирам", () => {
+  const arkham = getWorld("arkham");
+  it("Аркхэм рисуется в 1920-х, без средневековья и фэнтези-рас", async () => {
+    const { backgroundPrompt, baseHero } = await import("../src/index");
+    const p = portraitPrompt(arkham, baseHero(arkham, { race: "human", cls: "detective", gender: "f" }));
+    expect(p).toMatch(/1920s/);
+    expect(p).toMatch(/trench coat/);
+    expect(p).not.toMatch(/medieval|dark fantasy|ember/);
+    expect(backgroundPrompt(arkham, "x", "dusk")).toMatch(/gas street lamps/);
+  });
+  it("описание места для FLUX просит предметы 1926 года", async () => {
+    const { describeLocation } = await import("../src/index");
+    const asked: string[] = [];
+    const router: any = { route: () => ({ model: "m", provider: { complete: async (r: any) => (asked.push(r.messages[0].content), { text: "a foggy wharf at night", toolCalls: [], usage: {}, model: "m" }) } }) };
+    const d = await describeLocation(router, arkham, { name: "Пристань", type: "docks", desc: "Туман" });
+    expect(asked[0]).toMatch(/Only objects of 1926/);
+    expect(d).toMatch(/^river wharf/);
+  });
+});
