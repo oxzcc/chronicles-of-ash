@@ -65,44 +65,106 @@ export function TextFrame({ speaker, role, children, onAdvance, hint }: { speake
   );
 }
 
-/** Подпись плашки. Пусто — текст говорит сам за себя («+5 золота»). */
+/** Подпись находки. Пусто — текст говорит сам за себя. */
 const FX_LABEL: Record<EffectKind, string> = {
-  clue: "Улика", deduction: "Вывод", address: "Новый адрес", objective: "Цель выполнена", quest: "",
-  hp: "Здоровье", sanity: "Рассудок", gold: "", item: "Получено", lost: "Потеряно",
+  clue: "Улика", deduction: "Вывод", address: "Адрес", objective: "Цель", quest: "Квест",
+  hp: "Здоровье", sanity: "Рассудок", gold: "Деньги", item: "Вещь", lost: "Потеряно",
 };
 /** В деле цель — то, что нужно выяснить. */
 const fxLabel = (e: TurnEffect, isCase?: boolean) => (e.kind === "objective" && isCase ? "Выяснено" : FX_LABEL[e.kind]);
-/** Крупные плашки — находки, мелкие — числа и вещи. */
-const BIG: EffectKind[] = ["clue", "deduction", "address", "objective", "quest"];
 
 /**
- * Итог хода в сцене: что нашёл герой и что потерял. Находки — отдельными строками
- * (по клику — досье или справочник), числа и вещи — фишками в ряд.
+ * Текст реплики с подсвеченными находками: слова, где герой нашёл улику или узнал адрес,
+ * и ярлык рядом. Пометку без найденных слов — ярлыком в конце реплики.
  */
-export function Effects({ items, isCase, onOpen }: { items: TurnEffect[]; isCase?: boolean; onOpen?: (e: TurnEffect) => void }) {
+export function BeatText({ beat }: { beat: Beat }) {
+  const marks = beat.marks ?? [];
+  if (!marks.length) return <>{beat.text}</>;
+  const placed = marks
+    .map((m) => ({ m, i: m.quote ? beat.text.indexOf(m.quote) : -1 }))
+    .filter((x) => x.i >= 0)
+    .sort((a, b) => a.i - b.i);
+  const parts: ReactNode[] = [];
+  const shown = new Set<(typeof marks)[number]>();
+  let at = 0;
+  for (const { m, i } of placed) {
+    if (i < at) continue;
+    if (i > at) parts.push(beat.text.slice(at, i));
+    parts.push(
+      <span key={`m${i}`} className={`vn-mark ${m.kind}`}>
+        <span className="hl">{m.quote}</span>
+        <span className="vn-tag">{m.label}</span>
+      </span>,
+    );
+    shown.add(m);
+    at = i + m.quote!.length;
+  }
+  parts.push(beat.text.slice(at));
+  return (
+    <>
+      {parts}
+      {marks
+        .filter((m) => !shown.has(m))
+        .map((m, k) => (
+          <span key={`t${k}`} className={`vn-mark ${m.kind} tail`}>
+            <span className="vn-tag">{m.label}</span>
+          </span>
+        ))}
+    </>
+  );
+}
+
+/** Действие у строки сводки: «В досье», «Пойти». */
+export interface FxAction {
+  label: string;
+  run: () => void;
+}
+
+/** Что в сводке считается ценой хода: потери. Остальное — найденное. */
+const isCost = (e: TurnEffect) => !e.good;
+
+/**
+ * Итог сцены после последней реплики: слева — что найдено (с действием: в досье, пойти),
+ * справа — цена (рассудок, здоровье, деньги, потерянные вещи). Одна колонка, если другой нет.
+ */
+export function SceneSummary({ items, isCase, actionOf, costNote }: { items: TurnEffect[]; isCase?: boolean; actionOf?: (e: TurnEffect) => FxAction | null; costNote?: string }) {
   if (!items.length) return null;
   const all = sortEffects(items);
-  const big = all.filter((e) => BIG.includes(e.kind));
-  const small = all.filter((e) => !BIG.includes(e.kind));
-  const label = (e: TurnEffect) => fxLabel(e, isCase);
-  let n = 0;
-  const delay = () => ({ animationDelay: `${0.12 * n++}s` });
+  const found = all.filter((e) => !isCost(e));
+  const cost = all.filter(isCost);
   return (
-    <div className="vn-effects" aria-live="polite">
-      {big.map((e, i) => (
-        <button key={`b${i}`} type="button" className={`vn-fx ${e.kind}`} style={delay()} onClick={onOpen ? () => onOpen(e) : undefined} title={e.text}>
-          {label(e) && <span className="k">{label(e)}</span>}
-          <span className="t">{e.text}</span>
-        </button>
-      ))}
-      {small.length > 0 && (
-        <div className="vn-fx-row">
-          {small.map((e, i) => (
-            <span key={`s${i}`} className={`vn-fx-chip ${e.kind} ${e.good ? "" : "bad"}`} style={delay()}>
-              {label(e) && `${label(e)}${e.kind === "item" || e.kind === "lost" ? ":" : ""} `}
-              {e.text}
-            </span>
+    <div className={`vn-summary ${found.length && cost.length ? "two" : ""}`} aria-live="polite">
+      {found.length > 0 && (
+        <div className="col">
+          <div className="h">Найдено в этой сцене</div>
+          {found.map((e, i) => {
+            const a = actionOf?.(e);
+            return (
+              <div key={i} className={`row ${e.kind}`}>
+                <span className="k">{fxLabel(e, isCase)}</span>
+                <span className="t" title={e.detail ?? e.text}>
+                  {e.text}
+                </span>
+                {a && (
+                  <button type="button" className="act" onClick={a.run}>
+                    {a.label}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {cost.length > 0 && (
+        <div className="col cost">
+          <div className="h">Цена</div>
+          {cost.map((e, i) => (
+            <div key={i} className={`row ${e.kind}`}>
+              <span className="k">{fxLabel(e, isCase)}</span>
+              <span className="t">{e.text}</span>
+            </div>
           ))}
+          {costNote && <div className="note">{costNote}</div>}
         </div>
       )}
     </div>
@@ -117,7 +179,7 @@ export function EffectChips({ items, isCase }: { items: TurnEffect[] | undefined
       {sortEffects(items).map((e, i) => {
         const k = fxLabel(e, isCase);
         return (
-          <span key={i} className={`vn-fx-chip still ${e.kind} ${e.good ? "" : "bad"}`}>
+          <span key={i} className={`vn-fx-chip ${e.kind} ${e.good ? "" : "bad"}`} title={e.detail}>
             {k ? `${k}: ${e.text}` : e.text}
           </span>
         );

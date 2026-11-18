@@ -6,7 +6,7 @@ import { locationById, locationTypeName, matchName, type CheckResult, type Comba
 import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnEffect, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
-import { beatsOf, Bust, Drawer, Effects, Icon, Pips, TextFrame } from "@/components/vn";
+import { BeatText, beatsOf, Bust, Drawer, Icon, Pips, SceneSummary, TextFrame, type FxAction } from "@/components/vn";
 import { CaseFile, CloseCase, Directory, Newspaper } from "@/components/case";
 
 type Input =
@@ -275,11 +275,21 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const fx = batch.flatMap((t) => t.effects ?? []);
   const showFx = !busy && !enter && atEnd && fx.length > 0;
   const hurt = (kind: TurnEffect["kind"]) => fx.some((e) => e.kind === kind && !e.good);
-  const openFx = (e: TurnEffect) => {
-    if (e.kind === "address") setPanel(w.case ? "directory" : "map");
-    else if (e.kind === "clue" || e.kind === "deduction" || e.kind === "objective" || e.kind === "quest") setPanel("quest");
-    else setPanel("hero");
+  // Действие у находки в сводке: улику — в досье, адрес — сразу пойти (если можно), вещь — в лист героя.
+  const timeLeft = !w.case || w.case.visits < w.case.limit;
+  const actionOf = (e: TurnEffect): FxAction | null => {
+    if (e.kind === "clue" || e.kind === "deduction" || e.kind === "objective" || e.kind === "quest") return { label: w.case ? "В досье" : "В журнал", run: () => setPanel("quest") };
+    if (e.kind === "address" && e.ref) {
+      const loc = locationById(w, e.ref);
+      if (loc && e.ref !== w.current && timeLeft && !w.combat) return { label: "Пойти", run: () => send({ kind: "travel", to: e.ref! }, `Путь в «${loc.name}»`) };
+      return { label: w.case ? "В справочнике" : "На карте", run: () => setPanel(w.case ? "directory" : "map") };
+    }
+    if (e.kind === "item") return { label: "Вещи", run: () => setPanel("hero") };
+    return null;
   };
+  const costNote = fx.some((e) => e.kind === "sanity" && !e.good) && c.sanity !== undefined && c.sanityMax
+    ? `Рассудок: ${c.sanity} из ${c.sanityMax}${c.sanity * 3 <= c.sanityMax ? " — ты на грани." : "."}`
+    : undefined;
 
   return (
     <div className="vn">
@@ -344,13 +354,13 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       <section className="vn-dock" hidden={titleCard}>
         {(beat || streaming) && (
           <TextFrame speaker={speakerName} role={role} onAdvance={!atEnd ? advance : undefined} hint={!atEnd ? "Пробел" : undefined}>
-            {beat ? beat.text : <span className="vn-writing">{live?.waiting}</span>}
+            {beat ? <BeatText key={`${view.turnNo}:${cursor}`} beat={beat} /> : <span className="vn-writing">{live?.waiting}</span>}
             {beat && streaming && atEnd && <span className="vn-caret" aria-hidden="true" />}
           </TextFrame>
         )}
         <Pips total={beats.length} at={cursor} />
         {error && <p className="error small">{error}</p>}
-        {showFx && <Effects key={view.turnNo} items={fx} isCase={!!w.case} onOpen={openFx} />}
+        {showFx && <SceneSummary key={view.turnNo} items={fx} isCase={!!w.case} actionOf={busy ? undefined : actionOf} costNote={costNote} />}
 
         {w.combat && atEnd && !streaming && !enter && <CombatPanel w={w} c={c} disabled={busy} onMove={(move, target) => send({ kind: "combat", move, target }, move)} />}
 

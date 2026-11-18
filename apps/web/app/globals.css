@@ -312,25 +312,57 @@ textarea { resize: vertical; }
 .gen-meta { display: flex; justify-content: space-between; margin-top: 8px; font-family: var(--ui); font-size: 13px; color: var(--muted); }
 .gen-hint { margin-top: 22px; font-family: var(--ui); font-size: 13px; color: var(--muted); }
 
-/* Итог хода: плашки находок и изменений */
-.vn-effects { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.vn-fx { display: flex; gap: 12px; align-items: baseline; max-width: 100%; text-align: left; background: rgba(23, 17, 12, 0.92); border: 1px solid #5a4423; border-left: 3px solid var(--gold); border-radius: 3px 8px 8px 3px; padding: 8px 14px; font-family: var(--sans); font-size: 15px; line-height: 1.4; color: var(--ink); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); animation: vnFx 0.5s ease-out both; }
-.vn-fx:hover { border-color: var(--gold); }
-.vn-fx .k { flex: none; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
-.vn-fx .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.vn-fx.clue, .vn-fx.deduction { border-left-color: var(--ember); box-shadow: 0 0 0 1px rgba(217, 119, 58, 0.25), 0 0 26px rgba(217, 119, 58, 0.2), 0 10px 30px rgba(0, 0, 0, 0.45); }
-.vn-fx.clue .k, .vn-fx.deduction .k { color: var(--ember); }
-.vn-fx-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.vn-fx-chip { font-family: var(--sans); font-size: 13px; border-radius: 999px; padding: 4px 11px; border: 1px solid #5a4423; background: rgba(42, 32, 20, 0.94); color: var(--gold); animation: vnFx 0.5s ease-out both; }
+/* Находки: подсветка в тексте реплики */
+.vn-mark .hl { color: #f6e2b3; font-style: normal; padding: 0 2px; border-bottom: 1px solid var(--mk-line); background-image: linear-gradient(var(--mk-bg), var(--mk-bg)); background-repeat: no-repeat; background-position: 0 100%; background-size: 100% 100%; animation: vnMark 0.9s 0.3s ease-out both; }
+.vn-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 3px; background: var(--mk-tag); color: #1a120b; font-family: var(--sans); font-size: 11px; font-weight: 700; font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.6; vertical-align: 3px; white-space: nowrap; animation: vnTag 0.4s 1s ease-out both; }
+.vn-mark.tail .vn-tag { margin-left: 8px; }
+.vn-mark.clue, .vn-mark.deduction { --mk-bg: rgba(217, 119, 58, 0.22); --mk-line: var(--ember); --mk-tag: var(--ember); }
+.vn-mark.address { --mk-bg: rgba(217, 178, 92, 0.2); --mk-line: var(--gold); --mk-tag: var(--gold); }
+.vn-mark.sanity { --mk-bg: rgba(138, 111, 174, 0.25); --mk-line: #8a6fae; --mk-tag: #b9a0dc; }
+.vn-mark.hp { --mk-bg: rgba(196, 71, 59, 0.22); --mk-line: #c4473b; --mk-tag: #e0857a; }
+@keyframes vnMark { from { background-size: 0% 100%; } }
+@keyframes vnTag { from { opacity: 0; transform: translateY(4px); } }
+
+/* Итог сцены: найдено и цена */
+.vn-summary { display: grid; grid-template-columns: minmax(0, 1fr); background: rgba(23, 17, 12, 0.95); border: 1px solid #4a3a28; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); animation: vnSum 0.45s ease-out both; }
+.vn-summary.two { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.vn-summary .col { display: flex; flex-direction: column; gap: 6px; padding: 12px 18px; min-width: 0; }
+.vn-summary.two .col + .col { border-left: 1px solid var(--line); }
+.vn-summary .h { font-family: var(--sans); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.vn-summary .row { display: flex; align-items: center; gap: 12px; min-height: 30px; }
+.vn-summary .k { flex: none; width: 92px; font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); }
+.vn-summary .row.clue .k, .vn-summary .row.deduction .k { color: #e9915a; }
+.vn-summary .row.item .k, .vn-summary .row.gold .k { color: var(--muted); }
+.vn-summary .t { flex: 1; min-width: 0; font-size: 17px; color: #f1e6d2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vn-summary .cost .t { color: #f0a38f; }
+.vn-summary .cost .row.sanity .t { color: #cdb6ea; }
+.vn-summary .act { flex: none; min-height: 36px; padding: 0 12px; background: transparent; border: 1px solid #4a3a28; border-radius: 4px; color: var(--gold); font-family: var(--sans); font-size: 13px; }
+.vn-summary .act:hover { border-color: var(--gold); }
+.vn-summary .note { font-family: var(--sans); font-size: 13px; line-height: 1.4; color: var(--muted); }
+@keyframes vnSum { from { opacity: 0; transform: translateY(10px); } }
+.vn-choices .check-tag.present { background: var(--ember); }
+.check-tag.present { color: #1a120b; background: var(--ember); border-color: var(--ember); }
+
+/* Те же находки в «Истории» */
+.vn-fx-chip { display: inline-block; margin: 2px 6px 4px 0; font-family: var(--sans); font-size: 13px; border-radius: 999px; padding: 4px 11px; border: 1px solid #5a4423; background: rgba(42, 32, 20, 0.94); color: var(--gold); }
 .vn-fx-chip.bad { color: #f0a38f; border-color: #5a2a23; background: rgba(42, 23, 20, 0.94); }
 .vn-fx-chip.sanity { color: #b9d3c1; border-color: #3f5a4a; background: rgba(24, 36, 30, 0.94); }
 .vn-fx-chip.sanity.bad { color: #cdb6ea; border-color: #4a3560; background: rgba(34, 26, 44, 0.94); }
-.vn-fx-chip.still { animation: none; display: inline-block; margin: 2px 6px 4px 0; }
 .fx-chips { margin-top: 4px; }
-@keyframes vnFx { from { opacity: 0; transform: translateY(8px); } }
 .vn-hp.hurt { animation: vnHurt 0.8s ease-out 2; }
 .vn-sanity.hurt { animation: vnMind 0.9s ease-out 2; }
 @keyframes vnHurt { 30% { box-shadow: 0 0 0 2px rgba(196, 71, 59, 0.9), 0 0 14px rgba(196, 71, 59, 0.7); } }
 @keyframes vnMind { 30% { box-shadow: 0 0 0 2px rgba(138, 111, 174, 0.9), 0 0 14px rgba(138, 111, 174, 0.7); } }
-@media (prefers-reduced-motion: reduce) { .vn-fx, .vn-fx-chip, .vn-hp.hurt, .vn-sanity.hurt { animation: none; } }
-@media (max-width: 760px) { .vn-fx { font-size: 14px; padding: 7px 10px; } }
+@media (prefers-reduced-motion: reduce) { .vn-mark .hl, .vn-tag, .vn-summary, .vn-hp.hurt, .vn-sanity.hurt { animation: none; } }
+@media (max-width: 760px) {
+  .vn-summary.two { grid-template-columns: minmax(0, 1fr); }
+  .vn-summary.two .col + .col { border-left: 0; border-top: 1px solid var(--line); }
+  .vn-summary .k { width: 76px; }
+  .vn-summary .t { font-size: 15px; white-space: normal; }
+  .vn-summary .col { padding: 10px 12px; gap: 4px; }
+  /* Сводка и варианты не залезают на шапку: длинный список вариантов прокручивается сам. */
+  .vn-dock { max-height: calc(100% - 104px); }
+  .vn-choices { min-height: 0; }
+}
+.vn-summary .cost .k { color: var(--muted); }
+.case-title { font-weight: 700; color: #f1e6d2; }

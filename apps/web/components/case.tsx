@@ -45,6 +45,7 @@ export function CaseFile({ w, busy, onReconstruct, onClose }: { w: PublicCampaig
           {clues.map((x) => (
             <li key={x.id}>
               <span className="case-where">{placeName(w, x.at)}</span>
+              {x.title && <strong className="case-title">{x.title}. </strong>}
               {x.text}
             </li>
           ))}
@@ -58,7 +59,10 @@ export function CaseFile({ w, busy, onReconstruct, onClose }: { w: PublicCampaig
           <h3 className="case-h">Выводы</h3>
           <ul className="case-clues deductions">
             {deductions.map((x) => (
-              <li key={x.id}>{x.text}</li>
+              <li key={x.id}>
+                {x.title && <strong className="case-title">{x.title}. </strong>}
+                {x.text}
+              </li>
             ))}
           </ul>
         </>

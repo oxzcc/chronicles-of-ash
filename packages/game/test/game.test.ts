@@ -64,7 +64,7 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-4+arkham-5");
+    expect(a.records[0]!.promptVersion).toBe("gm-5+arkham-5");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
@@ -86,7 +86,11 @@ describe("мир Аркхэма", () => {
     recs = [...recs, ...look.records];
     await expect(playTurn(deps(), g, recs, { kind: "travel", to: "L5" })).rejects.toThrow(/не знаешь/);
     // Мастер нашёл улику в доме Вейлов — движок принимает её только там.
-    const scripted = scriptedRouter([{ clues: ["c1", "c3"], reveal: ["L5"] }]);
+    const scripted = scriptedRouter([{
+      beats: [{ speaker: null, text: "В чашке — горький зеленоватый осадок.", finds: [{ ref: "c1", quote: "горький зеленоватый осадок" }, { ref: "c3", quote: "в чашке" }] }],
+      clues: ["c1", "c3"], reveal: ["L5"],
+      suggestions: [{ text: "Показываю осадок", present: "c1" }, { text: "Показываю футляр", present: "c4" }],
+    }]);
     const t = await playTurn(deps({ router: scripted }), g, recs, { kind: "travel", to: "L1" });
     expect(w.case!.visits).toBe(1);
     expect(w.case!.clues.find((x) => x.id === "c1")!.found).toBe(true);
@@ -94,6 +98,14 @@ describe("мир Аркхэма", () => {
     expect(t.records[0]!.applied!.rejected.join()).toMatch(/c3 лежит не здесь/);
     expect(w.case!.known).toContain("L5");
     expect(t.records[0]!.applied!.effects.map((e) => [e.kind, e.ref])).toEqual([["clue", "c1"], ["address", "L5"]]);
+    // Подсвечена только принятая улика; адрес без пометки — ярлыком в конце; предъявить можно только найденное.
+    expect(t.records[0]!.beats[0]!.marks).toEqual([
+      { kind: "clue", quote: "горький зеленоватый осадок", label: "улика" },
+      { kind: "address", quote: null, label: "адрес" },
+    ]);
+    expect(t.records[0]!.response!.beats).toBe(t.records[0]!.beats);
+    expect(t.records[0]!.suggestions).toEqual([{ text: "Показываю осадок", present: "c1" }, { text: "Показываю футляр" }]);
+    expect(t.records[0]!.applied!.effects[0]!.text).toBe("Осадок в чайной чашке");
     // Реконструкция: без нужных улик — понятная ошибка; с ними — вывод от служебной модели.
     await expect(playTurn(deps(), g, recs, { kind: "reconstruct", text: "Кит отравил тётю ради денег" })).rejects.toThrow(/мало/);
     for (const id of ["c2", "c3"]) w.case!.clues.find((x) => x.id === id)!.found = true;

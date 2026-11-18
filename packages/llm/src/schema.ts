@@ -13,6 +13,19 @@ const str = (max: number) => z.string().transform((s) => s.trim().slice(0, max))
 const int = z.coerce.number().transform((n) => (Number.isFinite(n) ? Math.round(n) : 0)).catch(0);
 const strList = (maxItems: number, maxLen: number) =>
   z.array(z.unknown()).transform((a) => a.map(String).map((s) => s.trim().slice(0, maxLen)).filter(Boolean).slice(0, maxItems)).catch([]);
+/** Список id: модель иногда пишет объекты ({"id":"c5","text":…}) вместо строк — берём id (или ref). */
+const idList = (maxItems: number, maxLen: number) =>
+  z
+    .array(z.unknown())
+    .transform((a) =>
+      a
+        .map((x) => (x && typeof x === "object" ? ((x as Record<string, unknown>).id ?? (x as Record<string, unknown>).ref ?? "") : x))
+        .filter((x) => typeof x === "string" || typeof x === "number")
+        .map((x) => String(x).trim().slice(0, maxLen))
+        .filter(Boolean)
+        .slice(0, maxItems),
+    )
+    .catch([]);
 
 /** Раса NPC — только из рас мира; неизвестная становится первой (человеком). */
 const buildSpeakerSchema = (r: Ruleset) => {
@@ -36,36 +49,69 @@ function speakerSchema(r: Ruleset) {
   return s;
 }
 
+/** Пометка мастера: в этой реплике случилась находка (ref — id улики или места, "sanity", "hp"), quote — её слова в тексте. */
+export interface BeatRef {
+  ref: string;
+  quote: string;
+}
+
+/** Проверенная игрой пометка: что подсветить в тексте и какой ярлык поставить. quote null — только ярлык в конце реплики. */
+export interface BeatMark {
+  kind: string;
+  quote: string | null;
+  label: string;
+}
+
 export interface Beat {
   /** null — голос рассказчика; иначе имя говорящего NPC. */
   speaker: string | null;
   text: string;
+  /** Сырые пометки мастера (finds) — до проверки игрой. Клиенту не уходят. */
+  refs?: BeatRef[];
+  /** Пометки после проверки: только то, что движок принял. */
+  marks?: BeatMark[];
 }
 
 /** Убирает кавычки-ёлочки и тире, которыми модели иногда обрамляют реплику. */
 const unquote = (s: string) => s.replace(/^[«"“—–\-\s]+|[»"”\s]+$/g, "").trim();
 
+const refsSchema = z
+  .array(z.unknown())
+  .catch([])
+  .transform((a): BeatRef[] =>
+    a
+      .map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}))
+      .map((x) => ({ ref: String(x.ref ?? "").trim().slice(0, 80), quote: String(x.quote ?? "").trim().replace(/^[«"“]+|[»"”]+$/g, "").slice(0, 200) }))
+      .filter((x) => x.ref)
+      .slice(0, 3),
+  );
+
 const BeatSchema = z
-  .object({ speaker: z.string().nullable().catch(null).default(null), text: z.string().catch("") })
+  .object({ speaker: z.string().nullable().catch(null).default(null), text: z.string().catch(""), finds: refsSchema.optional() })
   .transform((b): Beat => {
     const speaker = b.speaker && b.speaker.trim() && !/^(рассказчик|мастер|narrator)$/i.test(b.speaker.trim()) ? b.speaker.trim().slice(0, 40) : null;
-    return { speaker, text: (speaker ? unquote(b.text) : b.text.trim()).slice(0, 1500) };
+    const beat: Beat = { speaker, text: (speaker ? unquote(b.text) : b.text.trim()).slice(0, 1500) };
+    if (b.finds?.length) beat.refs = b.finds;
+    return beat;
   });
 
 export interface Suggestion {
   text: string;
   /** Проверка, если исход варианта неочевиден: навык и сложность видны игроку заранее. */
   check?: { skill: string; dc: number };
+  /** Дело: вариант предъявляет найденную улику (её id). Игра оставляет его, только если улика найдена. */
+  present?: string;
 }
 
 const suggestionSchema = (checks: string[]) => z.union([
   z.string().transform((text): Suggestion => ({ text })),
   z
-    .object({ text: z.string(), skill: z.string().optional().catch(undefined), dc: z.coerce.number().optional().catch(undefined) })
+    .object({ text: z.string(), skill: z.string().optional().catch(undefined), dc: z.coerce.number().optional().catch(undefined), present: z.string().optional().catch(undefined) })
     .transform((s): Suggestion => {
       const skill = s.skill && checks.includes(s.skill.trim()) ? s.skill.trim() : null;
       const dc = Number.isFinite(s.dc) ? Math.min(DC_MAX, Math.max(DC_MIN, Math.round(s.dc!))) : 13;
-      return skill ? { text: s.text, check: { skill, dc } } : { text: s.text };
+      const present = s.present?.trim().slice(0, 8);
+      return { text: s.text, ...(skill ? { check: { skill, dc } } : {}), ...(present ? { present } : {}) };
     }),
 ]);
 
@@ -103,11 +149,11 @@ const rawResponseSchema = (r: Ruleset) => z.object({
     .nullable()
     .catch(null)
     .default(null),
-  questDone: strList(4, 8).default([]),
+  questDone: idList(4, 8).default([]),
   questComplete: z.boolean().catch(false).default(false),
   /** Дело (Аркхэм): найденные улики и открытые адреса — id; проверяет движок. */
-  clues: strList(4, 8).default([]),
-  reveal: strList(4, 8).default([]),
+  clues: idList(4, 8).default([]),
+  reveal: idList(4, 80).default([]),
   suggestions: z.array(z.unknown()).catch([]).default([]),
   /** Герой по ходу рассказа пришёл в другое место карты: название или id; проверяет движок. */
   move: z
@@ -211,7 +257,8 @@ export function partialBeats(text: string): Beat[] {
   if (Array.isArray(raw.beats))
     return raw.beats
       .map((b) => BeatSchema.safeParse(b))
-      .flatMap((x) => (x.success && x.data.text ? [{ ...x.data, text: stripCjk(x.data.text) }] : []));
+      // Пометки мастера (refs) клиенту не нужны: подсветку игра ставит после проверки.
+      .flatMap((x) => (x.success && x.data.text ? [{ speaker: x.data.speaker, text: stripCjk(x.data.text) }] : []));
   if (typeof raw.narration === "string" && raw.narration.trim()) return [{ speaker: null, text: stripCjk(raw.narration) }];
   return [];
 }

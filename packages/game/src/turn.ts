@@ -10,6 +10,7 @@ import {
 import { worldOf } from "@ash/worlds";
 import { GameError, type GameState, type TurnDeps, type TurnInput, type TurnOutcome, type TurnRecord } from "./types";
 import { toHistory, type Recordish } from "./history";
+import { resolveMarks, tagLast } from "./marks";
 
 export const MAX_ACTION_LENGTH = 500;
 export const MAX_ANSWER_LENGTH = 400;
@@ -64,6 +65,15 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
         await deps.onArrive?.();
       }
     }
+    // Подсветка находок в тексте — только принятых движком; «предъявить» — только найденную улику.
+    resp.beats = resolveMarks(resp.beats, applied.effects);
+    resp.suggestions = resp.suggestions.map((s) => {
+      if (!s.present) return s;
+      const clue = w.case?.clues.find((x) => x.id === s.present && x.found && !x.requires);
+      if (clue) return s;
+      const { present: _drop, ...rest } = s;
+      return rest;
+    });
     w.npc = resp.speaker;
     w.turn++;
     records.push({
@@ -120,10 +130,14 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
 
   /** Плашка к последней записи: то, что изменил сам движок, а не мастер (поражение, срыв, вывод). */
   const addEffect = (e: TurnEffect, first = false) => {
-    const a = records.at(-1)?.applied;
-    if (!a) return;
+    const rec = records.at(-1);
+    const a = rec?.applied;
+    if (!rec || !a) return;
     if (first) a.effects.unshift(e);
     else a.effects.push(e);
+    // Вывод и срыв видны и в тексте — ярлыком в конце реплики.
+    rec.beats = tagLast(rec.beats, [e]);
+    if (rec.response) rec.response.beats = rec.beats;
   };
 
   const knockedOut = async (foes?: string) => {

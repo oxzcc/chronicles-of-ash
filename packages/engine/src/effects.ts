@@ -23,8 +23,10 @@ export type EffectKind =
 
 export interface TurnEffect {
   kind: EffectKind;
-  /** Готовый текст плашки: «−2», «Ржавый ключ», текст улики. */
+  /** Готовый текст плашки: «−2», «Ржавый ключ», название улики. */
   text: string;
+  /** Полный текст, когда в text — короткое название (улика). */
+  detail?: string;
   /** Хорошо это для героя или плохо — цвет плашки. */
   good: boolean;
   ref?: string;
@@ -35,7 +37,8 @@ export interface TurnEffect {
 const signed = (n: number) => (n > 0 ? `+${n}` : `−${Math.abs(n)}`);
 
 export const effect = {
-  clue: (id: string, text: string): TurnEffect => ({ kind: "clue", text, good: true, ref: id }),
+  /** title — короткое название улики («Осадок в чашке»); без него — весь текст. */
+  clue: (id: string, text: string, title?: string): TurnEffect => (title ? { kind: "clue", text: title, detail: text, good: true, ref: id } : { kind: "clue", text, good: true, ref: id }),
   deduction: (id: string, text: string): TurnEffect => ({ kind: "deduction", text, good: true, ref: id }),
   address: (id: string, name: string): TurnEffect => ({ kind: "address", text: name, good: true, ref: id }),
   objective: (id: string, text: string): TurnEffect => ({ kind: "objective", text, good: true, ref: id }),
