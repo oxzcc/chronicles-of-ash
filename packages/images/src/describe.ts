@@ -1,6 +1,6 @@
-import { raceKeys, type CharacterDraft, type Gender, type LocationType, type RaceKey } from "@ash/engine";
+import { hashStr, mulberry32, raceKeys, type CharacterDraft, type Gender, type LocationType, type RaceKey, type Rng } from "@ash/engine";
 import { extractJson, type ModelRouter } from "@ash/llm";
-import type { World } from "@ash/worlds";
+import type { BuildOption, World } from "@ash/worlds";
 import { isInterior, raceEn } from "./style";
 
 /**
@@ -59,13 +59,46 @@ export interface NpcCard {
 /** Начало описания в стиле подписей датасета: кто это — одним существительным с возрастом и полом. */
 const CAPTION_START =
   "start with who they are as one noun phrase with age, gender and role (e.g. 'a middle-aged woman housekeeper', 'an elderly bald man priest', 'a young woman newspaper reporter'); then ";
-const lookParts = (world: World, gender?: Gender) => {
-  const fig = world.art.figureEn;
-  const rule = gender ? fig?.[gender] : fig?.f && fig.m ? `women — ${fig.f}; men — ${fig.m}` : undefined;
-  const build = rule
-    ? `build in the exact dataset words (${rule})`
+const weighted = (opts: BuildOption[], rng: Rng) => {
+  let r = rng() * opts.reduce((a, o) => a + o.weight, 0);
+  for (const o of opts) if ((r -= o.weight) < 0) return o.en;
+  return opts[opts.length - 1]!.en;
+};
+
+/**
+ * Телосложение человека по правилам мира (world.art.figures). Выбирает код, а не служебная модель:
+ * сама она скатывается в один вариант на всех. Seed — от имени: один NPC всегда одной фигуры.
+ * Возраст и болезнь видит только модель, поэтому ей уходят три готовых варианта на выбор по состоянию.
+ */
+export function buildFor(world: World, who: { name: string; gender: Gender; role?: string }) {
+  const fig = world.art.figures;
+  if (!fig) return undefined;
+  const rng = mulberry32(hashStr(`${world.id}:${who.name}:${who.gender}`));
+  const young = weighted(fig.young[who.gender], rng);
+  const elderly = weighted(fig.elderly[who.gender], rng);
+  const forced = fig.roles?.find((r) => r.match.test(who.role ?? ""))?.[who.gender];
+  return { young: forced ?? young, elderly, frail: fig.frail };
+}
+
+const buildRule = (b: NonNullable<ReturnType<typeof buildFor>>) =>
+  `if sick, starving or drowned — '${b.frail}'; else if elderly — '${b.elderly}'; otherwise — '${b.young}'`;
+
+const lookParts = (build?: string) => {
+  const b = build
+    ? `build in these exact words, chosen by the character's age and condition: ${build}`
     : "build in plain body-type words that fit the role (e.g. thin frail, wiry, stout sturdy, heavyset, muscular, curvy, voluptuous hourglass)";
-  return `age; ${build}; face with one telling feature of this particular person (e.g. a scar, freckles, a beauty mark, crow's feet, a broken nose, heavy makeup; dark circles only for the sleepless or sick); hair; clothing from head to knees (no shoes or boots, nothing below the knees); one distinctive detail or object in hand; pose of the hands or body (arms crossed, hands on hips, looking over the shoulder, hugging oneself, hand on hip); add 'low angle' only for imposing, powerful or seductive people; an expression that follows from the role and the moment (haughty, sultry, stern, smug, grieving, terrified, sly, grim, vacant, coy) — not a generic 'wary' or 'neutral'; a smile only if the role calls for one`;
+  return `age; ${b}; face with one telling feature of this particular person (e.g. a scar, freckles, a beauty mark, crow's feet, a broken nose, heavy makeup; dark circles only for the sleepless or sick); hair; clothing from head to knees (no shoes or boots, nothing below the knees); one distinctive detail or object in hand; a pose that suits this person and what they hold (e.g. arms crossed, hands clasped, leaning on something, looking over the shoulder, hugging oneself, holding the object up; a hand on the hip only for confident or seductive people); add 'low angle' only for imposing, powerful or seductive people; an expression that follows from the role and the moment (haughty, sultry, stern, smug, grieving, terrified, sly, grim, vacant, coy) — not a generic 'wary' or 'neutral'; a smile only if the role calls for one`;
+};
+
+const npcBuild = (world: World, npc: NpcCard) => {
+  const b = buildFor(world, npc);
+  return b && buildRule(b);
+};
+/** Пол угадывает сама модель — правила для обоих. */
+const guessBuild = (world: World, name: string) => {
+  const f = buildFor(world, { name, gender: "f" });
+  const m = buildFor(world, { name, gender: "m" });
+  return f && m ? `if a woman: ${buildRule(f)}; if a man: ${buildRule(m)}` : undefined;
 };
 
 /**
@@ -87,7 +120,7 @@ export async function guessNpc(
 Name: ${o.name}
 Their lines (Russian): ${o.lines.map((l) => `«${l}»`).join(" ").slice(0, 600)}
 Scene (Russian): ${o.scene.slice(0, 600)}
-Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 25-50 words: ${captionStyle(world) ? CAPTION_START : ""}${lookParts(world)}; no names, no style words"}`,
+Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 25-50 words: ${captionStyle(world) ? CAPTION_START : ""}${lookParts(guessBuild(world, o.name))}; no names, no style words"}`,
       signal,
     );
     const j = extractJson(raw) as Record<string, unknown> | null;
@@ -116,7 +149,7 @@ export async function describeNpc(router: ModelRouter, world: World, npc: NpcCar
     const text = oneLine(
       await ask(
         router,
-        `Write an English image prompt fragment (25-55 words, no style words, no names) describing how this ${world.art.genreEn} character looks: ${caption ? CAPTION_START : ""}${lookParts(world, npc.gender)}.\nCharacter: ${npc.name}, ${world.rules.races[npc.race]?.name ?? npc.race} (${raceEn(world, npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
+        `Write an English image prompt fragment (25-55 words, no style words, no names) describing how this ${world.art.genreEn} character looks: ${caption ? CAPTION_START : ""}${lookParts(npcBuild(world, npc))}.\nCharacter: ${npc.name}, ${world.rules.races[npc.race]?.name ?? npc.race} (${raceEn(world, npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
         signal,
       ),
     );
@@ -168,6 +201,9 @@ export interface LookVariant {
   prompt: string;
 }
 
+/** Игрок сам написал о фигуре — не спорим с ним. */
+const BUILD_NOTE = /худ|строй|полн|пышн|форм|толст|спортив|атлет|мускул|миниатюр|хрупк|крепк|груз|жилист/i;
+
 /** Запасные отличия, если служебная модель не ответила: четыре разных человека, а не один. */
 const VARIETY = [
   { label: "Молодость, рыжие волосы, веснушки", prompt: "young, copper-red hair in a loose braid, freckles, bright curious eyes" },
@@ -187,11 +223,15 @@ export function baseHero(world: World, d: Pick<CharacterDraft, "race" | "cls" | 
  * плюс разные возраст, волосы, черты лица, детали одежды и выражение.
  */
 export async function heroVariants(router: ModelRouter, world: World, d: Pick<CharacterDraft, "race" | "cls" | "gender">, notes: string, signal?: AbortSignal): Promise<LookVariant[]> {
+  // Четыре облика — четыре разные фигуры мира (у героини: две с формами, две без), если игрок сам не задал фигуру.
+  const builds = BUILD_NOTE.test(notes) ? undefined : world.art.figures?.hero[d.gender];
+  const withBuild = (v: LookVariant[]) =>
+    builds ? v.map((x, i) => (builds[i] ? { label: `${x.label}, ${builds[i]!.ru}`, prompt: `${x.prompt}, ${builds[i]!.en}` } : x)) : v;
   try {
     const raw = await ask(
       router,
       `You design 4 clearly DIFFERENT looks for a ${world.art.genreEn} player character. Base: ${baseHero(world, d)} (${world.rules.races[d.race]?.name ?? d.race}, ${world.rules.classes[d.cls]?.name ?? d.cls}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
-Vary age, hair colour and style, face shape, scars or marks, a clothing detail and expression so that the 4 people are easy to tell apart.${world.art.figureEn?.[d.gender] ? `\nBuild — the same rule for all 4, in these exact words: ${world.art.figureEn[d.gender]}.` : ""}
+Vary age, hair colour and style, face shape, scars or marks, a clothing detail and expression so that the 4 people are easy to tell apart.${builds ? `\nBody builds are fixed by the game, in this order: ${builds.map((b, i) => `${i + 1}) ${b.en}`).join("; ")}. Do not describe build or figure yourself, but pick ages that suit them: a curvy, voluptuous or hourglass look is 20 to 45 years old.` : ""}
 Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and an age.
 Return JSON only: [{"label":"4-7 слов по-русски","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,
       signal,
@@ -200,7 +240,7 @@ Return JSON only: [{"label":"4-7 слов по-русски","prompt":"English f
     const items = (arr?.v ?? [])
       .map((x: any) => ({ label: String(x?.label ?? "").trim().slice(0, 60), prompt: oneLine(String(x?.prompt ?? "")) }))
       .filter((x) => x.label && x.prompt && !CYR.test(x.prompt));
-    if (items.length >= 4) return items.slice(0, 4);
+    if (items.length >= 4) return withBuild(items.slice(0, 4));
   } catch {}
-  return VARIETY;
+  return withBuild(VARIETY);
 }

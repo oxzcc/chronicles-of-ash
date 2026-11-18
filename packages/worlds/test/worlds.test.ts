@@ -88,3 +88,22 @@ describe("постоянные лица мира", () => {
   });
 });
 
+
+describe("телосложение мира", () => {
+  it("у Аркхэма: веса положительные, слова по-английски, у героя — четыре разные фигуры с подписью по-русски", async () => {
+    const { getWorld } = await import("../src/index");
+    const fig = getWorld("arkham").art.figures!;
+    for (const opts of [fig.young.f, fig.young.m, fig.elderly.f, fig.elderly.m])
+      for (const o of opts) {
+        expect(o.weight, o.en).toBeGreaterThan(0);
+        expect(o.en).not.toMatch(/[а-яё]/i);
+      }
+    for (const g of ["f", "m"] as const) {
+      expect(fig.hero[g]).toHaveLength(4);
+      expect(new Set(fig.hero[g].map((h) => h.en)).size).toBe(4);
+      for (const h of fig.hero[g]) expect(h.ru).toMatch(/^[а-яё ]+$/);
+    }
+    // Две героини из четырёх — с формами, две — без.
+    expect(fig.hero.f.filter((h) => /bust/.test(h.en))).toHaveLength(2);
+  });
+});

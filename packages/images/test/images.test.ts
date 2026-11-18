@@ -150,19 +150,49 @@ describe("LoRA стиля", () => {
   });
 
   it("NPC мира с LoRA описывается как подпись датасета: пол в существительном, без точки и заглавной", async () => {
-    const { describeNpc } = await import("../src/index");
+    const { describeNpc, buildFor } = await import("../src/index");
     const asked: string[] = [];
     const reply = (text: string): any => ({ route: () => ({ model: "m", provider: { complete: async (r: any) => (asked.push(r.messages[0].content), { text, toolCalls: [], usage: {}, model: "m" }) } }) });
     const card = { name: "Лорейн Вейл", race: "human" as const, gender: "f" as const, role: "вдова" };
     expect(await describeNpc(reply("A grieving young widow, slender, black veil, frightened."), arkham, card)).toBe("a grieving young widow, slender, black veil, frightened");
     expect(asked[0]).toMatch(/one noun phrase with age, gender and role/);
-    // Телосложение по умолчанию — правило мира (женщины Аркхэма — с формами), худые — по роли.
-    expect(asked[0]).toContain(arkham.art.figureEn!.f!);
-    expect(asked[0]).not.toContain(arkham.art.figureEn!.m!);
+    // Телосложение выбрал код по правилам мира: три готовых варианта по возрасту и состоянию.
+    const b = buildFor(arkham, card)!;
+    expect(asked[0]).toContain(`otherwise — '${b.young}'`);
+    expect(asked[0]).toContain(`if sick, starving or drowned — 'thin frail build'`);
     // Пол не назван — ставим его первым словом.
     expect(await describeNpc(reply("an elderly housekeeper, stout sturdy build"), arkham, card)).toBe("a woman, an elderly housekeeper, stout sturdy build");
     // У мира без LoRA — прежний вид: пол и раса впереди.
     expect(await describeNpc(reply("tall, scarred"), world, { ...card, race: "elf" })).toMatch(/^a woman, female character, .+, tall, scarred$/);
+  });
+
+  it("телосложение выбирает код: по имени всегда одно, доли мира, роковые роли и герои", async () => {
+    const { buildFor, heroVariants } = await import("../src/index");
+    const fig = arkham.art.figures!;
+    const [curvy, hourglass] = [fig.young.f[0]!.en, fig.young.f[1]!.en];
+    // Один и тот же NPC — всегда одна фигура.
+    expect(buildFor(arkham, { name: "Мэри Хоббс", gender: "f" })).toEqual(buildFor(arkham, { name: "Мэри Хоббс", gender: "f" }));
+    // Доли: половина с формами, треть «песочные часы», остальные стройные.
+    const n = 3000;
+    const picks = Array.from({ length: n }, (_, i) => buildFor(arkham, { name: `Жительница ${i}`, gender: "f" })!.young);
+    const share = (x: string) => picks.filter((p) => p === x).length / n;
+    expect(share(curvy)).toBeCloseTo(1 / 2, 1);
+    expect(share(hourglass)).toBeCloseTo(1 / 3, 1);
+    expect(1 - share(curvy) - share(hourglass)).toBeCloseTo(1 / 6, 1);
+    // Пожилые — без утрирования.
+    for (let i = 0; i < 50; i++) expect(buildFor(arkham, { name: `Старуха ${i}`, gender: "f" })!.elderly).not.toMatch(/bust/);
+    // Певица — всегда «песочные часы»; у мира без правил выбора нет.
+    for (let i = 0; i < 20; i++) expect(buildFor(arkham, { name: `Певица ${i}`, gender: "f", role: "певица в подпольном баре" })!.young).toBe(hourglass);
+    expect(buildFor(world, { name: "x", gender: "f" })).toBeUndefined();
+
+    // Героиня: четыре облика — четыре разные фигуры, фигура видна в подписи; свои слова игрока о фигуре — важнее.
+    const failing: any = { route: () => ({ model: "m", provider: { complete: async () => { throw new Error("down"); } } }) };
+    const d = { race: "human" as const, cls: "journalist", gender: "f" as const };
+    const v = await heroVariants(failing, arkham, d, "");
+    expect(v.map((x) => x.prompt.split(", ").slice(-1)[0])).toEqual(fig.hero.f.map((h) => h.en.split(", ").slice(-1)[0]));
+    expect(v[0]!.label).toMatch(/, с формами$/);
+    expect(v[2]!.label).toMatch(/, стройная$/);
+    expect((await heroVariants(failing, arkham, d, "худая, высокая")).every((x) => !/bust|slender|athletic/.test(x.prompt))).toBe(true);
   });
 
   it("конвейер шлёт LoRA в fal только миру, для которого она задана", async () => {
