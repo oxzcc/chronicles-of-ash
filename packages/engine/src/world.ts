@@ -3,6 +3,7 @@ import { hashStr, mulberry32, type Rng } from "./rng";
 import { locationTypeKeys, startLocationTypes, type LocationType, type Ruleset } from "./rules";
 import type { CombatState } from "./combat";
 import type { Gender } from "./character";
+import type { CaseState } from "./case";
 
 export interface Objective {
   id: string;
@@ -44,6 +45,8 @@ export interface Campaign {
   turn: number;
   npc: Speaker | null;
   combat: CombatState | null;
+  /** Детективное дело — в мирах, где оно есть (Аркхэм). Секреты: см. publicCampaign. */
+  case?: CaseState;
 }
 
 /** Сырой квест от модели — до проверки. */
@@ -147,11 +150,11 @@ export function layoutCampaign(r: Ruleset, seed: QuestSeed, layoutSeed: string):
   };
 }
 
-export function locationById(w: Campaign, id: string): MapLocation | undefined {
+export function locationById(w: Pick<Campaign, "locations">, id: string): MapLocation | undefined {
   return w.locations.find((l) => l.id === id);
 }
 
-export function neighbors(w: Campaign, id: string): MapLocation[] {
+export function neighbors(w: Pick<Campaign, "locations" | "edges">, id: string): MapLocation[] {
   return w.edges
     .filter((e) => e[0] === id || e[1] === id)
     .map((e) => (e[0] === id ? e[1] : e[0]))

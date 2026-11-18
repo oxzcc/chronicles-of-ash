@@ -199,7 +199,7 @@ describe("промпты по мирам", () => {
     expect(a).toContain('"race":"human"');
     expect(a).not.toMatch(/Baldur|тёмно-фэнтезийн|золот/);
     expect(gmRules(world)).not.toContain("РАССЛЕДОВАНИЕ:");
-    expect(promptVersion(arkham)).toBe("gm-3+arkham-1");
+    expect(promptVersion(arkham)).toBe("gm-3+arkham-2");
     expect(promptVersion(world)).toBe("gm-3");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
@@ -218,6 +218,36 @@ describe("промпты по мирам", () => {
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-3+arkham-1");
+    expect(r.promptVersion).toBe("gm-3+arkham-2");
+  });
+});
+
+describe("дело в промптах", () => {
+  const arkham = getWorld("arkham");
+  it("мастер видит разгадку, улики с id и неизвестные места; в JSON — clues и reveal", async () => {
+    const { gmRules, narratorUserPrompt, layoutCase } = { ...(await import("../src/index")), ...(await import("@ash/engine")) };
+    expect(gmRules(arkham)).toContain("ДЕЛО:");
+    expect(gmRules(arkham)).toContain('"clues":[],"reveal":[]');
+    expect(gmRules(world)).not.toContain('"clues"');
+    const hero = createCharacter(arkham.rules, { world: "arkham", name: "Уолтер", gender: "m", race: "human", cls: "detective", base: { ...arkham.rules.recommended.detective! }, skills: ["Внимательность", "Психология"] }, mulberry32(1));
+    const w = layoutCase(arkham.rules, arkham.fallbackCase!, "s");
+    const p = narratorUserPrompt(arkham, { character: hero, campaign: w, history: [], action: "Осматриваю" });
+    expect(p).toContain("Разгадка: Корделию Вейл отравил");
+    expect(p).toContain("[c1] Дом Вейлов на Сосновой улице (L1) — не найдена, ключевая");
+    expect(p).toMatch(/Места, о которых герой ещё не знает: Бакалея Финнегана \(L4/);
+    expect(p).toContain("Известные герою адреса:");
+    expect(p).toContain("Визиты: 0 из 10.");
+  });
+  it("ответ мастера несёт улики и адреса", () => {
+    const r = parseGmResponse('{"beats":[{"speaker":null,"text":"Чашка."}],"clues":["c1"],"reveal":["L4"]}', arkham.rules);
+    expect(r.ok && [r.value.clues, r.value.reveal]).toEqual([["c1"], ["L4"]]);
+  });
+  it("вердикты и вывод — только из допустимых значений; запасная проверка по словам", async () => {
+    const { parseVerdicts, parseDeduction, roughVerdict } = await import("../src/index");
+    expect(parseVerdicts('{"a1":"right","a2":"maybe"}', ["a1", "a2", "a3"])).toEqual({ a1: "right", a2: "wrong", a3: "wrong" });
+    expect(parseDeduction('{"match":"c9"}', ["c9"])).toBe("c9");
+    expect(parseDeduction('{"match":"c1"}', ["c9"])).toBeNull();
+    expect(roughVerdict("Племянник Кит Ларкин отравил её ради наследства", "Её племянник Кит Ларкин: отравил её наперстянкой ради наследства, чтобы закрыть долг бутлегерам.")).toBe("right");
+    expect(roughVerdict("дворецкий", "Её племянник Кит Ларкин: отравил её наперстянкой ради наследства.")).toBe("wrong");
   });
 });

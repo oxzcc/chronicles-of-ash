@@ -62,11 +62,48 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-3+arkham-1");
+    expect(a.records[0]!.promptVersion).toBe("gm-3+arkham-2");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
     expect(b.records.some((r) => r.kind === "combat")).toBe(true);
+  });
+  it("дело целиком: справочник, переход, улика, реконструкция, закрытие со счётом", async () => {
+    const { publicCampaign } = await import("@ash/engine");
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "case" });
+    const w = g.campaign;
+    expect(w.case?.truth).toMatch(/Кит Ларкин/);
+    expect(JSON.stringify(publicCampaign(w))).not.toMatch(/Кит Ларкин: отравил/);
+    let recs = (await playTurn(deps(), g, [], { kind: "start" })).records;
+    // Справочник без модели: имя из газеты открывает адрес.
+    const look = await playTurn(deps(), g, recs, { kind: "lookup", query: "Финнеган" });
+    expect(look.records[0]).toMatchObject({ kind: "lookup", model: "engine" });
+    expect(look.records[0]!.narration).toMatch(/Бакалея Финнегана/);
+    expect(w.case!.known).toContain("L4");
+    recs = [...recs, ...look.records];
+    await expect(playTurn(deps(), g, recs, { kind: "travel", to: "L5" })).rejects.toThrow(/не знаешь/);
+    // Мастер нашёл улику в доме Вейлов — движок принимает её только там.
+    const scripted = scriptedRouter([{ clues: ["c1", "c3"], reveal: ["L5"] }]);
+    const t = await playTurn(deps({ router: scripted }), g, recs, { kind: "travel", to: "L1" });
+    expect(w.case!.visits).toBe(1);
+    expect(w.case!.clues.find((x) => x.id === "c1")!.found).toBe(true);
+    expect(w.case!.clues.find((x) => x.id === "c3")!.found).toBe(false);
+    expect(t.records[0]!.applied!.rejected.join()).toMatch(/c3 лежит не здесь/);
+    expect(w.case!.known).toContain("L5");
+    // Реконструкция: без нужных улик — понятная ошибка; с ними — вывод от служебной модели.
+    await expect(playTurn(deps(), g, recs, { kind: "reconstruct", text: "Кит отравил тётю ради денег" })).rejects.toThrow(/мало/);
+    for (const id of ["c2", "c3"]) w.case!.clues.find((x) => x.id === id)!.found = true;
+    const rc = await playTurn(deps(), g, recs, { kind: "reconstruct", text: "Кит подал отравленный чай, потому что ему нужны были деньги на долги" });
+    expect(rc.records[0]!.kind).toBe("reconstruct");
+    expect(w.case!.clues.find((x) => x.id === "c9")!.found).toBe(true);
+    // Закрытие: оценка (фейковая модель — по словам), счёт, разбор.
+    const close = await playTurn(deps(), g, recs, { kind: "close", answers: { a1: "Племянник Кит Ларкин отравил её наперстянкой ради наследства", a2: "Не знаю" } });
+    expect(close.records[0]!.kind).toBe("close");
+    const res = w.case!.result!;
+    expect(res.answers.map((a) => a.verdict)).toEqual(["right", "wrong", "wrong"]);
+    expect(res).toMatchObject({ points: 20, mentor: 40, penalty: 0, score: 20 });
+    expect(w.complete).toBe(true);
+    await expect(playTurn(deps(), g, recs, { kind: "close", answers: { a1: "x" } })).rejects.toThrow(/закрыто/);
   });
   it("фоны Аркхэма — в своей библиотеке, фэнтези — в старой", async () => {
     const { libraryTag } = await import("../src/visuals");

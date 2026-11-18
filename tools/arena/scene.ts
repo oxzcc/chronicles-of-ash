@@ -1,6 +1,6 @@
 import {
-  createCharacter, layoutCampaign, mulberry32,
-  type Campaign, type Character, type CharacterDraft, type ClassKey, type QuestSeed, type RaceKey, type SkillName,
+  createCharacter, layoutCampaign, layoutCase, mulberry32,
+  type Campaign, type CaseSeed, type Character, type CharacterDraft, type ClassKey, type QuestSeed, type RaceKey, type SkillName,
 } from "@ash/engine";
 import type { HistoryEntry } from "@ash/llm";
 import { getWorld, type World } from "@ash/worlds";
@@ -21,6 +21,8 @@ export interface Scene {
   summary?: string;
   npc?: Campaign["npc"];
   history?: HistoryEntry[];
+  /** Дело: уже найденные улики (id). */
+  found?: string[];
   /** Изменения героя перед сценой. */
   tweak?: (c: Character) => void;
   action: string;
@@ -29,8 +31,8 @@ export interface Scene {
 export interface SceneSet {
   /** id мира. */
   world: string;
-  /** Общий квест всех сцен набора. */
-  quest: QuestSeed;
+  /** Общий квест всех сцен набора; в мире с делом — дело. */
+  quest: QuestSeed | CaseSeed;
   scenes: Scene[];
 }
 
@@ -41,8 +43,12 @@ export function buildScene(set: SceneSet, s: Scene): { world: World; character: 
   const character = createCharacter(R, draft, mulberry32(7));
   character.gold = 18;
   s.tweak?.(character);
-  const campaign = layoutCampaign(R, set.quest, "arena");
+  const campaign = world.features.case ? layoutCase(R, set.quest as CaseSeed, "arena") : layoutCampaign(R, set.quest, "arena");
   campaign.current = `L${s.at}`;
+  if (campaign.case) {
+    if (!campaign.case.known.includes(campaign.current)) campaign.case.known.push(campaign.current);
+    for (const x of campaign.case.clues) x.found = !!s.found?.includes(x.id);
+  }
   for (const o of campaign.objectives) o.done = !!s.done?.includes(o.id);
   campaign.summary = s.summary ?? "";
   campaign.npc = s.npc ?? null;

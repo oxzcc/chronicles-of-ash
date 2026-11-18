@@ -1,6 +1,6 @@
 "use client";
 
-import type { Campaign, Character, CheckResult, CombatEvent, CombatOutcome, CombatState } from "@ash/engine";
+import type { Character, CheckResult, CombatEvent, CombatOutcome, CombatState, PublicCampaign } from "@ash/engine";
 import type { Beat, Suggestion } from "@ash/llm";
 import type { SceneView } from "@ash/game";
 
@@ -25,7 +25,8 @@ export interface CampaignView {
   id: string;
   turnNo: number;
   character: Character;
-  campaign: Campaign;
+  /** Кампания без секретов дела — см. publicCampaign. */
+  campaign: PublicCampaign;
   turns: TurnView[];
   costUsd: number;
   scene: SceneView;
@@ -37,7 +38,7 @@ export type TurnStreamEvent =
   | { type: "arrive"; location: string; imageId: string | null; image: SceneView["locations"][string] | null }
   | { type: "roll"; roll: CheckResult }
   | { type: "combat"; events: CombatEvent[]; combat: CombatState | null; outcome: CombatOutcome }
-  | { type: "done"; turnNo: number; character: Character; campaign: Campaign; turns: TurnView[]; costUsd: number; scene: SceneView }
+  | { type: "done"; turnNo: number; character: Character; campaign: PublicCampaign; turns: TurnView[]; costUsd: number; scene: SceneView }
   | { type: "error"; message: string };
 
 export async function api<T>(url: string, body?: unknown): Promise<T> {

@@ -6,3 +6,4 @@ export * from "./checks";
 export * from "./changes";
 export * from "./combat";
 export * from "./world";
+export * from "./case";

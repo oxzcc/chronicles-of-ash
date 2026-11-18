@@ -1,0 +1,119 @@
+import {
+  locationById, locationTypeKeys, locationTypeName, sheetText, startLocationTypes,
+  type Campaign, type CaseClue, type CaseQuestion, type Character, type Verdict,
+} from "@ash/engine";
+import type { World } from "@ash/worlds";
+import { extractJson } from "../schema";
+
+/**
+ * Промпты детективного дела (мир Аркхэма). Дело придумывает рассказчик при создании кампании;
+ * мастер видит разгадку в каждом ходе; ответы и реконструкцию оценивает служебная модель,
+ * а очки считает движок.
+ */
+
+const orList = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} или ${xs.at(-1)}` : (xs[0] ?? ""));
+
+/** Раздел правил мастера для миров с делом. */
+export const caseRules = `ДЕЛО: у этого расследования есть заранее известная тебе разгадка (раздел ДЕЛО в сцене). Веди к ней честно, но не раскрывай её: не называй виновника прямо, не подтверждай и не опровергай версии героя — отвечай тем, что люди видят, говорят и скрывают. Когда герой ищет там, где в этом месте лежит улика, он её находит — добавь её id в clues (только улики текущего места, не больше двух за ход). Ключевую улику не прячь за провал проверки: провал — это цена (время, шум, испорченные отношения, опасность), а не пустые руки. Выводы (улики без места) не выдавай: к ним герой приходит сам, реконструкцией. Когда герой узнаёт новый адрес — от NPC, из бумаг, из газеты — добавь id места в reveal. Цели дела отмечай в questDone, когда герой их выяснил; questComplete не используй — дело закрывает сам игрок, отвечая на вопросы.`;
+
+/** Тайная часть сцены: разгадка, улики, жители, неизвестные места. Видит только мастер. */
+export function caseScene(world: World, w: Campaign): string {
+  const c = w.case!;
+  const R = world.rules;
+  const place = (id: string) => {
+    const l = locationById(w, id);
+    return l ? `${l.name} (${l.id})` : id;
+  };
+  const clue = (x: CaseClue) => `[${x.id}] ${place(x.at)} — ${x.found ? "найдена" : "не найдена"}${x.key ? ", ключевая" : ""} — ${x.text}`;
+  const unknown = w.locations.filter((l) => !c.known.includes(l.id));
+  const left = c.limit - c.visits;
+  return `ДЕЛО (тайна — видит только мастер, герою не раскрывать):
+Разгадка: ${c.truth}
+Улики:
+${c.clues.filter((x) => !x.requires).map(clue).join("\n")}
+Выводы (только реконструкцией, сам не выдавай): ${c.clues.filter((x) => x.requires).map((x) => `[${x.id}] ${x.found ? "сделан" : "не сделан"} — ${x.text}`).join("; ") || "нет"}
+Жители: ${c.people.map((p) => `${p.name} — ${p.role} — ${place(p.at)}`).join("; ") || "нет"}
+Места, о которых герой ещё не знает: ${unknown.map((l) => `${l.name} (${l.id}, ${locationTypeName(R, l.type)})`).join("; ") || "нет"}
+Визиты: ${c.visits} из ${c.limit}${left <= 2 ? ` — время на исходе, дай это почувствовать` : ""}.`;
+}
+
+export function casePrompt(world: World, c: Character, locationCount = 8): string {
+  const R = world.rules;
+  const starts = orList(startLocationTypes(R).map((t) => R.locationTypes[t]!.name.toLowerCase()));
+  return `Придумай одно детективное дело для одиночной игры в жанре ${world.genre}. Всё по-русски.
+Герой: ${sheetText(R, c)}
+Свяжи дело с предысторией героя, если это возможно.
+Каким должно быть дело:
+- У дела есть земной слой (люди с понятными мотивами: деньги, ревность, страх, долги) и мистическое ядро. Разгадка логична и выводится из улик; сверхъестественное — намёком, не целиком.
+- Места: ровно ${locationCount}. Первое — стартовое (${starts}), там герой получает дело; по умолчанию его даёт доктор Сайлас Уэйкфилд в своём кабинете.
+- Улики: 6–8, у каждой место (индекс места с 0). 3–4 ключевые ("key": true) — по ним можно ответить на главный вопрос; они лежат в разных местах, не в стартовом. Остальные — подробности и один ложный след.
+- Выводы: 1–2, каждый следует из 2–3 улик (номера улик с 1).
+- Жители: 4–7 человек — свидетели, подозреваемые, родственники; у каждого место, где его найти (индекс).
+- Вопросы: 3–4, первый — главный («Кто… и почему?»); ответ — коротко, по сути.
+- Газета на день начала дела: 3–4 заметки по 2–3 предложения; одна-две называют имя или место из дела, остальные — жизнь города в 1926 году.
+- known: индексы мест (кроме стартового), о которых герой знает из завязки или газеты.
+Верни строго один JSON без пояснений:
+{"questTitle":"название дела","hook":"2–3 предложения: кто и с чем пришёл к герою","truth":"4–6 предложений: что произошло на самом деле — кто, как, зачем и что за этим стоит","objectives":["что выяснить 1","что выяснить 2","что выяснить 3"],"locations":[{"name":"Название","type":"${locationTypeKeys(R).join("|")}","desc":"одно атмосферное предложение"}],"people":[{"name":"Имя Фамилия","role":"кто это, 2–4 слова","at":1}],"clues":[{"text":"что именно находит герой, 1–2 предложения","at":1,"key":true}],"deductions":[{"text":"вывод, одно предложение","requires":[1,2]}],"questions":[{"text":"вопрос","answer":"правильный ответ"}],"newspaper":{"date":"число и месяц 1926 года","articles":[{"headline":"заголовок","text":"2–3 предложения"}]},"known":[1],"target":${locationCount - 1}}
+Названия мест звучные и разные, типы разнообразные. hook до 60 слов, desc до 15 слов.`;
+}
+
+/** Оценка ответов при закрытии дела: только вердикты — очки считает движок. */
+export function gradePrompt(truth: string, questions: CaseQuestion[], answers: Record<string, string>): string {
+  return `Ты проверяешь ответы игрока в детективной игре. Сравни каждый ответ с правильным по сути, а не по словам.
+right — главное названо верно (кто, что, где, почему — то, о чём спрашивает вопрос); partial — верно наполовину (верный человек без мотива, верное место без виновника); wrong — неверно или пусто.
+Что произошло на самом деле: ${truth}
+${questions.map((q) => `[${q.id}] Вопрос: ${q.text}\nПравильный ответ: ${q.answer}\nОтвет игрока: ${(answers[q.id] ?? "").trim() || "—"}`).join("\n\n")}
+Верни строго JSON: {${questions.map((q) => `"${q.id}":"right|partial|wrong"`).join(",")}}`;
+}
+
+export function parseVerdicts(text: string, ids: string[]): Record<string, Verdict> | null {
+  const raw = extractJson(text) as Record<string, unknown> | null;
+  if (!raw) return null;
+  const out: Record<string, Verdict> = {};
+  for (const id of ids) {
+    const v = String(raw[id] ?? "").trim().toLowerCase();
+    out[id] = v === "right" || v === "partial" ? v : "wrong";
+  }
+  return out;
+}
+
+/** Реконструкция: совпадает ли версия игрока с одним из выводов, к которым он уже может прийти. */
+export function deducePrompt(truth: string, candidates: CaseClue[], version: string): string {
+  return `Игрок в детективной игре восстанавливает картину событий по найденным уликам. Реши, совпадает ли его версия по сути с одним из выводов ниже. Совпадение — когда названо главное (кто и что сделал); детали и формулировки могут отличаться. Если версия противоречит выводу или слишком расплывчата — совпадения нет.
+Что произошло на самом деле: ${truth}
+Выводы:
+${candidates.map((d) => `[${d.id}] ${d.text}`).join("\n")}
+Версия игрока: ${version.trim()}
+Верни строго JSON: {"match":"id вывода или null"}`;
+}
+
+export function parseDeduction(text: string, ids: string[]): string | null {
+  const raw = extractJson(text) as { match?: unknown } | null;
+  const m = typeof raw?.match === "string" ? raw.match.trim() : "";
+  return ids.includes(m) ? m : null;
+}
+
+/**
+ * Запасная оценка, если служебная модель не ответила: доля значимых слов правильного ответа
+ * в ответе игрока. Грубо, но лучше, чем засчитать всё неверным.
+ */
+export function roughVerdict(answer: string, correct: string): Verdict {
+  const words = (s: string) => new Set(s.toLowerCase().replace(/ё/g, "е").split(/[^а-яa-z0-9]+/).filter((w) => w.length >= 5).map((w) => w.slice(0, 6)));
+  const want = words(correct);
+  if (!want.size) return "wrong";
+  const got = words(answer);
+  const share = [...want].filter((w) => got.has(w)).length / want.size;
+  return share >= 0.5 ? "right" : share >= 0.25 ? "partial" : "wrong";
+}
+
+/** Служебные «ходы» дела. */
+export const caseActions = {
+  /** Версия совпала с выводом (matched) или нет. */
+  reconstruct: (version: string, matched: string | null) =>
+    matched
+      ? `[Реконструкция] Герой складывает улики в картину: «${version}». Это верный вывод: ${matched}. Опиши, как события той ночи встают у героя перед глазами — коротко, образно, без подробностей сверх этого вывода. clues и reveal не заполняй.`
+      : `[Реконструкция] Герой пытается сложить картину: «${version}». С уликами это не сходится. Опиши сомнение — что именно не складывается, — не раскрывая правды, и намекни, где ещё стоит поискать. clues и reveal не заполняй.`,
+  /** Итог дела: вердикты по вопросам — для развязки. */
+  close: (lines: string[], timeUp: boolean) =>
+    `[Дело закрыто] ${timeUp ? "Время вышло, и герою пришлось делать выводы с тем, что есть. " : ""}Герой изложил свою версию. Итог по вопросам:\n${lines.join("\n")}\nОпиши развязку: раскрой, что произошло на самом деле, и как сложилась судьба участников — с учётом того, в чём герой был прав и в чём ошибся. Финал с послевкусием тайны. suggestions — пустой список, clues и reveal не заполняй.`,
+};

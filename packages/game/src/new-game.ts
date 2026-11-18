@@ -1,5 +1,5 @@
-import { createCharacter, layoutCampaign, validateDraft, type Campaign, type CharacterDraft, type QuestSeed, type Rng } from "@ash/engine";
-import { addUsage, backstoryPrompt, emptyUsage, extractJson, questPrompt, type ModelRouter, type Tier, type Usage } from "@ash/llm";
+import { createCharacter, layoutCampaign, layoutCase, validateDraft, type Campaign, type CaseSeed, type CharacterDraft, type QuestSeed, type Rng } from "@ash/engine";
+import { addUsage, backstoryPrompt, casePrompt, emptyUsage, extractJson, questPrompt, type ModelRouter, type Tier, type Usage } from "@ash/llm";
 import { isWorldId, worldOf, type World } from "@ash/worlds";
 import { GameError, type GameState } from "./types";
 
@@ -15,7 +15,7 @@ export interface NewGameResult extends GameState {
   usedFallback: boolean;
 }
 
-/** Создание героя и кампании: проверка черновика, квест от рассказчика, раскладка карты. */
+/** Создание героя и кампании: проверка черновика, квест (или дело) от рассказчика, раскладка карты. */
 export async function newGame(o: { router: ModelRouter; tier: Tier; draft: CharacterDraft; rng: Rng; seed: string; signal?: AbortSignal }): Promise<NewGameResult> {
   const world = draftWorld(o.draft);
   const errors = validateDraft(world.rules, o.draft);
@@ -24,21 +24,24 @@ export async function newGame(o: { router: ModelRouter; tier: Tier; draft: Chara
   const { provider, model } = o.router.route("narrator", o.tier);
   let usage = emptyUsage();
   let campaign: Campaign | null = null;
+  // Дело больше квеста: разгадка, улики, жители, газета — модели нужно больше места.
+  const isCase = !!world.features.case;
+  const layout = (seed: object) => (isCase ? layoutCase(world.rules, seed as CaseSeed, o.seed) : layoutCampaign(world.rules, seed as QuestSeed, o.seed));
   for (let attempt = 0; attempt < 2 && !campaign; attempt++) {
     const r = await provider.complete({
-      model, signal: o.signal, maxTokens: 3000, temperature: 1,
-      messages: [{ role: "user", content: questPrompt(world, character) }],
+      model, signal: o.signal, maxTokens: isCase ? 6000 : 3000, temperature: 1,
+      messages: [{ role: "user", content: isCase ? casePrompt(world, character) : questPrompt(world, character) }],
     });
     usage = addUsage(usage, r.usage);
     const raw = extractJson(r.text);
     try {
-      if (raw && typeof raw === "object") campaign = layoutCampaign(world.rules, raw as QuestSeed, o.seed);
+      if (raw && typeof raw === "object") campaign = layout(raw);
     } catch {
       campaign = null;
     }
   }
   const usedFallback = !campaign;
-  return { character, campaign: campaign ?? layoutCampaign(world.rules, world.fallbackQuest, o.seed), usage, model, usedFallback };
+  return { character, campaign: campaign ?? layout(isCase && world.fallbackCase ? world.fallbackCase : world.fallbackQuest), usage, model, usedFallback };
 }
 
 /** Предыстория по выбору игрока — служебной моделью. */
