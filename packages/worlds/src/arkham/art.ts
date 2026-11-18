@@ -48,6 +48,12 @@ export const arkhamArt: ArtStyle = {
     woods: "dark New England woods with old stone walls and fallen leaves",
     farm: "an isolated New England farmhouse with a barn and a dry field",
   },
+  // Владелец, 18 ноября: молодые и средних лет женщины — с формами, как в датасете; худые — только по роли.
+  figureEn: {
+    // Исключение — первым: в конце фразы модель его пропускала (пациентка лечебницы выходила «hourglass»).
+    f: "first check the exception: patients, invalids, the sick, starving, drowned or elderly get a thin frail build; everyone else — young and middle-aged women: curvy voluptuous build with a large bust and wide hips; glamorous or seductive roles (singer, actress, socialite, priestess, femme fatale): voluptuous hourglass figure with a very large bust and wide hips",
+    m: "fits the role: muscular, burly, heavyset, stocky or wiry; thin and gaunt for the sick, poor or obsessed",
+  },
   interiorTypes: ["office", "hotel", "diner", "police", "library", "newspaper", "church", "speakeasy", "warehouse", "cellar"],
   // Датасет: data/lora/arkham_dataset (58 картинок владельца, подписи — data/lora/arkham_captions.json).
   lora: {

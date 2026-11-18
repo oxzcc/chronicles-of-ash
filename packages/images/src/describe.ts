@@ -38,7 +38,7 @@ async function ask(router: ModelRouter, prompt: string, signal?: AbortSignal): P
   return r.text.trim();
 }
 
-const oneLine = (s: string) => s.replace(/^["'`]+|["'`]+$/g, "").replace(/\s+/g, " ").trim().slice(0, 400);
+const oneLine = (s: string) => s.replace(/^["'`]+|["'`]+$/g, "").replace(/\s+/g, " ").trim().slice(0, 500);
 
 export interface NpcCard {
   name: string;
@@ -59,8 +59,14 @@ export interface NpcCard {
 /** Начало описания в стиле подписей датасета: кто это — одним существительным с возрастом и полом. */
 const CAPTION_START =
   "start with who they are as one noun phrase with age, gender and role (e.g. 'a middle-aged woman housekeeper', 'an elderly bald man priest', 'a young woman newspaper reporter'); then ";
-const LOOK_PARTS =
-  "age; build in plain body-type words that fit the role (e.g. thin frail, wiry, stout sturdy, heavyset, muscular, curvy, voluptuous hourglass); face with one telling feature (wrinkles, scar, freckles, dark circles); hair; clothing; one distinctive detail or object in hand; pose of the hands or body (arms crossed, hands on hips, looking over the shoulder, hugging oneself); add 'low angle' only for imposing or powerful people; expression that fits their mood (stern, haughty, wary, frightened, smug), a smile only if the role calls for one";
+const lookParts = (world: World, gender?: Gender) => {
+  const fig = world.art.figureEn;
+  const rule = gender ? fig?.[gender] : fig?.f && fig.m ? `women — ${fig.f}; men — ${fig.m}` : undefined;
+  const build = rule
+    ? `build in the exact dataset words (${rule})`
+    : "build in plain body-type words that fit the role (e.g. thin frail, wiry, stout sturdy, heavyset, muscular, curvy, voluptuous hourglass)";
+  return `age; ${build}; face with one telling feature of this particular person (e.g. a scar, freckles, a beauty mark, crow's feet, a broken nose, heavy makeup; dark circles only for the sleepless or sick); hair; clothing from head to knees (no shoes or boots, nothing below the knees); one distinctive detail or object in hand; pose of the hands or body (arms crossed, hands on hips, looking over the shoulder, hugging oneself, hand on hip); add 'low angle' only for imposing, powerful or seductive people; an expression that follows from the role and the moment (haughty, sultry, stern, smug, grieving, terrified, sly, grim, vacant, coy) — not a generic 'wary' or 'neutral'; a smile only if the role calls for one`;
+};
 
 /**
  * NPC без карточки: мастер дал ему реплики, но расу, пол и внешность описал только для главного
@@ -81,7 +87,7 @@ export async function guessNpc(
 Name: ${o.name}
 Their lines (Russian): ${o.lines.map((l) => `«${l}»`).join(" ").slice(0, 600)}
 Scene (Russian): ${o.scene.slice(0, 600)}
-Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 20-40 words: ${captionStyle(world) ? CAPTION_START : ""}${LOOK_PARTS}; no names, no style words"}`,
+Return JSON only: {"race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова по-русски","look":"English image prompt fragment, 25-50 words: ${captionStyle(world) ? CAPTION_START : ""}${lookParts(world)}; no names, no style words"}`,
       signal,
     );
     const j = extractJson(raw) as Record<string, unknown> | null;
@@ -110,7 +116,7 @@ export async function describeNpc(router: ModelRouter, world: World, npc: NpcCar
     const text = oneLine(
       await ask(
         router,
-        `Write an English image prompt fragment (20-45 words, no style words, no names) describing how this ${world.art.genreEn} character looks: ${caption ? CAPTION_START : ""}${LOOK_PARTS}.\nCharacter: ${npc.name}, ${world.rules.races[npc.race]?.name ?? npc.race} (${raceEn(world, npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
+        `Write an English image prompt fragment (25-55 words, no style words, no names) describing how this ${world.art.genreEn} character looks: ${caption ? CAPTION_START : ""}${lookParts(world, npc.gender)}.\nCharacter: ${npc.name}, ${world.rules.races[npc.race]?.name ?? npc.race} (${raceEn(world, npc.race, npc.gender)}), ${npc.gender === "f" ? "female" : "male"}, role: ${npc.role}.${npc.look ? ` Appearance notes (Russian): ${npc.look}` : ""}\nAnswer with the fragment only.`,
         signal,
       ),
     );
@@ -185,7 +191,7 @@ export async function heroVariants(router: ModelRouter, world: World, d: Pick<Ch
     const raw = await ask(
       router,
       `You design 4 clearly DIFFERENT looks for a ${world.art.genreEn} player character. Base: ${baseHero(world, d)} (${world.rules.races[d.race]?.name ?? d.race}, ${world.rules.classes[d.cls]?.name ?? d.cls}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
-Vary age, hair colour and style, face shape, scars or marks, a clothing detail and expression so that the 4 people are easy to tell apart.
+Vary age, hair colour and style, face shape, scars or marks, a clothing detail and expression so that the 4 people are easy to tell apart.${world.art.figureEn?.[d.gender] ? `\nBuild — the same rule for all 4, in these exact words: ${world.art.figureEn[d.gender]}.` : ""}
 Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and an age.
 Return JSON only: [{"label":"4-7 слов по-русски","prompt":"English fragment, 15-30 words, no style words"}] — exactly 4 items.`,
       signal,

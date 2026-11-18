@@ -24,22 +24,24 @@ export async function finishPortrait(cutout: Buffer): Promise<{ bytes: Buffer; w
 }
 
 /**
- * Насколько силуэт обрезан рамкой: доля непрозрачных пикселей в полосе 3 px
- * сверху, слева и справа (низ не считаем — портрет по пояс и должен быть срезан).
- * Больше CLIP_LIMIT — голова или плечи упёрлись в край, кадр надо перерисовать.
+ * Насколько силуэт обрезан рамкой: полоса 3 px сверху и по бокам (низ не считаем — портрет должен быть срезан).
+ * Верх и бока — по отдельности: срезанная макушка или шляпа заметна, даже если это узкая полоса
+ * (общий порог по всей рамке её пропускал), а бёдра и локти у края в кадре 2:3 — обычное дело.
+ * Ответ — доля от допустимого: больше CLIP_LIMIT (1) — кадр надо перерисовать.
  */
-export const CLIP_LIMIT = 0.03;
+export const CLIP_LIMIT = 1;
+const TOP_LIMIT = 0.01;
+const SIDE_LIMIT = 0.04;
 export async function clippedShare(cutout: Buffer): Promise<number> {
   const { data, info } = await sharp(cutout).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const { width: w, height: h } = info;
   const band = 3;
   const opaque = (x: number, y: number) => data[(y * w + x) * 4 + 3]! > 128;
-  let hit = 0;
-  let total = 0;
-  for (let y = 0; y < band; y++) for (let x = 0; x < w; x++) (total++, opaque(x, y) && hit++);
-  for (let y = band; y < h; y++)
-    for (const x of [0, 1, 2, w - 3, w - 2, w - 1]) (total++, opaque(x, y) && hit++);
-  return total ? hit / total : 0;
+  let top = 0;
+  let side = 0;
+  for (let y = 0; y < band; y++) for (let x = 0; x < w; x++) if (opaque(x, y)) top++;
+  for (let y = band; y < h; y++) for (const x of [0, 1, 2, w - 3, w - 2, w - 1]) if (opaque(x, y)) side++;
+  return Math.max(top / (band * w) / TOP_LIMIT, side / (6 * (h - band)) / SIDE_LIMIT);
 }
 
 export async function finishBackground(image: Buffer): Promise<{ bytes: Buffer; width: number; height: number }> {

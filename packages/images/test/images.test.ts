@@ -92,6 +92,9 @@ describe("clippedShare", () => {
     const png = (svg: string) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300">${svg}</svg>`)).png().toBuffer();
     expect(await clippedShare(await png(`<rect x="50" y="40" width="100" height="260" fill="#800"/>`))).toBe(0);
     expect(await clippedShare(await png(`<rect x="20" y="0" width="160" height="300" fill="#800"/>`))).toBeGreaterThan(CLIP_LIMIT);
+    // Узкая срезанная шляпа сверху — уже перерисовка; локоть у бокового края — ещё нет.
+    expect(await clippedShare(await png(`<rect x="90" y="0" width="12" height="200" fill="#800"/>`))).toBeGreaterThan(CLIP_LIMIT);
+    expect(await clippedShare(await png(`<rect x="0" y="150" width="60" height="6" fill="#800"/>`))).toBeLessThanOrEqual(CLIP_LIMIT);
   });
 });
 
@@ -153,6 +156,9 @@ describe("LoRA стиля", () => {
     const card = { name: "Лорейн Вейл", race: "human" as const, gender: "f" as const, role: "вдова" };
     expect(await describeNpc(reply("A grieving young widow, slender, black veil, frightened."), arkham, card)).toBe("a grieving young widow, slender, black veil, frightened");
     expect(asked[0]).toMatch(/one noun phrase with age, gender and role/);
+    // Телосложение по умолчанию — правило мира (женщины Аркхэма — с формами), худые — по роли.
+    expect(asked[0]).toContain(arkham.art.figureEn!.f!);
+    expect(asked[0]).not.toContain(arkham.art.figureEn!.m!);
     // Пол не назван — ставим его первым словом.
     expect(await describeNpc(reply("an elderly housekeeper, stout sturdy build"), arkham, card)).toBe("a woman, an elderly housekeeper, stout sturdy build");
     // У мира без LoRA — прежний вид: пол и раса впереди.
