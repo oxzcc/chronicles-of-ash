@@ -137,6 +137,19 @@ describe("ход рассказчика", () => {
 });
 
 describe("OpenRouter", () => {
+  it("скрытые рассуждения считаются для полосы загрузки, в текст не попадают", async () => {
+    const lines = [
+      { choices: [{ delta: { reasoning: "Нужен виновник", reasoning_details: [{ type: "reasoning.text", text: "Нужен виновник" }] } }] },
+      { choices: [{ delta: { reasoning: " с мотивом." } }] },
+      { choices: [{ delta: { content: "{}" }, finish_reason: "stop" }] },
+    ];
+    const body = lines.map((l) => `data: ${JSON.stringify(l)}\n\n`).join("") + "data: [DONE]\n\n";
+    const fetchImpl = (async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
+    const seen: number[] = [];
+    const r = await new OpenRouterProvider({ apiKey: "k", fetchImpl }).complete({ model: "m", messages: [], onReasoning: (n) => seen.push(n) });
+    expect(seen).toEqual([14, 25]);
+    expect(r.text).toBe("{}");
+  });
   it("разбирает поток SSE с текстом, вызовом инструмента и стоимостью", async () => {
     const lines = [
       { model: "x/y", choices: [{ delta: { content: '{"narr' } }] },

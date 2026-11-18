@@ -8,7 +8,7 @@ import {
   type CharacterDraft, type ClassKey, type Gender, type RaceKey, type SkillName, type StatKey,
 } from "@ash/engine";
 import { DEFAULT_WORLD, getWorld, isWorldId, WORLDS, type World } from "@ash/worlds";
-import { api } from "@/lib/client";
+import { api, streamSse, type CreateStreamEvent } from "@/lib/client";
 
 const firstRace = (w: World) => raceKeys(w.rules)[0]!;
 const firstClass = (w: World) => classKeys(w.rules)[0]!;
@@ -37,6 +37,7 @@ export default function NewHero() {
   const [faces, setFaces] = useState<{ id: string; label: string; status: string; url: string | null }[]>([]);
   const [face, setFace] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState<Extract<CreateStreamEvent, { type: "progress" }> | null>(null);
 
   /** Смена мира: расы, классы и навыки у миров свои — черновик начинается заново. */
   const pickWorld = (id: string) => {
@@ -121,13 +122,25 @@ export default function NewHero() {
   async function create() {
     setBusy("create");
     setError("");
+    setProgress(null);
+    let id = "";
+    let failed = "";
     try {
-      const r = await api<{ id: string }>("/api/campaigns", { draft, portraitId: face ?? undefined });
-      router.push(`/play/${r.id}`);
-    } catch (e) {
-      setError((e as Error).message);
-      setBusy("");
+      // Поток событий: полоса загрузки, пока мастер придумывает квест или дело.
+      await streamSse<CreateStreamEvent>("/api/campaigns", { draft, portraitId: face ?? undefined }, (e) => {
+        if (e.type === "progress") setProgress(e);
+        else if (e.type === "done") {
+          id = e.id;
+          setProgress((p) => (p ? { ...p, value: 1, etaSec: null } : p));
+        } else failed = e.message;
+      });
+    } catch {
+      failed = "Связь прервалась. Попробуй ещё раз.";
     }
+    if (id) return router.push(`/play/${id}`);
+    setError(failed || "Мастер сбился с мысли. Попробуй ещё раз.");
+    setProgress(null);
+    setBusy("");
   }
 
   return (
@@ -308,6 +321,30 @@ export default function NewHero() {
         {errors.length > 0 && <p className="small error">{errors.join(" ")}</p>}
         {error && <p className="small error">{error}</p>}
       </div>
+
+      {busy === "create" && <CreateProgress world={world} progress={progress} />}
     </main>
+  );
+}
+
+/** Экран ожидания, пока рассказчик придумывает квест или дело: настоящий прогресс и примерное время. */
+function CreateProgress({ world, progress }: { world: World; progress: Extract<CreateStreamEvent, { type: "progress" }> | null }) {
+  const value = progress?.value ?? 0;
+  const eta = progress?.etaSec;
+  return (
+    <div className="gen-overlay" role="dialog" aria-modal="true" aria-label="Создание кампании">
+      <div className="gen-card">
+        <div className="gen-title">{world.title}</div>
+        <div className="gen-label">{progress?.label ?? world.ui.starting}</div>
+        <div className="gen-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}>
+          <div className="gen-fill" style={{ width: `${Math.max(2, value * 100)}%` }} />
+        </div>
+        <div className="gen-meta">
+          <span>{Math.round(value * 100)}%</span>
+          <span>{value >= 1 ? "Готово" : eta ? `осталось около ${eta} с` : "почти готово"}</span>
+        </div>
+        <p className="gen-hint">Не закрывай вкладку: {world.features.case ? "дело" : "приключение"} придумывается целиком, обычно {world.features.case ? "около минуты" : "секунд 15"}.</p>
+      </div>
+    </div>
   );
 }
