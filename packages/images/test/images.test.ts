@@ -324,9 +324,18 @@ describe("LoRA стиля", () => {
     expect(asked).not.toContain(st.hair!);
     // Мужчинам слоёв нет; у «роковых» ролей открытый слой чаще.
     expect(npcStyle(arkham, { name: "Том", gender: "m" }).under).toBeUndefined();
-    const share = (role: string) => Array.from({ length: 600 }, (_, i) => npcStyle(arkham, { name: `Ж${i}`, gender: "f", role })).filter((x) => x.under!.open).length / 600;
+    // Доля открытых — среди тех, кому код дал возраст до пятидесяти.
+    const share = (role: string) => {
+      const young = Array.from({ length: 900 }, (_, i) => npcStyle(arkham, { name: `Ж${i}`, gender: "f", role })).filter((x) => !/fifties|sixties|elderly/.test(x.age!));
+      return young.filter((x) => x.under!.open).length / young.length;
+    };
     expect(share("горничная")).toBeCloseTo(arkham.art.underlayersEn!.openShare, 1);
     expect(share("певица в баре")).toBeCloseTo(arkham.art.underlayersEn!.openShareRoles, 1);
+    // Открыто — только у тех, кому код дал возраст до сорока с небольшим.
+    for (let i = 0; i < 400; i++) {
+      const x = npcStyle(arkham, { name: `В${i}`, gender: "f", role: "хозяйка пансиона" });
+      if (/fifties|sixties|elderly/.test(x.age!)) expect(x.under!.open).toBeUndefined();
+    }
     // Скромные роли — всегда закрыто.
     for (let i = 0; i < 200; i++) expect(npcStyle(arkham, { name: `У${i}`, gender: "f", role: "учительница воскресной школы" }).under!.open).toBeUndefined();
     // Шрамы код не раздаёт: LoRA рисует их свежей раной.
@@ -455,6 +464,24 @@ describe("проверка портрета моделью со зрением",
     const bad = await renderPortrait({ world, provider, storage, description: "a woman", key: "npc/j", seed: 1, inspect: async () => ({ limbs: true, note: "", costUsd: 0 }) });
     expect(seeds).toHaveLength(3);
     expect(bad.issues[0]).toMatch(/extra limbs/);
+    // Пустой кадр (fal вернул чёрную картинку, вырезание съело всё) — перерисовка без вызова проверяющего.
+    seeds.length = 0;
+    let looked = 0;
+    const blank = new FakeImageProvider();
+    let first = true;
+    blank.removeBackground = async (bytes: Buffer) => {
+      if (first) {
+        first = false;
+        return { bytes: await sharp({ create: { width: 64, height: 96, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer(), contentType: "image/png", model: "cut", costUsd: 0 };
+      }
+      return provider.removeBackground(bytes);
+    };
+    const bgen = blank.generate.bind(blank);
+    blank.generate = (r: any) => (seeds.push(r.seed), bgen(r));
+    const e = await renderPortrait({ world, provider: blank, storage, description: "a woman", key: "npc/e", seed: 3, inspect: async () => (looked++, { limbs: false, note: "", costUsd: 0 }) });
+    expect(seeds).toEqual([3, 3 + 7919]);
+    expect(looked).toBe(1);
+    expect(e.issues).toEqual([]);
     // Без проверяющего — одна попытка на целый кадр.
     seeds.length = 0;
     await renderPortrait({ world, provider, storage, description: "a woman", key: "npc/k", seed: 1 });

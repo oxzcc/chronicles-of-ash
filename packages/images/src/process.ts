@@ -44,6 +44,19 @@ export async function clippedShare(cutout: Buffer): Promise<number> {
   return Math.max(top / (band * w) / TOP_LIMIT, side / (6 * (h - band)) / SIDE_LIMIT);
 }
 
+/**
+ * Доля непрозрачного в вырезанном портрете. Почти ноль — фигуры нет: fal заменил картинку чёрной
+ * (фильтр безопасности) или вырезание съело всё. Такой портрет проверяющий со зрением пропускает —
+ * на пустом сером кадре лишних рук нет, — поэтому меряем сами.
+ */
+export const EMPTY_LIMIT = 0.03;
+export async function opaqueShare(cutout: Buffer): Promise<number> {
+  const { data } = await sharp(cutout).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let n = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i]! > 128) n++;
+  return n / (data.length / 4);
+}
+
 export async function finishBackground(image: Buffer): Promise<{ bytes: Buffer; width: number; height: number }> {
   const out = await sharp(image)
     .resize({ width: 1920, withoutEnlargement: true })

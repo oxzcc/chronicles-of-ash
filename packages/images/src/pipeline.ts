@@ -1,4 +1,4 @@
-import { CLIP_LIMIT, clippedShare, finishBackground, finishPortrait, headFrame } from "./process";
+import { CLIP_LIMIT, clippedShare, EMPTY_LIMIT, finishBackground, finishPortrait, headFrame, opaqueShare } from "./process";
 import type { PortraitInspector } from "./inspect";
 import type { ImageProvider } from "./provider";
 import type { ImageStorage } from "./storage";
@@ -16,7 +16,7 @@ export interface Rendered {
 
 /**
  * Портрет: генерация → вырезание фона → проверка → свет → webp с прозрачностью → хранилище.
- * Проверка: силуэт упёрся в край (обрезана голова или плечи); если задан проверяющий (VISION_MODEL) —
+ * Проверка: фигуры нет (пустой кадр), силуэт упёрся в край (обрезана голова или плечи); если задан проверяющий (VISION_MODEL) —
  * ещё лишние руки и слишком крупный кадр. Есть беда — перерисовка с другим seed (без проверяющего — одна,
  * с ним — до двух), берём лучший вариант: лишняя рука хуже крупного кадра, крупный кадр хуже обрезки.
  * Мелкую фигуру конвейер приближает сам (headFrame).
@@ -41,6 +41,8 @@ export async function renderPortrait(o: {
     const cut = await o.provider.removeBackground(raw.bytes, o.signal);
     cost += raw.costUsd + cut.costUsd;
     model = `${raw.model}+${cut.model}`;
+    // Пустой кадр — сразу на перерисовку, без проверяющего: смотреть там не на что.
+    if ((await opaqueShare(cut.bytes)) < EMPTY_LIMIT) return { bytes: cut.bytes, frame: undefined, issues: ["empty"], score: 1000 };
     const clip = await clippedShare(cut.bytes);
     const check = o.inspect ? await o.inspect(cut.bytes, o.signal) : null;
     cost += check?.costUsd ?? 0;

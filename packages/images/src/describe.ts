@@ -117,7 +117,9 @@ export function npcStyle(world: World, who: { name: string; gender: Gender; role
   let under: { open?: string; closed: string } | undefined;
   if (u && who.gender === "f") {
     const seductive = world.art.figures?.roles?.some((r) => r.f && r.match.test(who.role ?? ""));
-    const open = !modest && rng() < (seductive ? u.openShareRoles : u.openShare);
+    // Возраст знает код — он и решает: модель условие «только 20–45» не соблюдала (открыто у хозяйки за пятьдесят).
+    const young = !age || !/fifties|sixties|elderly/.test(age);
+    const open = !modest && young && rng() < (seductive ? u.openShareRoles : u.openShare);
     under = { closed: pick(u.closed), ...(open ? { open: pick(u.open) } : {}) };
   }
   return { hair, under, age, mark };
@@ -143,7 +145,7 @@ const styleRule = (s: ReturnType<typeof npcStyle>) =>
     s.hair && `hair in these words: '${s.hair}' (if elderly — grey or white, same style)`,
     s.under &&
       (s.under.open
-        ? `ONLY if they wear an open coat, jacket, cardigan or shawl, it is worn '${s.under.open}' when they are 20 to 45 and well, otherwise '${s.under.closed}'; never put it under a dress or apron, skip it without outerwear`
+        ? `ONLY if they wear an open coat, jacket, cardigan or shawl, it is worn '${s.under.open}'${s.age ? "" : ` when they are 20 to 45 and well, otherwise '${s.under.closed}'`}; never put it under a dress or apron, skip it without outerwear`
         : `ONLY if they wear an open coat, jacket, cardigan or shawl, it is worn '${s.under.closed}'; never put it under a dress or apron, skip it without outerwear`),
     s.mark && `face: '${s.mark}'`,
   ]
