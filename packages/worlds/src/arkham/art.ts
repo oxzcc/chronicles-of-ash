@@ -32,39 +32,113 @@ export const arkhamArt: ArtStyle = {
   heroOutfitsEn: {
     detective: [
       "private detective in a belted trench coat and fedora, revolver holster",
-      "private detective in a rumpled grey three-piece suit with rolled shirt sleeves and loosened tie, a shoulder holster, holding a magnifying glass",
-      "private detective in a dark double-breasted overcoat with the collar turned up and a wide-brimmed hat, holding a lit cigarette",
-      "private detective in a leather car coat over a knitted vest, flat cap, holding a small notebook and a pencil",
+      "private detective in a rumpled grey three-piece suit with rolled shirt sleeves and loosened tie, a shoulder holster, with a magnifying glass",
+      "private detective in a dark double-breasted overcoat with the collar turned up and a wide-brimmed hat, with a lit cigarette",
+      "private detective in a leather car coat over a knitted vest, flat cap, with a small notebook and a pencil",
     ],
     journalist: [
       "newspaper reporter in a flat cap and waistcoat with a notebook and a boxy 1920s folding bellows press camera",
-      "newspaper reporter in a checked tweed jacket and wide trousers, a fedora with a press card in its hatband, holding a folded newspaper",
+      "newspaper reporter in a checked tweed jacket and wide trousers, a fedora with a press card in its hatband, with a folded newspaper",
       "newspaper reporter in a light raincoat over a sweater, a boxy 1920s folding bellows press camera on a leather strap, a pencil tucked behind the ear",
-      "newspaper reporter in shirt sleeves with arm garters and a loose tie, a pencil tucked behind the ear, holding typed pages",
+      "newspaper reporter in shirt sleeves with arm garters and a loose tie, a pencil tucked behind the ear, with typed pages",
     ],
     professor: [
       "university professor in a tweed three-piece suit with round spectacles and a cane",
-      "university professor in a black academic gown over a dark suit, pince-nez, holding a rolled map",
-      "university professor in a cardigan and bow tie, wire spectacles, holding a pipe and an open notebook",
-      "university professor in a long camel overcoat and scarf, horn-rimmed glasses, holding a stack of books with a strap",
+      "university professor in a black academic gown over a dark suit, pince-nez, with a rolled map",
+      "university professor in a cardigan and bow tie, wire spectacles, with a pipe and an open notebook",
+      "university professor in a long camel overcoat and scarf, horn-rimmed glasses, with a stack of books with a strap",
     ],
     doctor: [
       "doctor in shirt sleeves and waistcoat with a leather medical bag, stethoscope",
-      "doctor in a white hospital coat buttoned to the collar, a head mirror on a band, holding a glass syringe",
+      "doctor in a white hospital coat buttoned to the collar, a head mirror on a band, with a glass syringe",
       "doctor in a dark wool travelling coat and hat, carrying a leather medical bag and a lantern",
-      "doctor in a surgical gown with sleeves rolled up, a cloth mask hanging at the neck, holding a brown medicine bottle",
+      "doctor in a surgical gown with sleeves rolled up, a cloth mask hanging at the neck, with a brown medicine bottle",
     ],
     veteran: [
       "Great War veteran in a worn army greatcoat, weathered face",
-      "Great War veteran in an old khaki tunic with a medal ribbon and a webbing belt, holding a trench knife",
-      "Great War veteran in a shabby civilian suit with an army cap, a gas mask bag on a strap, holding a hip flask",
-      "Great War veteran in a sheepskin flying jacket and a knitted scarf, leather gloves, holding a service revolver",
+      "Great War veteran in an old khaki tunic with a medal ribbon and a webbing belt, with a trench knife",
+      "Great War veteran in a shabby civilian suit with an army cap, a gas mask bag on a strap, with a hip flask",
+      "Great War veteran in a sheepskin flying jacket and a knitted scarf, leather gloves, with a service revolver",
     ],
     occultist: [
       "antiquarian occultist in a dark overcoat with an old leather-bound book",
-      "antiquarian occultist in a velvet smoking jacket with a silk scarf, rings on the fingers, holding a carved bone amulet",
-      "antiquarian occultist in a hooded travelling cloak over a waistcoat, holding a candle and a rolled parchment",
-      "antiquarian occultist in a dusty frock coat with a magnifying monocle, holding a small brass astrolabe",
+      "antiquarian occultist in a velvet smoking jacket with a silk scarf, rings on the fingers, with a carved bone amulet",
+      "antiquarian occultist in a hooded travelling cloak over a waistcoat, with a candle and a rolled parchment",
+      "antiquarian occultist in a dusty frock coat with a magnifying monocle, with a small brass astrolabe",
+    ],
+  },
+  // Героини: одежда женщин 1926 года, у каждого класса один облик в мужском костюме (как сыщица в датасете).
+  // Предметы — по одному и «with …»: два предмета и глагол в наряде дают третью руку.
+  heroOutfitsFemaleEn: {
+    detective: [
+      "private detective in a belted trench coat {under} and a black cloche hat, with a small notebook",
+      "private detective in a charcoal menswear three-piece suit with a loose necktie and a fedora, a shoulder holster, with a magnifying glass",
+      "private detective in a dark wool wrap coat with a fur collar {under}, a felt cloche hat, with a cigarette in a long holder",
+      "private detective in a pleated tweed skirt and a long cardigan, a knitted cloche hat, with a snub-nosed revolver",
+    ],
+    journalist: [
+      "newspaper reporter in a flat cap and a man's waistcoat over a white blouse, high-waisted trousers, with a boxy 1920s folding bellows press camera",
+      "newspaper reporter in a belted tweed jacket {under} and a pleated skirt, a cloche hat with a press card in its band, with a spiral notepad",
+      "newspaper reporter in a light raincoat {under} and a beret, with a boxy 1920s folding bellows press camera on a leather strap",
+      "newspaper reporter in a drop-waist day dress with a long beaded necklace, a pencil tucked behind the ear, with a sheaf of typed pages",
+    ],
+    professor: [
+      "university professor in a tweed jacket {under} and a long pleated wool skirt, round spectacles, with a walking cane",
+      "university professor in a black academic gown over a dark dress, pince-nez on a chain, with a rolled map",
+      "university professor in a cardigan over a blouse with a bow at the collar, wire spectacles, with an open notebook",
+      "university professor in a tailored menswear tweed three-piece suit and a long scarf, horn-rimmed glasses, with a stack of books on a strap",
+    ],
+    doctor: [
+      "doctor in a long-sleeved white physician's coat {under}, a stethoscope around the neck, with a leather medical bag",
+      "doctor in a long-sleeved white hospital coat buttoned to the collar, a head mirror on a cloth band, with a 1920s glass syringe with nickel finger rings",
+      "doctor in a dark wool travelling coat {under} and a cloche hat, with a kerosene lantern",
+      "doctor in a white surgical apron over a long grey dress with the sleeves rolled up, a cloth mask hanging at the neck, with a brown glass medicine bottle",
+    ],
+    veteran: [
+      "Great War veteran ambulance driver in a worn army greatcoat {under}, leather driving gloves, with a hip flask",
+      "Great War veteran in an old khaki tunic with a medal ribbon and a webbing belt over a long khaki skirt, with a trench knife",
+      "Great War veteran field nurse in a faded grey uniform dress with a red cross armband and an army cap, with a gas mask bag",
+      "Great War veteran in a sheepskin flying jacket {under} and a knitted scarf, a leather flying helmet pushed back, with a service revolver",
+    ],
+    occultist: [
+      "antiquarian occultist in a dark overcoat {under}, with an old leather-bound book",
+      "antiquarian occultist in a velvet evening dress with a silk shawl, rings on the fingers, with a carved bone amulet",
+      "antiquarian occultist in a hooded travelling cloak {under}, with a lit candle",
+      "antiquarian occultist in a dusty menswear frock coat and waistcoat, a monocle, with a small brass astrolabe",
+    ],
+  },
+  // Под пальто, плащом, жакетом: открыто — примерно у каждой четвёртой женщины 20–45 лет, у «роковых» ролей — чаще.
+  underlayersEn: {
+    closed: [
+      "over a high-necked lace blouse",
+      "over a buttoned silk blouse with a bow at the collar",
+      "over a fitted ribbed knit sweater",
+      "over a plain cotton blouse with a rounded collar",
+    ],
+    open: ["over a low-cut silk slip dress", "worn open over bare skin, a deep plunging neckline"],
+    openShare: 0.25,
+    openShareRoles: 0.6,
+    modestRoles: /учительниц|монахин|настоятельниц|вдов|гувернантк|жена (пастора|священника)|бабушк|скорбящ/i,
+  },
+  // Причёски 1926 года: боб, волны, короткая стрижка; длинные волосы — только убранными.
+  hairstylesEn: {
+    f: [
+      "a sleek chin-length bob",
+      "a short shingle bob with a side part",
+      "finger waves pinned close to the head",
+      "marcel waves gathered in a low chignon",
+      "a short boyish Eton crop",
+      "a curly bob held with a ribbon",
+      "long hair pinned up in a soft loose bun",
+      "a low braided knot at the nape",
+    ],
+    m: [
+      "short back and sides slicked back with pomade",
+      "neatly combed hair with a sharp side part",
+      "a wavy pompadour",
+      "close-cropped hair",
+      "tousled hair falling over the forehead",
+      "thinning hair combed straight back",
     ],
   },
   locationEn: {
@@ -94,7 +168,7 @@ export const arkhamArt: ArtStyle = {
     young: {
       f: [
         { en: "curvy voluptuous build with a large bust and wide hips", weight: 2 },
-        { en: "voluptuous hourglass figure with a very large bust and wide hips", weight: 1 },
+        { en: "voluptuous hourglass figure with a full bust and wide hips", weight: 1 },
         { en: "slim slender build", weight: 1 / 2 },
         { en: "petite slender build", weight: 1 / 2 },
         { en: "slim athletic build", weight: 1 / 2 },
@@ -127,7 +201,7 @@ export const arkhamArt: ArtStyle = {
     // и рисовались почти одинаково; теперь первая — «песочные часы» с очень большой грудью и тонкой талией, вторая — полная и мягкая целиком.
     hero: {
       f: [
-        "voluptuous hourglass figure with a very large bust, a narrow cinched waist and wide hips",
+        "voluptuous hourglass figure with a full bust, a narrow cinched waist and wide hips",
         "plump full-figured build, soft rounded body with a thick waist, full arms and a round soft face",
         "slim slender build, narrow shoulders and a flat figure",
         "slim athletic build, lean and fit, not muscular",

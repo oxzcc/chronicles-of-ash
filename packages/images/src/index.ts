@@ -5,3 +5,4 @@ export * from "./process";
 export * from "./storage";
 export * from "./describe";
 export * from "./pipeline";
+export * from "./inspect";

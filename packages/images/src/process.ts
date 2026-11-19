@@ -8,8 +8,8 @@ import sharp from "sharp";
  * - фон: темнее и приглушённее, чтобы персонаж на нём читался.
  * Тёплый контур по силуэту рисует CSS (drop-shadow), а не картинка.
  */
-export async function finishPortrait(cutout: Buffer): Promise<{ bytes: Buffer; width: number; height: number }> {
-  const img = sharp(cutout).ensureAlpha();
+export async function finishPortrait(cutout: Buffer, frame?: HeadFrame): Promise<{ bytes: Buffer; width: number; height: number }> {
+  const img = sharp(await zoomTo(cutout, frame)).ensureAlpha();
   // Чистим полупрозрачный ореол по краю: альфа < 16% — прозрачно.
   const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
   for (let i = 3; i < data.length; i += 4) if (data[i]! < 40) data[i] = 0;
@@ -44,6 +44,19 @@ export async function clippedShare(cutout: Buffer): Promise<number> {
   return Math.max(top / (band * w) / TOP_LIMIT, side / (6 * (h - band)) / SIDE_LIMIT);
 }
 
+/**
+ * Доля непрозрачного в вырезанном портрете. Почти ноль — фигуры нет: fal заменил картинку чёрной
+ * (фильтр безопасности) или вырезание съело всё. Такой портрет проверяющий со зрением пропускает —
+ * на пустом сером кадре лишних рук нет, — поэтому меряем сами.
+ */
+export const EMPTY_LIMIT = 0.03;
+export async function opaqueShare(cutout: Buffer): Promise<number> {
+  const { data } = await sharp(cutout).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let n = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i]! > 128) n++;
+  return n / (data.length / 4);
+}
+
 export async function finishBackground(image: Buffer): Promise<{ bytes: Buffer; width: number; height: number }> {
   const out = await sharp(image)
     .resize({ width: 1920, withoutEnlargement: true })
@@ -51,4 +64,65 @@ export async function finishBackground(image: Buffer): Promise<{ bytes: Buffer; 
     .webp({ quality: 82 })
     .toBuffer({ resolveWithObject: true });
   return { bytes: out.data, width: out.info.width, height: out.info.height };
+}
+
+/**
+ * Размер головы в кадре: макушка — по маске (первая строка, где силуэт шире 1% кадра; шляпа считается),
+ * подбородок — от модели со зрением. Портрет в сцене стоит на нижнем крае и растворяется книзу, поэтому
+ * мелкую фигуру можно приблизить (низ уйдёт за край), а крупную — только перерисовать: уменьшенная повиснет.
+ */
+export interface HeadFrame {
+  top: number;
+  head: number;
+  /** Центр головы по горизонтали, доля ширины. */
+  cx: number;
+  tooClose: boolean;
+  zoom: number;
+}
+/** Голова (с причёской или шляпой) больше этой доли высоты — кадр слишком крупный. */
+export const TOO_CLOSE = 0.4;
+/** Голова меньше — приближаем до TARGET_HEAD, но не больше чем в MAX_ZOOM раз. */
+export const SMALL_HEAD = 0.22;
+const TARGET_HEAD = 0.26;
+const MAX_ZOOM = 1.25;
+
+export async function headFrame(cutout: Buffer, chin: number): Promise<HeadFrame | undefined> {
+  const { data, info } = await sharp(cutout).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+  const opaque = (x: number, y: number) => data[(y * w + x) * 4 + 3]! > 128;
+  const rowCount = (y: number) => {
+    let n = 0;
+    for (let x = 0; x < w; x++) if (opaque(x, y)) n++;
+    return n;
+  };
+  let top = 0;
+  while (top < h && rowCount(top) < w * 0.01) top++;
+  const head = chin - top / h;
+  if (!(head > 0.04)) return undefined;
+  let sx = 0;
+  let n = 0;
+  for (let y = top; y < Math.min(h, Math.round(chin * h)); y++)
+    for (let x = 0; x < w; x++)
+      if (opaque(x, y)) {
+        sx += x;
+        n++;
+      }
+  return {
+    top: top / h,
+    head,
+    cx: n ? sx / n / w : 0.5,
+    tooClose: head > TOO_CLOSE,
+    zoom: head < SMALL_HEAD ? Math.min(MAX_ZOOM, TARGET_HEAD / head) : 1,
+  };
+}
+
+/** Приблизить мелкую фигуру: вырезать окно у головы (над макушкой — 4% окна) и растянуть до прежнего холста. */
+async function zoomTo(cutout: Buffer, frame?: HeadFrame): Promise<Buffer> {
+  if (!frame || frame.zoom <= 1.001) return cutout;
+  const { width: w = 0, height: h = 0 } = await sharp(cutout).metadata();
+  const cw = Math.round(w / frame.zoom);
+  const ch = Math.round(h / frame.zoom);
+  const left = Math.max(0, Math.min(w - cw, Math.round(frame.cx * w - cw / 2)));
+  const top = Math.max(0, Math.min(h - ch, Math.round(frame.top * h - 0.04 * ch)));
+  return sharp(cutout).extract({ left, top, width: cw, height: ch }).resize(w, h).png().toBuffer();
 }

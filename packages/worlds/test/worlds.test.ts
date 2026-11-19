@@ -125,3 +125,52 @@ describe("наряды героя", () => {
     }
   });
 });
+
+describe("облик героинь и NPC", () => {
+  it("женские наряды: четыре разных, по-английски, предмет без «holding», один предмет", async () => {
+    const { WORLDS } = await import("../src/index");
+    for (const w of WORLDS) {
+      const f = w.art.heroOutfitsFemaleEn;
+      if (!f) continue;
+      for (const cls of Object.keys(w.art.classEn)) {
+        const list = f[cls];
+        expect(list, `${w.id}/${cls}`).toHaveLength(4);
+        expect(new Set(list).size).toBe(4);
+        for (const o of list!) {
+          expect(o).not.toMatch(/[а-яё]/i);
+          // Предмет держит поза: глагол в наряде даёт лишнюю руку.
+          expect(o, o).not.toMatch(/\bholding\b/);
+          // Не больше одного «with …» и без «X and Y» после него — два предмета в руках тоже дают лишнюю руку.
+          expect(o.match(/, with /g)?.length ?? 0, o).toBeLessThanOrEqual(1);
+          expect(o.split(", with ")[1] ?? "", o).not.toMatch(/ and /);
+        }
+      }
+      // Под {under} — что-то есть только в мире со слоями.
+      if (Object.values(f).flat().some((o) => o.includes("{under}"))) expect(w.art.underlayersEn, w.id).toBeTruthy();
+    }
+  });
+
+  it("мужские наряды героя тоже без «holding»", async () => {
+    const { WORLDS } = await import("../src/index");
+    for (const w of WORLDS) for (const o of Object.values(w.art.heroOutfitsEn ?? {}).flat()) expect(o, o).not.toMatch(/\bholding\b/);
+  });
+
+  it("слои под верхней одеждой и причёски Аркхэма", async () => {
+    const { getWorld } = await import("../src/index");
+    const a = getWorld("arkham").art;
+    const u = a.underlayersEn!;
+    expect(u.closed.length).toBeGreaterThanOrEqual(2);
+    expect(u.open.length).toBeGreaterThanOrEqual(1);
+    expect(u.openShare).toBeGreaterThan(0);
+    expect(u.openShare).toBeLessThan(0.5);
+    expect(u.openShareRoles).toBeGreaterThanOrEqual(u.openShare);
+    for (const x of [...u.closed, ...u.open]) expect(x).toMatch(/^(over|worn open)\b/);
+    for (const g of ["f", "m"] as const) {
+      expect(a.hairstylesEn![g].length).toBeGreaterThanOrEqual(6);
+      for (const h of a.hairstylesEn![g]) expect(h).not.toMatch(/[а-яё]|\b(red|blond|black|brown|grey|auburn)\b/i);
+    }
+    // Слово «very large bust» больше не у обычных женщин — только у ролей из figures.roles.
+    const fig = a.figures!;
+    for (const o of [...fig.young.f.map((x) => x.en), ...fig.hero.f]) expect(o).not.toMatch(/very large bust/);
+  });
+});

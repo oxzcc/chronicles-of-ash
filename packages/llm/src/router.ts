@@ -9,7 +9,8 @@ export interface RouterConfig {
   openRouterKey?: string;
   reasoningEffort?: ReasoningEffort;
   fake: boolean;
-  models: { narratorPaid: string; narratorFree: string; utility: string };
+  /** vision — модель со зрением для проверки портретов (руки, кадр); не задана — проверки нет. */
+  models: { narratorPaid: string; narratorFree: string; utility: string; vision?: string };
 }
 
 export function configFromEnv(env: Record<string, string | undefined> = process.env): RouterConfig {
@@ -21,6 +22,7 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
       narratorPaid: env.NARRATOR_MODEL_PAID || "deepseek/deepseek-v4.1-flash",
       narratorFree: env.NARRATOR_MODEL_FREE || "deepseek/deepseek-v4.1-flash",
       utility: env.UTILITY_MODEL || "deepseek/deepseek-v4.1-flash",
+      vision: env.VISION_MODEL || undefined,
     },
   };
 }
@@ -39,6 +41,10 @@ export function createRouter(cfg: RouterConfig) {
     route(role: Role, tier: Tier = "free"): Route {
       const model = role === "utility" ? cfg.models.utility : tier === "paid" ? cfg.models.narratorPaid : cfg.models.narratorFree;
       return { provider: real ?? fake, model: real ? model : "fake" };
+    },
+    /** Модель со зрением: только настоящая и только если задана в VISION_MODEL. */
+    vision(): Route | null {
+      return real && cfg.models.vision ? { provider: real, model: cfg.models.vision } : null;
     },
     /** Произвольная модель — для слепого теста. */
     direct(model: string): Route {
