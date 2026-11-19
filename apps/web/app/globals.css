@@ -186,12 +186,12 @@ textarea { resize: vertical; }
 .vn-nameplate .role { font-family: var(--ui); font-size: 12px; letter-spacing: 0.05em; color: #e0803f; margin-top: 3px; }
 /* Действие героя — первым кадром хода: имя справа, маленький портрет у имени */
 .vn-nameplate { display: flex; align-items: center; gap: 12px; }
-.vn-frame.hero .vn-nameplate { left: auto; right: 26px; padding-left: 8px; }
+.vn-frame.hero .vn-nameplate { left: auto; right: 26px; top: -34px; padding: 5px 20px 5px 6px; }
 .vn-frame.hero .vn-line { color: #e9dcc4; }
-.vn-avatar { position: relative; width: 56px; height: 56px; margin: -18px 0 -12px; border-radius: 50%; overflow: hidden; border: 1px solid var(--gold); background: #2a1d14; flex: none;
-  display: grid; place-items: center; font-family: var(--display); font-size: 24px; color: var(--gold-hi); }
-/* Портрет по пояс 2:3 → в кружке только голова: голова у всех портретов в верхней трети кадра */
-.vn-avatar img { position: absolute; width: 250%; max-width: none; left: 50%; top: -3%; transform: translateX(-50%); animation: vnFade 0.35s ease; }
+.vn-avatar { position: relative; width: 42px; height: 42px; border-radius: 50%; overflow: hidden; border: 1px solid var(--gold); background: #2a1d14; flex: none;
+  display: grid; place-items: center; font-family: var(--display); font-size: 22px; color: var(--gold-hi); }
+/* Портрет по пояс 2:3 → в кружке всё лицо: голова у портретов — примерно 4–30% высоты кадра (headFrame), видно 4–35% */
+.vn-avatar img { position: absolute; width: 220%; max-width: none; left: 50%; top: -14%; transform: translateX(-50%); animation: vnFade 0.35s ease; }
 .vn-line { font-size: 23px; line-height: 1.5; color: #f6ead3; }
 .vn-narr { font-size: 21px; line-height: 1.6; font-style: italic; color: #e6d6ba; white-space: pre-line; }
 .vn-writing { color: var(--muted); }
