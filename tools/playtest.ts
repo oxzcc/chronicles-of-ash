@@ -122,7 +122,7 @@ while (save.playerTurns < target) {
     save.records.push(...r.records);
     if (input.kind !== "combat") save.playerTurns++;
     const main = r.records.find((x) => x.model !== "engine");
-    console.log(`${save.playerTurns}/${target} ${input.kind}${"text" in input ? `: ${input.text.slice(0, 50)}` : ""}${"index" in input ? ` #${input.index}` : ""} — ${Date.now() - t0} мс${main?.degraded ? " ⚠ JSON" : ""}${r.records.some((x) => x.kind === "combat") ? " ⚔" : ""}`);
+    console.log(`${save.playerTurns}/${target} ${input.kind}${"text" in input && input.text ? `: ${input.text.slice(0, 50)}` : ""}${"index" in input ? ` #${input.index}` : ""} — ${Date.now() - t0} мс${main?.degraded ? " ⚠ JSON" : ""}${r.records.some((x) => x.kind === "combat") ? " ⚔" : ""}`);
   } catch (e) {
     console.log(`ошибка на ходу ${input.kind}: ${(e as Error).message}`);
     if (input.kind === "start") break;

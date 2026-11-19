@@ -64,7 +64,7 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-5+arkham-5");
+    expect(a.records[0]!.promptVersion).toBe("gm-6+arkham-5");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
@@ -121,6 +121,33 @@ describe("мир Аркхэма", () => {
     expect(res).toMatchObject({ points: 20, mentor: 40, penalty: 0, score: 20 });
     expect(w.complete).toBe(true);
     await expect(playTurn(deps(), g, recs, { kind: "close", answers: { a1: "x" } })).rejects.toThrow(/закрыто/);
+  });
+  it("люди и предъявление: карточки говоривших, улика уличает лжеца, метка у его реплики", async () => {
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "present" });
+    const w = g.campaign;
+    const kit = { name: "Кит Ларкин", race: "human", gender: "m", role: "племянник покойной" };
+    let r = await playTurn(deps({ router: scriptedRouter([{
+      beats: [{ speaker: null, text: "Кит курит у стойки." }, { speaker: "Кит Ларкин", text: "К тёте я в тот вечер не заходил." }],
+      speaker: kit, npcs: [{ name: "Кит", voice: "развязно, с усмешкой", attitude: -1, told: ["в тот вечер к тёте не заходил"] }, { name: "Финнеган", told: ["я ничего не видел"] }],
+    }]) }), g, [], { kind: "action", text: "Спрашиваю Кита про тот вечер" });
+    expect(w.memory).toEqual([expect.objectContaining({ name: "Кит Ларкин", role: "племянник покойной", voice: "развязно, с усмешкой", attitude: -1, told: ["в тот вечер к тёте не заходил"] })]);
+    expect(r.records[0]!.applied!.rejected.join()).toMatch(/Финнеган не говорил/);
+    expect(r.records[0]!.beats[1]!.marks).toEqual([{ kind: "attitude", quote: null, label: "доверие −1", ref: "Кит Ларкин" }]);
+    // Показать можно только найденное и только собеседнику.
+    await expect(playTurn(deps(), g, [], { kind: "present", clue: "c1" })).rejects.toThrow(/не найдена/);
+    w.case!.clues.find((x) => x.id === "c1")!.found = true;
+    r = await playTurn(deps({ router: scriptedRouter([{
+      beats: [{ speaker: null, text: "Ты ставишь чашку перед ним." }, { speaker: "Кит Ларкин", text: "Ладно. Я принёс ей чай." }],
+      speaker: kit, npcs: [{ name: "Кит Ларкин", attitude: -1, told: ["сам принёс тёте чай"] }],
+    }]) }), g, [], { kind: "present", clue: "c1", text: "Показываю Киту осадок" });
+    const rec = r.records[0]!;
+    expect(rec).toMatchObject({ kind: "present", action: "Показываю Киту осадок" });
+    expect(rec.applied!.effects[0]).toMatchObject({ kind: "caught", text: "Кит Ларкин" });
+    expect(rec.beats[1]!.marks!.map((m) => m.kind)).toEqual(["attitude", "caught"]);
+    expect(w.case!.people.find((p) => p.name === "Кит Ларкин")!.lie!.broken).toBe(true);
+    expect(w.memory![0]!.told).toEqual(["в тот вечер к тёте не заходил", "сам принёс тёте чай"]);
+    w.npc = null;
+    await expect(playTurn(deps(), g, [], { kind: "present", clue: "c1" })).rejects.toThrow(/некому/);
   });
   it("рассудок: потеря в деле копится, на грани — два варианта, на нуле — срыв и потерянное время", async () => {
     const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "san" });

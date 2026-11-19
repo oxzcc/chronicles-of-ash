@@ -237,8 +237,8 @@ describe("промпты по мирам", () => {
     expect(a).toContain("ПОСТОЯННЫЕ ЛИЦА:");
     expect(a).toContain(`доктор Сайлас Уэйкфилд (наставник, отставной профессор антропологии): ${arkham.cast!.mentor.look}.`);
     expect(gmRules(world)).not.toContain("ПОСТОЯННЫЕ ЛИЦА");
-    expect(promptVersion(arkham)).toBe("gm-5+arkham-5");
-    expect(promptVersion(world)).toBe("gm-5");
+    expect(promptVersion(arkham)).toBe("gm-6+arkham-5");
+    expect(promptVersion(world)).toBe("gm-6");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
     const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] }, mulberry32(1));
@@ -256,7 +256,7 @@ describe("промпты по мирам", () => {
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-5+arkham-5");
+    expect(r.promptVersion).toBe("gm-6+arkham-5");
   });
 });
 
@@ -290,5 +290,37 @@ describe("дело в промптах", () => {
     expect(parseDeduction('{"match":"c1"}', ["c9"])).toBeNull();
     expect(roughVerdict("Племянник Кит Ларкин отравил её ради наследства", "Её племянник Кит Ларкин: отравил её наперстянкой ради наследства, чтобы закрыть долг бутлегерам.")).toBe("right");
     expect(roughVerdict("дворецкий", "Её племянник Кит Ларкин: отравил её наперстянкой ради наследства.")).toBe("wrong");
+  });
+});
+
+describe("люди и тайны в промптах", () => {
+  const arkham = getWorld("arkham");
+  it("npcs: имя обязательно, отношение — числом, показания — строками", () => {
+    const r = parseGmResponse('{"beats":[{"speaker":"Мод","text":"Ох."}],"npcs":[{"name":"Мод","voice":"тихо","attitude":"-1","told":["чай подавал Кит",5]},{"voice":"без имени"},"мусор"]}', getWorld("fantasy").rules);
+    expect(r.ok && r.value.npcs).toEqual([{ name: "Мод", voice: "тихо", attitude: -1, told: ["чай подавал Кит"] }]);
+    // Иероглифы (DeepSeek вставлял их в манеру речи) вырезаются и здесь.
+    const cjk = parseGmResponse('{"beats":[{"speaker":"Послушник","text":"Тише."}],"npcs":[{"name":"Послушник","voice":"с宗教ным придыханием","told":["пепел宗 вернётся"]}]}', getWorld("fantasy").rules);
+    expect(cjk.ok && cjk.value.npcs[0]).toMatchObject({ voice: "сным придыханием", told: ["пепел вернётся"] });
+    expect(parseGmResponse('{"beats":[{"speaker":null,"text":"Тьма."}]}', arkham.rules).ok && true).toBe(true);
+  });
+  it("в сцене — карточки собеседника и названных людей; в деле — тайны жителей и поворот только после порога", async () => {
+    const { narratorUserPrompt, peopleCards, gmRules } = await import("../src/index");
+    const { layoutCase, applyNpcNotes } = await import("@ash/engine");
+    const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Уолтер", gender: "m", race: "human", cls: "detective", base: { ...arkham.rules.recommended.detective! }, skills: ["Внимательность", "Психология"] }, mulberry32(1));
+    const w = layoutCase(arkham.rules, arkham.fallbackCase!, "s");
+    applyNpcNotes(w, [{ name: "Кит Ларкин", role: "племянник" }], [{ name: "Кит", voice: "развязно, с усмешкой", attitude: -1, told: ["к тёте в тот вечер не заходил"] }]);
+    w.current = "L2";
+    applyNpcNotes(w, [{ name: "Деннис Маллой" }], []);
+    expect(peopleCards(w, "Спрашиваю про Кита")).toContain("Кит Ларкин (племянник): говорит развязно, с усмешкой; к герою насторожен (-1); уже сказал(а) герою: к тёте в тот вечер не заходил");
+    expect(peopleCards(w, "Осматриваюсь")).not.toContain("Кит");
+    const p = narratorUserPrompt(arkham, { character: hero, campaign: w, history: [], action: "Спрашиваю про Кита" });
+    expect(p).toContain("ЛЮДИ, КОТОРЫХ ГЕРОЙ УЖЕ ВСТРЕЧАЛ");
+    expect(p).toMatch(/Кит Ларкин — племянник покойной .*лжёт: «В тот вечер к тёте не заходил/);
+    expect(p).not.toContain("ПОВОРОТ");
+    w.case!.twistAt = w.turn;
+    expect(narratorUserPrompt(arkham, { character: hero, campaign: w, history: [], action: "Жду" })).toContain("ПОВОРОТ — наступает сейчас");
+    w.turn += 3;
+    expect(narratorUserPrompt(arkham, { character: hero, campaign: w, history: [], action: "Жду" })).toContain("Поворот уже случился");
+    expect(gmRules(arkham)).toContain("ПАМЯТЬ О ЛЮДЯХ");
   });
 });

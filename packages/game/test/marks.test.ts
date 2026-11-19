@@ -63,3 +63,17 @@ describe("подсветка на лету", () => {
     expect(proposedFromFinds(w, [{ speaker: null, text: "…", refs: [{ ref: "c4", quote: "" }, { ref: "sanity", quote: "" }, { ref: "L5", quote: "" }, { ref: "c99", quote: "" }] }])).toEqual({ clues: ["c4"], reveal: ["L5"] });
   });
 });
+
+describe("метки о людях", () => {
+  it("отношение и уличение — у последней реплики этого человека", () => {
+    const beats = tagLast(
+      [{ speaker: null, text: "Ты кладёшь осадок на стол." }, { speaker: "Кит Ларкин", text: "Это не моё!" }, { speaker: null, text: "Он бледнеет." }],
+      [effect.caught("Кит Ларкин", "к тёте не заходил"), effect.attitude("Кит", -1, "насторожен"), effect.attitude("Хэтти", 1, "расположена")],
+    );
+    expect(beats[1]!.marks).toEqual([
+      { kind: "caught", quote: null, label: "ложь раскрыта", ref: "Кит Ларкин" },
+      { kind: "attitude", quote: null, label: "доверие −1", ref: "Кит" },
+    ]);
+    expect(beats[2]!.marks).toBeUndefined(); // Хэтти не говорила — метки нет
+  });
+});

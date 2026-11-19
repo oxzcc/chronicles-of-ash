@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { locationById, type PublicCampaign, type PublicCase, type Verdict } from "@ash/engine";
+import { attitudeWord, locationById, sameName, type PublicCampaign, type PublicCase, type Verdict } from "@ash/engine";
 
 /**
  * Интерфейс детективного дела (мир Аркхэма): досье, газета, справочник, закрытие дела и разбор.
@@ -21,7 +21,42 @@ const focusRef = (on: boolean) => (el: HTMLElement | null) => {
   if (on && el) el.scrollIntoView({ block: "center", behavior: "smooth" });
 };
 
-export function CaseFile({ w, busy, focus, onReconstruct, onClose }: { w: PublicCampaign; busy: boolean; focus?: string | null; onReconstruct: (text: string) => void; onClose: () => void }) {
+/**
+ * Люди, которых встретил герой: отношение и что рассказали. В деле это показания свидетелей.
+ * focus — имя человека, к которому привёл клик по подсветке в тексте.
+ */
+export function People({ w, focus, title = "Показания" }: { w: PublicCampaign; focus?: string | null; title?: string }) {
+  const people = [...(w.memory ?? [])].filter((m) => m.told.length || m.attitude).sort((a, b) => b.met - a.met);
+  if (!people.length) return null;
+  return (
+    <>
+      <h3 className="case-h">{title}</h3>
+      <ul className="case-people">
+        {people.map((m) => {
+          const on = !!focus && sameName(m.name, focus);
+          return (
+            <li key={m.name} ref={focusRef(on)} className={on ? "focus" : undefined}>
+              <div className="who">
+                <b>{m.name}</b>
+                {m.role && <span className="muted"> — {m.role}</span>}
+                <span className={`att a${m.attitude}`}>{attitudeWord(m.attitude)}</span>
+              </div>
+              {m.told.length > 0 && (
+                <ul>
+                  {m.told.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+export function CaseFile({ w, busy, focus, onReconstruct, onClose, onPresent }: { w: PublicCampaign; busy: boolean; focus?: string | null; onReconstruct: (text: string) => void; onClose: () => void; onPresent?: (clueId: string) => void }) {
   const c = w.case!;
   const [version, setVersion] = useState("");
   const clues = c.clues.filter((x) => !x.requires);
@@ -52,6 +87,12 @@ export function CaseFile({ w, busy, focus, onReconstruct, onClose }: { w: Public
               <span className="case-where">{placeName(w, x.at)}</span>
               {x.title && <strong className="case-title">{x.title}. </strong>}
               {x.text}
+              {/* Предъявить улику тому, с кем говоришь: уличит ли она его — решает игра. */}
+              {w.npc && onPresent && !c.result && (
+                <button className="btn ghost small case-present" disabled={busy || !!w.combat} onClick={() => onPresent(x.id)}>
+                  Показать: {w.npc.name}
+                </button>
+              )}
             </li>
           ))}
         </ul>
@@ -72,6 +113,8 @@ export function CaseFile({ w, busy, focus, onReconstruct, onClose }: { w: Public
           </ul>
         </>
       )}
+
+      <People w={w} focus={focus} />
 
       {!c.result && (
         <>

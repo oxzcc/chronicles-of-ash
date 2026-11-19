@@ -69,6 +69,7 @@ export function TextFrame({ speaker, role, children, onAdvance, hint }: { speake
 const FX_LABEL: Record<EffectKind, string> = {
   clue: "Улика", deduction: "Вывод", address: "Адрес", objective: "Цель", quest: "Квест",
   hp: "Здоровье", sanity: "Рассудок", gold: "Деньги", item: "Вещь", lost: "Потеряно",
+  attitude: "Отношение", caught: "Уличён во лжи",
 };
 /** В деле цель — то, что нужно выяснить. */
 const fxLabel = (e: TurnEffect, isCase?: boolean) => (e.kind === "objective" && isCase ? "Выяснено" : FX_LABEL[e.kind]);
@@ -146,6 +147,7 @@ export function BeatText({ beat, onMark }: { beat: Beat; onMark?: (m: Mark) => v
 const MARK_HINT: Record<string, string> = {
   clue: "Открыть в досье", deduction: "Открыть в досье", objective: "Открыть журнал",
   address: "Открыть адрес", sanity: "Лист героя", hp: "Лист героя",
+  attitude: "Что он рассказал", caught: "Показания",
 };
 
 /** Те же плашки в «Истории» — тихо, без анимации. */

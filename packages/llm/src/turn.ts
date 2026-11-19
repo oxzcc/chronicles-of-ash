@@ -86,7 +86,8 @@ export async function runNarratorTurn(o: NarratorTurnOptions): Promise<NarratorT
       model: o.model,
       messages,
       tools: allowTools ? [tool] : undefined,
-      maxTokens: 2000,
+      // Скрытые рассуждения считаются в выход: на тяжёлых сценах (ужас в подвале) 2000 не хватало и JSON обрывался.
+      maxTokens: 3500,
       signal: o.signal,
       onText,
     });

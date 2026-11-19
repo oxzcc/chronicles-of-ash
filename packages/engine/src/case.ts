@@ -1,7 +1,7 @@
 import { clamp } from "./dice";
 import { effect, type TurnEffect } from "./effects";
 import { findPlace, layoutCampaign, locationById, travel, type Campaign, type MapLocation, type QuestSeed } from "./world";
-import { normName, sameWord } from "./names";
+import { matchName, normName, sameWord } from "./names";
 import type { Rng } from "./rng";
 import type { Ruleset } from "./rules";
 import type { Gender } from "./character";
@@ -37,7 +37,18 @@ export interface CasePerson {
   /** Пол и внешность — чтобы нарисовать портрет заранее, ещё до встречи. */
   gender?: Gender;
   look?: string;
+  /** Дальше — тайное, видит только мастер (publicCampaign вырезает). Чего хочет или боится. */
+  motive?: string;
+  /** Где был в ту ночь — по его словам. */
+  alibi?: string;
+  /** Что скрывает и почему (не обязательно преступление). */
+  secret?: string;
+  /** Ложь, которую можно опровергнуть уликой: breaks — id улики. broken — уже уличён. */
+  lie?: { text: string; breaks?: string; broken?: boolean };
 }
+
+/** Житель дела без тайного — то, что видит клиент. */
+export type PublicPerson = Pick<CasePerson, "name" | "role" | "at" | "gender" | "look">;
 
 export interface CaseQuestion {
   id: string;
@@ -86,6 +97,10 @@ export interface CaseState {
   /** Сколько рассудка герой потерял в этом деле (срывы тоже на счету). */
   sanityLost: number;
   result: CaseResult | null;
+  /** Поворот в середине дела: наступает, когда найдена половина ключевых улик (не меньше двух). */
+  twist?: string;
+  /** Ход, на котором поворот наступил. */
+  twistAt?: number;
 }
 
 /** Сырое дело от модели — до проверки. Места — как у квеста, ссылки — индексами мест и улик. */
@@ -97,6 +112,7 @@ export interface CaseSeed extends QuestSeed {
   questions?: unknown;
   newspaper?: unknown;
   known?: unknown;
+  twist?: unknown;
 }
 
 export const CASE_LIMITS = {
@@ -164,7 +180,18 @@ export function layoutCase(r: Ruleset, seed: CaseSeed, layoutSeed: string): Camp
     if (at === null || !name) continue;
     const look = str(p?.look, 200);
     const gender = p?.gender === "f" || p?.gender === "m" ? (p.gender as Gender) : undefined;
-    people.push({ name, role: str(p?.role, 60), at: loc(at), ...(gender ? { gender } : {}), ...(look ? { look } : {}) });
+    const person: CasePerson = { name, role: str(p?.role, 60), at: loc(at), ...(gender ? { gender } : {}), ...(look ? { look } : {}) };
+    for (const k of ["motive", "alibi", "secret"] as const) {
+      const v = str(p?.[k], 300);
+      if (v) person[k] = v;
+    }
+    // Ложь — текстом; опровергает её улика по номеру (с 1, только улики с местом). 0 или мусор — опровергнуть нечем.
+    const lieText = str(typeof p?.lie === "string" ? p.lie : p?.lie?.text, 200);
+    if (lieText) {
+      const b = idx(Number(p?.lie?.breaks) - 1, placed);
+      person.lie = { text: lieText, ...(b !== null ? { breaks: clues[b]!.id } : {}) };
+    }
+    people.push(person);
   }
 
   const questions: CaseQuestion[] = [];
@@ -205,6 +232,7 @@ export function layoutCase(r: Ruleset, seed: CaseSeed, layoutSeed: string): Camp
     limit: par + CASE_LIMITS.extraVisits,
     sanityLost: 0,
     result: null,
+    ...(str(seed.twist, 600) ? { twist: str(seed.twist, 600) } : {}),
   };
   // В деле нет «финальной локации»: развязку открывает сам игрок, закрывая дело.
   w.target = "";
@@ -349,7 +377,7 @@ export function closeCase(w: Campaign, answers: { id: string; answer: string; ve
 /** Что дело показывает игроку: найденное, известное и вопросы без ответов. После закрытия — всё. */
 export interface PublicCase {
   clues: Pick<CaseClue, "id" | "text" | "title" | "at" | "requires">[];
-  people: CasePerson[];
+  people: PublicPerson[];
   newspaper: CaseState["newspaper"];
   known: string[];
   visits: number;
@@ -376,7 +404,8 @@ export function publicCampaign(w: Campaign): PublicCampaign {
   const { case: _secret, ...rest } = w;
   const pub: PublicCase = {
     clues: c.clues.filter((x) => x.found).map(({ id, text, title, at, requires }) => ({ id, text, at, ...(title ? { title } : {}), ...(requires ? { requires } : {}) })),
-    people: c.people.filter((p) => known.has(p.at)),
+    // Только то, что видно со стороны: мотивы, алиби, тайны и ложь — у мастера.
+    people: c.people.filter((p) => known.has(p.at)).map(({ name, role, at, gender, look }) => ({ name, role, at, ...(gender ? { gender } : {}), ...(look ? { look } : {}) })),
     newspaper: c.newspaper,
     known: c.known,
     visits: c.visits,
@@ -415,4 +444,41 @@ export function storyMove(r: Ruleset, w: Campaign, ref: string | null | undefine
   } catch (e) {
     return { error: `move в «${to.name}»: ${(e as Error).message}` };
   }
+}
+
+/** Сколько ключевых улик нужно для поворота: половина, но не меньше двух. */
+export const twistThreshold = (c: CaseState) => Math.max(2, Math.ceil(c.clues.filter((x) => x.key && !x.requires).length / 2));
+
+/** Наступает ли поворот: найдено достаточно ключевых улик. Отмечает ход, на котором он наступил. true — наступил только что. */
+export function checkTwist(w: Campaign): boolean {
+  const c = w.case;
+  if (!c?.twist || c.twistAt !== undefined || c.result) return false;
+  const keys = c.clues.filter((x) => x.key && !x.requires && x.found).length;
+  if (keys < twistThreshold(c)) return false;
+  c.twistAt = w.turn;
+  return true;
+}
+
+export interface PresentResult {
+  clue: CaseClue;
+  /** Житель дела, которому показали улику (если это житель). */
+  person?: CasePerson;
+  /** Улика опровергает его ложь — он уличён (решает код, а не модель). */
+  caught: boolean;
+}
+
+/**
+ * Предъявить найденную улику собеседнику. Уличает, только если у жителя есть ложь, которую
+ * опровергает именно эта улика, и он ещё не был на ней пойман. Код решает — мастер описывает.
+ */
+export function presentClue(w: Campaign, clueId: string, to: string): PresentResult {
+  const c = w.case;
+  if (!c) throw new Error("В этом мире нет дел.");
+  const clue = c.clues.find((x) => x.id === clueId);
+  if (!clue || !clue.found) throw new Error("Эта улика ещё не найдена.");
+  const i = matchName(to, c.people.map((p) => p.name));
+  const person = i >= 0 ? c.people[i] : undefined;
+  const caught = !!person?.lie && person.lie.breaks === clue.id && !person.lie.broken;
+  if (caught) person!.lie!.broken = true;
+  return { clue, ...(person ? { person } : {}), caught };
 }

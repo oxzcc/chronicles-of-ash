@@ -1,6 +1,6 @@
 import {
-  applyCaseChanges, applyChanges, breakDown, effect, emptyApplied, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
-  playerMove, skillCheck, startCombat, storyMove, travel, travelCase,
+  applyCaseChanges, applyChanges, applyNpcNotes, breakDown, checkTwist, effect, emptyApplied, presentClue, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
+  playerMove, sameName, skillCheck, startCombat, storyMove, travel, travelCase,
   type CombatEvent, type CombatOutcome, type TurnEffect, type Verdict,
 } from "@ash/engine";
 import {
@@ -56,6 +56,8 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const found = applyCaseChanges(w, { clues: [...new Set([...fromFinds.clues, ...resp.clues])], reveal: [...new Set([...fromFinds.reveal, ...resp.reveal])] });
       applied.notes.push(...found.notes);
       applied.effects.push(...found.effects);
+      // Поворот дела наступает сам, когда найдена половина ключевых улик: мастер увидит его в следующей сцене.
+      if (checkTwist(w)) applied.notes.push("поворот дела наступил");
       applied.rejected.push(...found.rejected);
       if (applied.sanity < 0) w.case.sanityLost += -applied.sanity;
     }
@@ -68,6 +70,11 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
         await deps.onArrive?.();
       }
     }
+    // Память о людях: карточки у всех, кто говорил; заметки мастера — только о них.
+    const speakers = [...new Set(resp.beats.flatMap((b) => (b.speaker ? [b.speaker] : [])))].map((name) => ({ name, role: resp.speaker && sameName(resp.speaker.name, name) ? resp.speaker.role : "" }));
+    const people = applyNpcNotes(w, speakers, resp.npcs);
+    applied.effects.push(...people.effects);
+    applied.rejected.push(...people.rejected);
     // Подсветка находок в тексте — только принятых движком; «предъявить» — только найденную улику.
     resp.beats = resolveMarks(resp.beats, applied.effects);
     resp.suggestions = resp.suggestions.map((s) => {
@@ -270,6 +277,27 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
         records.at(-1)!.applied?.notes.unshift(`вывод: ${d.text}`);
         addEffect(effect.deduction(d.id, d.text), true);
       }
+      await checkBroken();
+      break;
+    }
+    case "present": {
+      const cs = needCase();
+      if (!w.npc) throw new GameError("Рядом некому показать улику.");
+      let r;
+      try {
+        r = presentClue(w, input.clue, w.npc.name);
+      } catch (e) {
+        throw new GameError((e as Error).message);
+      }
+      void cs;
+      const title = r.clue.title ?? r.clue.text;
+      const said = (input.text ?? "").trim().slice(0, 300);
+      await narrate(
+        "present",
+        said || `Показываю ${w.npc.name}: ${title}`,
+        caseActions.present(r.clue.text, w.npc.name, said, r.caught ? { lie: r.person!.lie!.text, secret: r.person!.secret } : null),
+      );
+      if (r.caught) addEffect(effect.caught(r.person!.name, r.person!.lie!.text), true);
       await checkBroken();
       break;
     }
