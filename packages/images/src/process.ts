@@ -23,6 +23,35 @@ export async function finishPortrait(cutout: Buffer, frame?: HeadFrame): Promise
   return { bytes: out.data, width: out.info.width, height: out.info.height };
 }
 
+/** Цвет фона, на котором рисуются портреты (plain light grey) — на нём же готовый портрет уходит в правку. */
+const PORTRAIT_GREY = { r: 205, g: 205, b: 205, alpha: 1 };
+
+/**
+ * Готовый портрет (webp с прозрачностью) → кадр для правки: тот же масштаб на сером фоне, width×height.
+ * Портрет не обрезается и не сдвигается — лицо-вариант ляжет точно поверх исходного.
+ */
+export async function portraitOnGrey(finished: Buffer, width: number, height: number): Promise<Buffer> {
+  const fg = await sharp(finished).resize(width, height, { fit: "fill" }).png().toBuffer();
+  return sharp({ create: { width, height, channels: 4, background: PORTRAIT_GREY } })
+    .composite([{ input: fg }])
+    .flatten({ background: PORTRAIT_GREY })
+    .png()
+    .toBuffer();
+}
+
+/**
+ * Вариант лица после правки и вырезки — в размер исходного портрета. Свет не трогаем: правка повторяет
+ * яркость исходника (уже осветлённого finishPortrait), второе осветление сделало бы вариант светлее.
+ */
+export async function finishVariant(cutout: Buffer, width: number, height: number): Promise<{ bytes: Buffer; width: number; height: number }> {
+  const { data, info } = await sharp(cutout).ensureAlpha().resize(width, height, { fit: "fill" }).raw().toBuffer({ resolveWithObject: true });
+  for (let i = 3; i < data.length; i += 4) if (data[i]! < 40) data[i] = 0;
+  const out = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+    .webp({ quality: 88, alphaQuality: 90 })
+    .toBuffer({ resolveWithObject: true });
+  return { bytes: out.data, width: out.info.width, height: out.info.height };
+}
+
 /**
  * Насколько силуэт обрезан рамкой: полоса 3 px сверху и по бокам (низ не считаем — портрет должен быть срезан).
  * Верх и бока — по отдельности: срезанная макушка или шляпа заметна, даже если это узкая полоса

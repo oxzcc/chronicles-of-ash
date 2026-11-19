@@ -210,6 +210,24 @@ export const arkhamArt: ArtStyle = {
     },
   },
   interiorTypes: ["office", "hotel", "diner", "police", "library", "newspaper", "church", "speakeasy", "warehouse", "cellar"],
+  // Проверено 19 ноября (data/emotions/arkham-2026-11-19): правка держит лицо, одежду, позу и стиль LoRA.
+  // Без шрамов и «dark circles» — LoRA рисует их ранами и потёками; «на грани» без «pale drawn face» — старило лицо.
+  emotions: {
+    npc: {
+      fear: { ru: "страх", en: "frightened: eyes wide open, eyebrows raised and drawn together, lips parted in alarm" },
+      anger: { ru: "гнев", en: "furious: brows sharply lowered and knitted, glaring eyes, nostrils flared, teeth bared, jaw clenched" },
+      sorrow: { ru: "печаль", en: "grieving: inner eyebrows raised, eyes glistening and downcast, corners of the mouth turned down" },
+      joy: { ru: "улыбка", en: "a warm genuine smile, eyes crinkled with amusement" },
+      shock: { ru: "потрясение", en: "stunned and caught out: eyes wide, eyebrows high, mouth slightly open, face frozen" },
+    },
+    hero: {
+      wounded: "in pain: wincing, teeth gritted, a thin trickle of blood from the temple, a few strands of hair loose and messy",
+      edge: "haunted: a hollow thousand-yard stare, tense jaw, a sheen of sweat on the brow, hair slightly dishevelled, the face as young as before",
+      breakdown: "in the grip of terror: eyes wide and staring, mouth open in a silent scream, hair dishevelled",
+    },
+    perNpc: 2,
+    perCampaign: 12,
+  },
   // Датасет: data/lora/arkham_dataset (58 картинок владельца, подписи — data/lora/arkham_captions.json).
   lora: {
     trigger: "mthnr style",

@@ -6,7 +6,8 @@ import { getWorld } from "@ash/worlds";
 import { describe, expect, it } from "vitest";
 import { createRouter } from "@ash/llm";
 import {
-  FakeImageProvider, FalImageProvider, heroVariants, LocalStorage, renderBackground, renderPortrait, describeNpc, portraitPrompt,
+  DEFAULT_EDIT_MODEL, editPrompt, FakeImageProvider, FalImageProvider, heroVariants, LocalStorage, lookFromPrompt, renderBackground, renderPortrait, renderVariant,
+  describeNpc, portraitPrompt,
 } from "../src/index";
 
 const world = getWorld("fantasy");
@@ -486,5 +487,50 @@ describe("проверка портрета моделью со зрением",
     seeds.length = 0;
     await renderPortrait({ world, provider, storage, description: "a woman", key: "npc/k", seed: 1 });
     expect(seeds).toHaveLength(1);
+  });
+});
+
+describe("варианты лица (эмоции)", () => {
+  const arkham = getWorld("arkham");
+  it("правка: тот же размер и прозрачный фон, что у портрета; лицо другое", async () => {
+    const storage = new LocalStorage(await mkdtemp(join(tmpdir(), "ash-img-")));
+    const provider = new FakeImageProvider();
+    const base = await renderPortrait({ world: arkham, provider, storage, description: "a woman librarian, round glasses", key: "npc/base" });
+    const v = await renderVariant({ world: arkham, provider, storage, baseUrl: base.url, look: "a woman librarian, round glasses", change: "frightened", key: "emo/v1", seed: 1 });
+    expect(v.url).toBe("/api/images/emo/v1.webp");
+    const a = await sharp((await storage.get(base.url))!).metadata();
+    const b = await sharp((await storage.get(v.url))!).metadata();
+    expect([b.width, b.height]).toEqual([a.width, a.height]);
+    expect(b.hasAlpha).toBe(true);
+    expect(v.prompt).toContain("round glasses");
+    expect(v.prompt).toContain("Change only the facial expression to frightened");
+    expect((await storage.get(v.url))!.equals((await storage.get(base.url))!)).toBe(false);
+  });
+  it("без правки у провайдера или без файла портрета — ошибка, а не пустая картинка", async () => {
+    const storage = new LocalStorage(await mkdtemp(join(tmpdir(), "ash-img-")));
+    const bare = { name: "bare", generate: new FakeImageProvider().generate, removeBackground: new FakeImageProvider().removeBackground };
+    await expect(renderVariant({ world: arkham, provider: bare, storage, baseUrl: "/api/images/npc/x.webp", look: "", change: "x", key: "emo/x", seed: 1 })).rejects.toThrow(/правк/);
+    await expect(renderVariant({ world: arkham, provider: new FakeImageProvider(), storage, baseUrl: "/api/images/npc/none.webp", look: "", change: "x", key: "emo/x", seed: 1 })).rejects.toThrow(/нет файла/);
+  });
+  it("облик из промпта портрета: без триггера, кадра и фона", () => {
+    const prompt = portraitPrompt(arkham, "a tall elderly man professor, pince-nez", true);
+    expect(lookFromPrompt(arkham, prompt)).toBe("a tall elderly man professor, pince-nez");
+    expect(lookFromPrompt(world, portraitPrompt(world, "dwarf smith, braided beard"))).toBe("dwarf smith, braided beard");
+    expect(editPrompt(arkham, "x", "y")).toMatch(/^mthnr style, the same person/);
+    expect(editPrompt(arkham, "x", "y")).toContain("glasses and every accessory");
+  });
+  it("fal: правка с LoRA, картинка data URI, размер кадра, цена за вход и выход", async () => {
+    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#888" } }).png().toBuffer();
+    const calls: { url: string; body: any }[] = [];
+    const fetchImpl = (async (url: string, init: any) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ images: [{ url: `data:image/png;base64,${png.toString("base64")}` }] }));
+    }) as unknown as typeof fetch;
+    const p = new FalImageProvider({ key: "k", portraitModel: "m", backgroundModel: "m", cutoutModel: "fal-ai/birefnet/v2", editModel: DEFAULT_EDIT_MODEL, fetchImpl });
+    const r = await p.edit({ image: png, prompt: "smile", width: 1024, height: 1536, seed: 5, lora: { url: "https://x/l.safetensors", scale: 1.2 } });
+    expect(calls[0]!.url).toBe(`https://fal.run/${DEFAULT_EDIT_MODEL}`);
+    expect(calls[0]!.body).toMatchObject({ prompt: "smile", sync_mode: true, image_size: { width: 1024, height: 1536 }, seed: 5, loras: [{ path: "https://x/l.safetensors", scale: 1.2 }] });
+    expect(calls[0]!.body.image_urls[0]).toMatch(/^data:image\/png;base64,/);
+    expect(r.costUsd).toBeCloseTo(0.02 * (1 + 1.572864), 4);
   });
 });

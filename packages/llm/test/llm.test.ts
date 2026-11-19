@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createCharacter, layoutCampaign, mulberry32, scriptedRng } from "@ash/engine";
 import { getWorld } from "@ash/worlds";
 import {
-  FakeProvider, OpenRouterProvider, parseGmResponse, parsePartialJson, partialBeats, runNarratorTurn, toWireMessages,
+  FakeProvider, gmRules, OpenRouterProvider, parseGmResponse, parsePartialJson, partialBeats, runNarratorTurn, toWireMessages,
   type CompletionRequest, type CompletionResult, type LlmProvider,
 } from "../src/index";
 
@@ -237,8 +237,8 @@ describe("промпты по мирам", () => {
     expect(a).toContain("ПОСТОЯННЫЕ ЛИЦА:");
     expect(a).toContain(`доктор Сайлас Уэйкфилд (наставник, отставной профессор антропологии): ${arkham.cast!.mentor.look}.`);
     expect(gmRules(world)).not.toContain("ПОСТОЯННЫЕ ЛИЦА");
-    expect(promptVersion(arkham)).toBe("gm-6+arkham-5");
-    expect(promptVersion(world)).toBe("gm-6");
+    expect(promptVersion(arkham)).toBe("gm-7+arkham-5");
+    expect(promptVersion(world)).toBe("gm-7");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
     const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] }, mulberry32(1));
@@ -256,7 +256,7 @@ describe("промпты по мирам", () => {
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-6+arkham-5");
+    expect(r.promptVersion).toBe("gm-7+arkham-5");
   });
 });
 
@@ -322,5 +322,36 @@ describe("люди и тайны в промптах", () => {
     w.turn += 3;
     expect(narratorUserPrompt(arkham, { character: hero, campaign: w, history: [], action: "Жду" })).toContain("Поворот уже случился");
     expect(gmRules(arkham)).toContain("ПАМЯТЬ О ЛЮДЯХ");
+  });
+});
+
+describe("эмоции реплик", () => {
+  it("эмоция только у NPC; «нет» и null — без эмоции; слово приводится к нижнему регистру", () => {
+    const r = parseGmResponse(
+      JSON.stringify({
+        beats: [
+          { speaker: null, emotion: "страх", text: "Свеча гаснет." },
+          { speaker: "Кит", emotion: "Страх", text: "Я ничего не видел!" },
+          { speaker: "Кит", emotion: "нет", text: "Совсем ничего." },
+          { speaker: "Кит", emotion: null, text: "Уходите." },
+          { speaker: "Кит", emotion: 5, text: "Прошу." },
+        ],
+      }),
+      R,
+    );
+    expect(r.ok).toBe(true);
+    const beats = r.ok ? r.value.beats : [];
+    expect(beats.map((b) => b.emotion)).toEqual([undefined, "страх", undefined, undefined, undefined]);
+  });
+  it("эмоция видна уже в недописанном ответе, если идёт перед text", () => {
+    const beats = partialBeats('{"beats":[{"speaker":"Кит","emotion":"гнев","text":"Вон отсю');
+    expect(beats[0]).toMatchObject({ speaker: "Кит", emotion: "гнев" });
+  });
+  it("правило и поле emotion — только в мире с эмоциями", () => {
+    const arkham = getWorld("arkham");
+    expect(gmRules(arkham)).toContain("ЭМОЦИИ (emotion)");
+    expect(gmRules(arkham)).toContain('"emotion":null');
+    for (const e of Object.values(arkham.art.emotions!.npc)) expect(gmRules(arkham)).toContain(e.ru);
+    expect(gmRules(world)).not.toContain("emotion");
   });
 });

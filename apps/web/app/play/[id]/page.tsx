@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { locationById, locationTypeName, matchName, type CheckResult, type CombatEvent, type CombatMove, type CombatState, type LocationType } from "@ash/engine";
+import { heroMood, locationById, locationTypeName, matchName, type CheckResult, type CombatEvent, type CombatMove, type CombatState, type LocationType } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnEffect, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
-import { BeatText, beatsOf, Bust, Drawer, Icon, Pips, TextFrame, type Mark } from "@/components/vn";
+import { BeatText, beatsOf, Bust, Drawer, heroBeat, Icon, Pips, playerKinds, TextFrame, type Mark, type Shown } from "@/components/vn";
 import { CaseFile, CloseCase, Directory, Newspaper, People } from "@/components/case";
 
 type Input =
@@ -48,6 +48,8 @@ interface Enter {
 
 const ARRIVAL_MS = 2600;
 const NPC_DELAY_MS = 4000;
+/** Сколько держится кадр с действием героя, прежде чем сам уступит ответу мира. */
+const HERO_LINE_MS = 1200;
 
 /** Портрет NPC по имени: точно или по похожему имени («Эзра» = «Эзра Кроу») — так же, как сервер. */
 function npcView(scene: SceneView | undefined, name: string | null | undefined) {
@@ -89,7 +91,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         const last = v.turns.at(-1);
         if (last) {
           setBatch([last]);
-          setCursor(Math.max(0, beatsOf(last).length - 1));
+          setCursor(Math.max(0, beatsOf(last, v.character.name).length - 1));
         }
       })
       .catch((e) => setError(e.message));
@@ -172,17 +174,31 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     }
   }, [view, send]);
 
-  // Реплики хода: пока ход идёт — потоковые, после — сохранённые.
-  const all: Beat[] = useMemo(() => {
-    if (live && !live.done) return [...live.beats, ...live.combatEvents.map((e) => ({ speaker: null, text: e.text }))];
-    return batch.flatMap(beatsOf);
-  }, [live, batch]);
-  const firstSpeaker = all.findIndex((b) => b.speaker);
+  // Реплики хода: пока ход идёт — потоковые, после — сохранённые. Первым кадром — действие самого героя.
+  const heroName = view?.character.name;
+  const all: Shown[] = useMemo(() => {
+    if (live && !live.done)
+      return [
+        ...(heroName && playerKinds.has(live.kind) ? [heroBeat(heroName, live.label)] : []),
+        ...live.beats,
+        ...live.combatEvents.map((e) => ({ speaker: null, text: e.text })),
+      ];
+    return batch.flatMap((t) => beatsOf(t, heroName));
+  }, [live, batch, heroName]);
+  const firstSpeaker = all.findIndex((b) => b.speaker && !b.hero);
   // При входе в локацию: во время заставки реплик нет, потом — только рассказчик, пока NPC не вышел.
   const gate = !enter || enter.phase === "open" ? all.length : enter.phase === "title" ? 0 : firstSpeaker < 0 ? all.length : firstSpeaker;
   const beats = useMemo(() => all.slice(0, gate), [all, gate]);
   const atEnd = cursor >= beats.length - 1;
   const streaming = !!live && !live.done;
+
+  // Кадр с действием героя сам уступает первой реплике ответа, если игрок ещё на нём.
+  const replyArrived = streaming && all.length > 1 && !!all[0]?.hero;
+  useEffect(() => {
+    if (!replyArrived) return;
+    const t = setTimeout(() => setCursor((c) => (c === 0 ? 1 : c)), HERO_LINE_MS);
+    return () => clearTimeout(t);
+  }, [replyArrived]);
 
   // Заставка → рассказчик.
   useEffect(() => {
@@ -238,7 +254,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     // Все, кто говорит в текущих репликах, — их портреты тоже ждём. И противника в бою.
     const speakers = all.map((b) => npcView(scene, b.speaker));
     const foe = view.campaign.combat ? npcView(scene, foeOf(view.campaign.combat)?.name) : undefined;
-    return [bg, npc, foe, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"));
+    // Варианты лица (эмоции, состояние героя) тоже приходят опросом.
+    return !!scene.variantsPending || [bg, npc, foe, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"));
   }, [view, scene, all, enter?.to]);
   // Пока ход не сохранён, сервер не знает фон новой локации — передаём его явно.
   const sceneUrl = `/api/campaigns/${id}/scene` + (enter?.imageId ? `?loc=${encodeURIComponent(enter.to)}&bg=${enter.imageId}` : "");
@@ -253,6 +270,13 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     return () => clearInterval(t);
   }, [pending, sceneUrl]);
 
+  // Готовые варианты лица — в кэш браузера заранее: эмоция появляется сразу, а не по мере загрузки.
+  useEffect(() => {
+    if (!scene) return;
+    const urls = [...Object.values(scene.heroMoods ?? {}), ...Object.values(scene.npcs).flatMap((n) => Object.values(n.emotions ?? {}))];
+    for (const u of urls) new Image().src = u;
+  }, [scene]);
+
   if (!view) return <main className="wrap">{error ? <p className="error">{error}</p> : <p className="muted">Открываю летопись…</p>}</main>;
 
   const { character: c, campaign: w } = view;
@@ -262,12 +286,20 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const bgUrl = scene?.locations[enter?.to ?? w.current]?.url;
   const titleCard = enter?.phase === "title";
   const beat = beats[Math.min(cursor, beats.length - 1)];
-  const speakerName = beat?.speaker ?? null;
+  // Кадр героя: говорит он сам, на сцене остаётся собеседник — приглушённо, как при голосе рассказчика.
+  const heroLine = !!beat?.hero;
+  const speakerName = heroLine ? null : (beat?.speaker ?? null);
+  // Лицо героя — по состоянию движка (ранен, на грани, срыв), если вариант уже нарисован.
+  const mood = heroMood(c, w);
+  const heroOver = mood ? scene?.heroMoods?.[mood] : undefined;
+  const heroFace = heroOver ?? scene?.hero?.url;
   // На сцене — тот, кто говорит; когда звучит голос рассказчика — последний собеседник, приглушённо.
   // При входе в локацию прежний собеседник остался позади: до выхода NPC сцена пуста, потом — тот, кто заговорит.
   const nextNpc = all.find((b) => b.speaker)?.speaker ?? null;
   const onStage = enter ? (enter.phase === "open" ? (speakerName ?? nextNpc) : null) : (speakerName ?? (w.combat ? null : (w.npc?.name ?? null)));
   const stage = npcView(scene, onStage);
+  // Эмоция реплики — вариант лица поверх портрета, если он уже готов; иначе нейтральный портрет.
+  const emotionUrl = speakerName && beat?.emotion ? stage?.emotions?.[beat.emotion] : undefined;
   const role = speakerName && w.npc && matchName(speakerName, [w.npc.name]) === 0 ? w.npc.role : undefined;
   const foe = w.combat ? foeOf(w.combat) : undefined;
   const foeImg = npcView(scene, foe?.name);
@@ -294,11 +326,11 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       <div className="vn-shade" />
       {titleCard ? null : w.combat ? (
         <>
-          <Bust url={scene?.hero?.url} name={c.name} side="left" />
+          <Bust url={scene?.hero?.url} over={heroOver} name={c.name} side="left" />
           <Bust url={foeImg?.url} name={foe?.name ?? "Противник"} side="right" failed={!foeImg || foeImg.status === "failed" || foeImg.status === "none"} />
         </>
       ) : (
-        onStage && <Bust url={stage?.url} name={onStage} side="left" dim={!speakerName} failed={!stage || stage.status === "failed" || stage.status === "none"} />
+        onStage && <Bust url={stage?.url} over={emotionUrl} name={onStage} side="left" dim={!speakerName} failed={!stage || stage.status === "failed" || stage.status === "none"} />
       )}
 
       <header className="vn-hud">
@@ -308,7 +340,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         </div>
         <div className="vn-hud-right">
           <button className="vn-hero" onClick={() => setPanel("hero")} aria-label="Лист героя">
-            {scene?.hero?.url ? <img src={scene.hero.url} alt="" /> : <span className="vn-hero-ph">{c.name[0]}</span>}
+            {heroFace ? <img key={heroFace} src={heroFace} alt="" /> : <span className="vn-hero-ph">{c.name[0]}</span>}
             <span className="vn-hero-info">
               <span className="n">{c.name}</span>
               <span key={`hp${view.turnNo}`} className={`vn-hp ${hurt("hp") ? "hurt" : ""}`} role="img" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
@@ -350,9 +382,20 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
 
       <section className="vn-dock" hidden={titleCard}>
         {(beat || streaming) && (
-          <TextFrame speaker={speakerName} role={role} onAdvance={!atEnd ? advance : undefined} hint={!atEnd ? "Пробел" : undefined}>
+          <TextFrame
+            speaker={heroLine ? c.name : speakerName}
+            role={heroLine ? undefined : role}
+            hero={heroLine}
+            avatar={heroLine ? heroFace : undefined}
+            onAdvance={!atEnd ? advance : undefined}
+            hint={!atEnd ? "Пробел" : undefined}
+          >
             {beat ? <BeatText beat={beat} onMark={openMark} /> : <span className="vn-writing">{live?.waiting}</span>}
-            {beat && streaming && atEnd && <span className="vn-caret" aria-hidden="true" />}
+            {heroLine && streaming && atEnd ? (
+              <div className="vn-writing vn-after">{live?.waiting}</div>
+            ) : (
+              beat && streaming && atEnd && <span className="vn-caret" aria-hidden="true" />
+            )}
           </TextFrame>
         )}
         <Pips total={beats.length} at={cursor} />

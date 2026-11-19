@@ -64,7 +64,7 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-6+arkham-5");
+    expect(a.records[0]!.promptVersion).toBe("gm-7+arkham-5");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
@@ -508,4 +508,101 @@ describe.skipIf(!url)("картинки", async () => {
     await drain(d);
     expect((await row(bgId)).url).toMatch(/-r2\.webp$/);
   }, 20_000); // дважды прогоняет всю очередь мира — дольше 5 с по умолчанию
+  it("эмоции: лицо рисуется правкой готового портрета; ждёт портрет; у жителей лимит, у своих — один раз на мир", async () => {
+    const d = await deps();
+    await drain(d);
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const arkham = getWorld("arkham");
+    const draftA: CharacterDraft = { world: "arkham", phobia: "Мертвецы", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: draftA, rng: mulberry32(3), seed: "emo" });
+    const id = await createCampaign(db, uid, g);
+    const c = await loadCampaign(db, uid, id);
+    // Новый NPC: портрет ещё в очереди — вариант встаёт за ним и ждёт, попытку не тратит.
+    await v.ensureNpc(db, id, arkham, { name: "Кит Ларкин", race: "human", gender: "m", role: "слуга", look: "худой, бледный" });
+    const fear = await v.ensureEmotion(db, id, arkham, "Кит", "fear");
+    expect(fear).toBeTruthy();
+    expect(await v.ensureEmotion(db, id, arkham, "Кит", "fear")).toBe(fear); // тот же вариант, не второй
+    const [npc] = await db.select().from(npcs).where(eq(npcs.campaignId, id));
+    await db.update(images).set({ status: "working" }).where(eq(images.id, npc!.portraitImageId!));
+    expect(await v.processOne(d)).toBe(true); // берёт вариант: портрет «рисуется»
+    const row = async (iid: string) => (await db.select().from(images).where(eq(images.id, iid)))[0]!;
+    expect((await row(fear!)).status).toBe("queued");
+    expect((await row(fear!)).attempts).toBe(0);
+    await db.update(images).set({ status: "queued" }).where(eq(images.id, npc!.portraitImageId!));
+    let scene = await v.sceneView(db, id, c.characterId, g.campaign);
+    expect(scene.variantsPending).toBe(true);
+    await drain(d);
+    scene = await v.sceneView(db, id, c.characterId, g.campaign);
+    expect(scene.npcs["кит ларкин"]!.emotions?.fear).toMatch(/^\/api\/images\/emo\/.+\.webp$/);
+    expect(scene.variantsPending).toBeUndefined();
+    const fearRow = await row(fear!);
+    expect(fearRow.campaignId).toBe(id);
+    const { lookFromPrompt } = await import("@ash/images");
+    const look = lookFromPrompt(arkham, (await row(npc!.portraitImageId!)).prompt);
+    expect(look.length).toBeGreaterThan(5);
+    expect(fearRow.prompt).toContain(look); // облик — из промпта портрета
+    // Лимит жителя — две разные эмоции; чужое слово — ничего.
+    expect(await v.ensureEmotion(db, id, arkham, "Кит Ларкин", "anger")).toBeTruthy();
+    expect(await v.ensureEmotion(db, id, arkham, "Кит Ларкин", "joy")).toBeNull();
+    expect(await v.ensureEmotion(db, id, arkham, "Кит Ларкин", "ярость")).toBeNull();
+    // Чудовищу эмоций нет; незнакомцу без портрета — тоже.
+    await v.ensureNpc(db, id, arkham, { name: "Тварь из колодца", race: "human", gender: "m", role: "чудовище", look: "щупальца", creature: true });
+    expect(await v.ensureEmotion(db, id, arkham, "Тварь из колодца", "anger")).toBeNull();
+    expect(await v.ensureEmotion(db, id, arkham, "Никто", "fear")).toBeNull();
+    // Свои: портрет общий на мир — и эмоция тоже: во второй кампании та же картинка.
+    await v.prefetchVisuals(db, id, arkham, g.campaign);
+    const id2 = await createCampaign(db, uid, g);
+    await v.prefetchVisuals(db, id2, arkham, structuredClone(g.campaign));
+    const hattie = await v.ensureEmotion(db, id, arkham, "Хэтти", "sorrow");
+    expect(hattie).toBeTruthy();
+    expect(await v.ensureEmotion(db, id2, arkham, "Хэтти Колдуэлл", "sorrow")).toBe(hattie);
+    expect((await row(hattie!)).campaignId).toBeNull();
+    for (const e of ["fear", "anger", "joy"]) expect(await v.ensureEmotion(db, id, arkham, "Хэтти", e)).toBeTruthy(); // у своих лимита нет
+    await drain(d);
+    // В фэнтези эмоций нет.
+    expect(await v.ensureEmotion(db, id, getWorld("fantasy"), "Кит", "fear")).toBeNull();
+  }, 20_000);
+
+  it("эмоции после хода: реплики с эмоцией → варианты лица; лицо героя — по состоянию, про запас заранее", async () => {
+    const d = await deps();
+    await drain(d);
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const arkham = getWorld("arkham");
+    const draftA: CharacterDraft = { world: "arkham", phobia: "Мертвецы", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: draftA, rng: mulberry32(4), seed: "emo2" });
+    const id = await createCampaign(db, uid, g);
+    const c = await loadCampaign(db, uid, id);
+    const opts = await v.createHeroOptions(db, fakeRouter(), uid, { world: "arkham", race: "human", cls: "journalist", gender: "f" }, "");
+    await drain(d);
+    await v.attachHeroPortrait(db, uid, c.characterId, opts[0]!.id);
+    const early: string[] = [];
+    const reply = {
+      speaker: { name: "Мэри Хоу", race: "human", gender: "f", role: "вдова", look: "чёрное платье" },
+      beats: [
+        { speaker: null, emotion: "страх", text: "Свеча гаснет." },
+        { speaker: "Мэри Хоу", emotion: "Страх", text: "Кто здесь?!" },
+        { speaker: "Мэри Хоу", emotion: "ярость", text: "Уходите." },
+      ],
+    };
+    const r = await playTurn(deps0({ router: scriptedRouter([reply]), onEmotion: (n, e) => early.push(`${n}|${e}`) }), c.state, c.recent, { kind: "start" });
+    expect(r.records[0]!.beats.map((b) => b.emotion)).toEqual([undefined, "fear", undefined]);
+    expect(early).toEqual(["Мэри Хоу|fear"]);
+    r.state.character.hp = Math.floor(r.state.character.hpMax / 3); // ранен
+    await v.prepareVisuals(db, id, r.state, r.records);
+    await drain(d);
+    const scene = await v.sceneView(db, id, c.characterId, r.state.campaign);
+    expect(Object.keys(scene.npcs["мэри хоу"]!.emotions ?? {})).toEqual(["fear"]);
+    // Ранен сейчас; рассудок цел — «на грани» и «срыв» не рисуются.
+    expect(Object.keys(scene.heroMoods ?? {})).toEqual(["wounded"]);
+    // Рассудок на половине — «на грани» и «срыв» про запас.
+    r.state.character.sanity = Math.floor(r.state.character.sanityMax! / 2);
+    await v.prepareVisuals(db, id, r.state, []);
+    await drain(d);
+    expect(Object.keys((await v.sceneView(db, id, c.characterId, r.state.campaign)).heroMoods ?? {}).sort()).toEqual(["breakdown", "edge", "wounded"]);
+    // Перерисовка мира с героями: варианты лица — снова в очередь вместе со своими портретами.
+    const counts = await v.restyleImages(db, "arkham", { heroes: true, dryRun: true });
+    expect(counts.emotion).toBeGreaterThanOrEqual(4);
+  }, 20_000);
 });

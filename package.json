@@ -23,7 +23,8 @@
     "lora:train": "tsx --env-file-if-exists=.env tools/lora/train.ts",
     "lora:compare": "tsx --env-file-if-exists=.env tools/lora/compare.ts",
     "cast:preview": "tsx --env-file-if-exists=.env tools/cast-preview.ts",
-    "images:restyle": "tsx --env-file-if-exists=.env tools/restyle-images.ts"
+    "images:restyle": "tsx --env-file-if-exists=.env tools/restyle-images.ts",
+    "emotions:preview": "tsx --env-file-if-exists=.env tools/emotion-preview.ts"
   },
   "devDependencies": {
     "@fal-ai/client": "^1.11.0",

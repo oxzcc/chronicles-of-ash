@@ -148,6 +148,8 @@ textarea { resize: vertical; }
   -webkit-mask-image: linear-gradient(0deg, transparent 0%, #000 12%); mask-image: linear-gradient(0deg, transparent 0%, #000 12%); }
 .vn-bust.left { left: 0; object-position: left bottom; }
 .vn-bust.right { right: 0; transform: scaleX(-1); object-position: left bottom; }
+/* Вариант лица — тот же кадр поверх портрета: проявляется, портрет под ним не мигает */
+.vn-bust-over { animation: vnFade 0.35s ease; }
 .vn-silhouette { opacity: 0.9; animation: vnPulse 2.2s ease-in-out infinite; }
 .vn-silhouette.still { animation: none; opacity: 0.7; }
 @keyframes vnPulse { 50% { opacity: 0.6; } }
@@ -182,9 +184,18 @@ textarea { resize: vertical; }
 .vn-nameplate { position: absolute; top: -28px; left: 26px; padding: 6px 20px 7px; background: linear-gradient(180deg, #2a1d14, #17100b); border: 1px solid var(--gold); box-shadow: 0 0 0 3px rgba(17, 12, 9, 0.95); }
 .vn-nameplate .who { font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold-hi); line-height: 1; }
 .vn-nameplate .role { font-family: var(--ui); font-size: 12px; letter-spacing: 0.05em; color: #e0803f; margin-top: 3px; }
+/* Действие героя — первым кадром хода: имя справа, маленький портрет у имени */
+.vn-nameplate { display: flex; align-items: center; gap: 12px; }
+.vn-frame.hero .vn-nameplate { left: auto; right: 26px; padding-left: 8px; }
+.vn-frame.hero .vn-line { color: #e9dcc4; }
+.vn-avatar { position: relative; width: 56px; height: 56px; margin: -18px 0 -12px; border-radius: 50%; overflow: hidden; border: 1px solid var(--gold); background: #2a1d14; flex: none;
+  display: grid; place-items: center; font-family: var(--display); font-size: 24px; color: var(--gold-hi); }
+/* Портрет по пояс 2:3 → в кружке только голова: голова у всех портретов в верхней трети кадра */
+.vn-avatar img { position: absolute; width: 250%; max-width: none; left: 50%; top: -3%; transform: translateX(-50%); animation: vnFade 0.35s ease; }
 .vn-line { font-size: 23px; line-height: 1.5; color: #f6ead3; }
 .vn-narr { font-size: 21px; line-height: 1.6; font-style: italic; color: #e6d6ba; white-space: pre-line; }
 .vn-writing { color: var(--muted); }
+.vn-writing.vn-after { margin-top: 8px; font-family: var(--ui); font-size: 14px; font-style: normal; }
 .vn-writing::after { content: "…"; display: inline-block; width: 1.2em; overflow: hidden; vertical-align: bottom; animation: dots 1.2s steps(4) infinite; }
 .vn-caret { display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: var(--gold); vertical-align: -2px; animation: vnPulse 1s infinite; }
 .vn-advance { position: absolute; right: 20px; bottom: 12px; display: flex; align-items: center; gap: 8px; font-family: var(--ui); font-size: 12px; color: var(--gold); }

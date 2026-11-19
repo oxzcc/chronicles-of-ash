@@ -1,8 +1,11 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { characters, images, npcs, type Db } from "@ash/db";
-import { hashStr, locationById, matchName, neighbors, sameName, type Campaign, type CharacterDraft, type LocationType } from "@ash/engine";
+import { campaigns, characters, images, npcs, type Db } from "@ash/db";
 import {
-  baseHero, describeLocation, describeNpc, guessNpc, heroVariants, portraitInspector, renderBackground, renderPortrait,
+  hashStr, heroMood, heroMoodsAhead, locationById, matchName, neighbors, sameName,
+  type Campaign, type Character, type CharacterDraft, type HeroMood, type LocationType,
+} from "@ash/engine";
+import {
+  baseHero, describeLocation, describeNpc, guessNpc, heroVariants, lookFromPrompt, portraitInspector, renderBackground, renderPortrait, renderVariant,
   type ImageProvider, type ImageStorage, type NpcCard, type TimeOfDay,
 } from "@ash/images";
 import type { ModelRouter, Speaker } from "@ash/llm";
@@ -27,6 +30,8 @@ type Job = { world?: string; rev?: number } & (
   | { type: "hero"; description: string; label: string; seed: number }
   /** Готовое описание портрета (постоянные лица мира): без служебной модели. */
   | { type: "portrait"; description: string; seed: number }
+  /** Вариант лица: эмоция NPC или состояние героя — правка готового портрета base (id картинки). */
+  | { type: "variant"; base: string; mood: string; change: string; seed: number }
 );
 
 export interface VisualDeps {
@@ -39,6 +44,8 @@ export interface VisualDeps {
 /** Сколько вариантов фона одного типа держим в общей библиотеке. */
 export const LIBRARY_PER_TYPE = 3;
 export const MAX_ATTEMPTS = 3;
+/** Вариант лица ждёт свой портрет: пауза потока воркера, чтобы не крутить очередь вхолостую. */
+export const VARIANT_WAIT_MS = 1500;
 
 export const npcKey = (name: string) => name.trim().toLowerCase().replace(/ё/g, "е");
 
@@ -245,6 +252,89 @@ async function ensureCast(db: Db, campaignId: string, world: World, rows: NpcRow
 }
 
 /**
+ * Варианты лица (этап 3): эмоции NPC и состояния героя. Рисуются правкой готового портрета, лениво,
+ * через ту же очередь; пока варианта нет — на экране нейтральный портрет. Тег — `emo:<id портрета>:<эмоция>`:
+ * у своих портрет общий на мир, поэтому и их эмоции рисуются один раз на мир.
+ */
+export const variantTag = (baseId: string, mood: string) => `emo:${baseId}:${mood}`;
+/** Пары «портрет + эмоция», которые сейчас ставятся в очередь этим процессом: ранний вызов и вызов после хода не задвоят. */
+const variantLocks = new Set<string>();
+
+async function enqueueVariant(
+  db: Db,
+  o: { world: World; baseId: string; mood: string; change: string; campaignId?: string; prefetch?: boolean; limit?: { perBase: number; perCampaign: number } },
+): Promise<string | null> {
+  const tag = variantTag(o.baseId, o.mood);
+  if (variantLocks.has(tag)) return null;
+  variantLocks.add(tag);
+  try {
+    const [have] = await db
+      .select({ id: images.id })
+      .from(images)
+      .where(and(eq(images.kind, "emotion"), sql`${images.tags} @> ARRAY[${tag}]::text[]`, inArray(images.status, ["queued", "working", "ready"])))
+      .limit(1);
+    if (have) {
+      if (!o.prefetch) await promote(db, have.id);
+      return have.id;
+    }
+    if (o.limit) {
+      // Лимиты считают и неудачные: провалившуюся правку не перерисовываем бесконечно за деньги игрока.
+      const [{ n: perBase } = { n: 0 }] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(images)
+        .where(and(eq(images.kind, "emotion"), sql`(${images.job}->>'base') = ${o.baseId}`));
+      if (perBase >= o.limit.perBase) return null;
+      if (o.campaignId) {
+        const [{ n: perCampaign } = { n: 0 }] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(images)
+          .where(and(eq(images.kind, "emotion"), eq(images.campaignId, o.campaignId)));
+        if (perCampaign >= o.limit.perCampaign) return null;
+      }
+    }
+    return await enqueue(db, {
+      kind: "emotion",
+      tags: [tag],
+      campaignId: o.campaignId,
+      prefetch: o.prefetch,
+      job: { world: o.world.id, type: "variant", base: o.baseId, mood: o.mood, change: o.change, seed: hashStr(o.baseId + o.mood) % 1_000_000 },
+    });
+  } finally {
+    variantLocks.delete(tag);
+  }
+}
+
+/**
+ * Эмоция у реплики NPC → вариант лица в очередь. Свои — без лимитов (один раз на мир);
+ * остальным — не больше art.emotions.perNpc разных эмоций и perCampaign вариантов на кампанию.
+ * Чудовищам эмоций нет. Нет портрета (NPC ещё не известен) — ничего: позовут ещё раз после хода.
+ */
+export async function ensureEmotion(db: Db, campaignId: string, world: World, name: string, emotion: string, o: { rows?: NpcRow[] } = {}) {
+  const e = world.art.emotions;
+  const change = e?.npc[emotion]?.en;
+  if (!e || !change) return null;
+  const npc = knownNpc(o.rows ?? (await npcRows(db, campaignId)), name);
+  if (!npc?.img) return null;
+  const [base] = await db.select({ kind: images.kind, tags: images.tags, job: images.job }).from(images).where(eq(images.id, npc.img));
+  if (!base || base.kind !== "npc") return null;
+  if ((base.job as { card?: { creature?: boolean } }).card?.creature) return null;
+  const cast = base.tags.some((t) => t.startsWith("cast:"));
+  return enqueueVariant(db, cast ? { world, baseId: npc.img, mood: emotion, change } : { world, baseId: npc.img, mood: emotion, change, campaignId, limit: { perBase: e.perNpc, perCampaign: e.perCampaign } });
+}
+
+/**
+ * Лицо героя по состоянию движка: нынешнее — срочно, те, к которым он подходит (половина здоровья
+ * или рассудка), — про запас. Не больше трёх на героя: варианты общие для всех его кампаний.
+ */
+export async function ensureHeroMoods(db: Db, world: World, portraitImageId: string | null | undefined, c: Character, w: Pick<Campaign, "turn" | "brokeAt">) {
+  const e = world.art.emotions;
+  if (!e || !portraitImageId) return;
+  const now = heroMood(c, w);
+  const moods = [...new Set<HeroMood>([...(now ? [now] : []), ...heroMoodsAhead(c)])];
+  for (const m of moods) await enqueueVariant(db, { world, baseId: portraitImageId, mood: m, change: e.hero[m], prefetch: m !== now });
+}
+
+/**
  * Про запас: фоны мест, куда герой может пойти сразу, постоянные лица мира и портреты жителей дела, которых там можно встретить.
  * Зовётся при создании кампании (пока рассказчик пишет завязку) и после каждого хода — для новых адресов.
  * Все задачи — с низким приоритетом: срочные портреты и фоны идут первыми.
@@ -272,6 +362,22 @@ export async function prepareVisuals(db: Db, campaignId: string, state: GameStat
   await ensureNpcs(db, campaignId, world, records, state.character.name);
   await ensureBackground(db, campaignId, world, state.campaign);
   await prefetchVisuals(db, campaignId, world, state.campaign);
+  if (world.art.emotions) {
+    // Эмоции — после портретов: новому NPC вариант лица ставится, когда его портрет уже в очереди.
+    const rows = await npcRows(db, campaignId);
+    const seen = new Set<string>();
+    for (const b of records.flatMap((r) => r.beats))
+      if (b.speaker && b.emotion && !sameName(b.speaker, state.character.name) && !seen.has(`${b.speaker}|${b.emotion}`)) {
+        seen.add(`${b.speaker}|${b.emotion}`);
+        await ensureEmotion(db, campaignId, world, b.speaker, b.emotion, { rows });
+      }
+    const [hero] = await db
+      .select({ img: characters.portraitImageId })
+      .from(characters)
+      .innerJoin(campaigns, eq(campaigns.characterId, characters.id))
+      .where(eq(campaigns.id, campaignId));
+    await ensureHeroMoods(db, world, hero?.img, state.character, state.campaign);
+  }
 }
 
 /** Фон текущей локации для клиента — сразу при входе, ещё до рассказа мастера. */
@@ -302,10 +408,14 @@ export interface ImageView {
 
 export interface SceneView {
   hero: ImageView | null;
+  /** Готовые лица героя по состоянию (heroMood): wounded, edge, breakdown → адрес. */
+  heroMoods?: Record<string, string>;
   /** Фоны локаций по id локации. */
   locations: Record<string, ImageView>;
-  /** Портреты NPC по имени в нижнем регистре. */
-  npcs: Record<string, ImageView & { name: string }>;
+  /** Портреты NPC по имени в нижнем регистре; emotions — готовые варианты лица: эмоция → адрес. */
+  npcs: Record<string, ImageView & { name: string; emotions?: Record<string, string> }>;
+  /** Какие-то варианты лица ещё рисуются — клиенту стоит опрашивать сцену. */
+  variantsPending?: boolean;
 }
 
 export async function sceneView(db: Db, campaignId: string, characterId: string, w: Campaign): Promise<SceneView> {
@@ -315,10 +425,23 @@ export async function sceneView(db: Db, campaignId: string, characterId: string,
   const rows = ids.length ? await db.select({ id: images.id, status: images.status, url: images.url }).from(images).where(inArray(images.id, ids)) : [];
   const byId = new Map(rows.map((r) => [r.id, { status: r.status, url: r.url }]));
   const view = (id?: string | null): ImageView | null => (id ? (byId.get(id) ?? null) : null);
+  // Варианты лица: только для портретов этой сцены (герой и NPC кампании, свои — общие на мир).
+  const bases = [ch?.img, ...npcRows.map((n) => n.img)].filter((x): x is string => !!x);
+  const variants = bases.length
+    ? await db
+        .select({ base: sql<string>`${images.job}->>'base'`, mood: sql<string>`${images.job}->>'mood'`, status: images.status, url: images.url })
+        .from(images)
+        .where(and(eq(images.kind, "emotion"), inArray(sql`${images.job}->>'base'`, bases), inArray(images.status, ["queued", "working", "ready"])))
+    : [];
+  const ready = new Map<string, Record<string, string>>();
+  for (const v of variants) if (v.status === "ready" && v.url) ready.set(v.base, { ...(ready.get(v.base) ?? {}), [v.mood]: v.url });
+  const withEmotions = (img: string | null) => (img && ready.has(img) ? { emotions: ready.get(img)! } : {});
   return {
     hero: view(ch?.img),
+    ...(ch?.img && ready.has(ch.img) ? { heroMoods: ready.get(ch.img)! } : {}),
     locations: Object.fromEntries(w.locations.filter((l) => l.imageId).map((l) => [l.id, view(l.imageId)!]).filter(([, v]) => v)),
-    npcs: Object.fromEntries(npcRows.map((n) => [n.key, { name: n.name, ...(view(n.img) ?? { status: "none", url: null }) }])),
+    npcs: Object.fromEntries(npcRows.map((n) => [n.key, { name: n.name, ...(view(n.img) ?? { status: "none", url: null }), ...withEmotions(n.img) }])),
+    ...(variants.some((v) => v.status !== "ready") ? { variantsPending: true } : {}),
   };
 }
 
@@ -387,6 +510,19 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
       r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `npc/${row.id}${rev}`, seed: j.seed, signal, inspect });
     } else if (j.type === "hero") {
       r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `hero/${row.id}${rev}`, seed: j.seed, signal, inspect });
+    } else if (j.type === "variant") {
+      const [base] = await d.db.select({ status: images.status, url: images.url, prompt: images.prompt }).from(images).where(eq(images.id, j.base));
+      if (!base || base.status === "failed") throw new Error("исходный портрет не нарисован");
+      if (base.status !== "ready" || !base.url) {
+        // Портрет ещё рисуется (новый NPC, перерисовка): вариант ждёт его в конце очереди, попытка не тратится.
+        await d.db.update(images).set({ status: "queued", attempts: Math.max(0, row.attempts - 1), createdAt: new Date() }).where(eq(images.id, row.id));
+        await new Promise((res) => setTimeout(res, VARIANT_WAIT_MS));
+        return true;
+      }
+      r = await renderVariant({
+        world, provider: d.provider, storage: d.storage, baseUrl: base.url, look: lookFromPrompt(world, base.prompt), change: j.change,
+        key: `emo/${row.id}${rev}`, seed: j.seed, signal,
+      });
     } else {
       const description = await describeLocation(d.router, world, { name: j.name, type: j.locType, desc: j.desc }, signal);
       r = await renderBackground({ world, provider: d.provider, storage: d.storage, description, time: j.time, key: `bg/${row.id}${rev}`, signal });
@@ -415,9 +551,25 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
 export async function restyleImages(db: Db, worldId: string, o: { heroes?: boolean; dryRun?: boolean } = {}) {
   const kinds = o.heroes ? ["npc", "background", "hero"] : ["npc", "background"];
   const where = and(sql`${images.job}->>'world' = ${worldId}`, inArray(images.kind, kinds), inArray(images.status, ["ready", "failed"]));
+  // Варианты лица идут за своими портретами: портрет перерисован — эмоции рисуются заново с него.
+  const baseIds = db.select({ id: sql<string>`${images.id}::text` }).from(images).where(where);
+  const variantsWhere = and(eq(images.kind, "emotion"), inArray(images.status, ["ready", "failed"]), inArray(sql`${images.job}->>'base'`, baseIds));
   const counts = await db.select({ kind: images.kind, n: sql<number>`count(*)::int` }).from(images).where(where).groupBy(images.kind);
+  const [{ n: variants } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(images).where(variantsWhere);
   const byKind = Object.fromEntries(counts.map((c) => [c.kind, c.n])) as Record<string, number>;
+  if (variants) byKind.emotion = variants;
   if (!o.dryRun && counts.length) {
+    // Сначала варианты: потом их портреты сменят статус и под условие уже не попадут.
+    await db
+      .update(images)
+      .set({
+        status: "queued",
+        attempts: 0,
+        error: null,
+        job: sql`jsonb_set(${images.job}, '{rev}', to_jsonb(coalesce((${images.job}->>'rev')::int, 0) + 1))`,
+        tags: sql`CASE WHEN ${images.tags} @> ARRAY[${PREFETCH_TAG}]::text[] THEN ${images.tags} ELSE array_append(${images.tags}, ${PREFETCH_TAG}) END`,
+      })
+      .where(variantsWhere);
     // Постоянные лица: старые портреты (до правки внешности в данных мира) — по нынешнему описанию,
     // чтобы и в старых кампаниях у Рут был блокнот, а не книга.
     const world = isWorldId(worldId) ? getWorld(worldId) : undefined;

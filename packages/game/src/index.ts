@@ -7,3 +7,4 @@ export * from "./pregen";
 export * from "./repo";
 export * from "./visuals";
 export * from "./marks";
+export * from "./emotions";

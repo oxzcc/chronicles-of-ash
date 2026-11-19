@@ -77,3 +77,22 @@ describe("метки о людях", () => {
     expect(beats[2]!.marks).toBeUndefined(); // Хэтти не говорила — метки нет
   });
 });
+
+describe("эмоции реплик по списку мира", async () => {
+  const { normalizeEmotions, emotionId } = await import("../src/emotions");
+  const { getWorld } = await import("@ash/worlds");
+  const arkham = getWorld("arkham");
+  it("слово мастера → id; чужое слово, рассказчик и мир без эмоций — без эмоции", () => {
+    expect(emotionId(arkham, "Страх")).toBe("fear");
+    expect(emotionId(arkham, "fear")).toBe("fear");
+    expect(emotionId(arkham, "ярость")).toBeUndefined();
+    const beats = normalizeEmotions(arkham, [
+      { speaker: null, text: "…", emotion: "страх" },
+      { speaker: "Кит", text: "…", emotion: "гнев" },
+      { speaker: "Кит", text: "…", emotion: "ярость" },
+    ]);
+    expect(beats.map((b) => b.emotion)).toEqual([undefined, "anger", undefined]);
+    expect("emotion" in beats[0]!).toBe(false);
+    expect(normalizeEmotions(getWorld("fantasy"), [{ speaker: "Брам", text: "…", emotion: "гнев" }])[0]!.emotion).toBeUndefined();
+  });
+});

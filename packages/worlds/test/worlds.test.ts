@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  checkable, classKeys, layoutCampaign, locationTypeKeys, pointsSpent, POINT_BUY_BUDGET, raceKeys, skillNames, startLocationTypes, STAT_KEYS,
+  checkable, classKeys, HERO_MOODS, layoutCampaign, locationTypeKeys, pointsSpent, POINT_BUY_BUDGET, raceKeys, skillNames, startLocationTypes, STAT_KEYS,
 } from "@ash/engine";
 import { DEFAULT_WORLD, getWorld, isWorldId, worldBiblePath, worldOf, WORLDS } from "../src/index";
 
@@ -57,6 +57,23 @@ describe.each(WORLDS.map((w) => [w.id, w] as const))("мир %s", (_id, w) => {
     if (!w.art.lora) return;
     expect(w.art.lora.trigger).toMatch(/^[a-z0-9]+( [a-z0-9]+)?$/);
     expect(w.art.lora.stylePrefix).toMatch(/no text/);
+  });
+  it("эмоции: у каждой слово для мастера и выражение для правки, все состояния героя, без шрамов", () => {
+    const e = w.art.emotions;
+    if (!e) return;
+    const ids = Object.keys(e.npc);
+    expect(ids.length).toBeGreaterThan(1);
+    for (const id of ids) expect(id).toMatch(/^[a-z]+$/);
+    const ru = ids.map((id) => e.npc[id]!.ru);
+    expect(new Set(ru).size).toBe(ru.length);
+    for (const id of ids) expect(e.npc[id]!.ru).toMatch(/^[а-яё]+$/);
+    for (const m of HERO_MOODS) expect(e.hero[m], m).toBeTruthy();
+    // LoRA рисует шрам свежей раной, «dark circles» — чёрными потёками (PR #20).
+    for (const en of [...ids.map((id) => e.npc[id]!.en), ...Object.values(e.hero)]) expect(en).not.toMatch(/scar|dark circles/i);
+    expect(e.perNpc).toBeGreaterThan(0);
+    expect(e.perCampaign).toBeGreaterThanOrEqual(e.perNpc);
+    // Эмоции рисуются правкой с LoRA: без своего стиля лицо уплывёт.
+    expect(w.art.lora).toBeTruthy();
   });
   it("запасной квест раскладывается без исправлений", () => {
     const camp = layoutCampaign(R, w.fallbackQuest, "t");

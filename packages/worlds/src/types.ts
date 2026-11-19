@@ -1,4 +1,4 @@
-import type { CaseSeed, Gender, LocationType, QuestSeed, RaceKey, Ruleset } from "@ash/engine";
+import type { CaseSeed, Gender, HeroMood, LocationType, QuestSeed, RaceKey, Ruleset } from "@ash/engine";
 
 /**
  * Мир игры — всё, что отличает одно приключение от другого: правила (расы, классы, навыки, места),
@@ -151,6 +151,11 @@ export interface ArtStyle {
    */
   figures?: Figures;
   /**
+   * Эмоции портретов (этап 3): варианты лица рисуются правкой готового портрета, лениво, через очередь.
+   * Без списка эмоций в мире нет — портрет всегда нейтральный.
+   */
+  emotions?: Emotions;
+  /**
    * Своя LoRA стиля (обучена на картинках мира). Веса и сила — только в окружении:
    * FAL_LORA_<ID>_URL и FAL_LORA_<ID>_SCALE. Пока URL не задан, мир рисуется по stylePrefix.
    */
@@ -160,4 +165,23 @@ export interface ArtStyle {
     /** Префикс фонов вместо stylePrefix: эпоха и запреты без описания техники — технику держит LoRA. Портреты с LoRA идут без префикса. */
     stylePrefix: string;
   };
+}
+
+/** Эмоция лица: как её называет мастер и что попросить у модели правки (только выражение). */
+export interface EmotionOption {
+  /** Слово для мастера: «страх». */
+  ru: string;
+  /** Новое выражение для правки по-английски: "frightened: eyes wide open, …". */
+  en: string;
+}
+
+export interface Emotions {
+  /** Эмоции NPC по id (fear, anger…). Выбирает мастер у реплики, рисовать ли — решает код. */
+  npc: Record<string, EmotionOption>;
+  /** Состояния героя — от движка (heroMood), не от мастера: игрок пишет за героя сам. */
+  hero: Record<HeroMood, string>;
+  /** Сколько разных эмоций рисуем одному NPC, кроме своих (у своих — все, один раз на мир). */
+  perNpc: number;
+  /** Сколько вариантов лица на кампанию для всех, кроме своих: потолок расходов. */
+  perCampaign: number;
 }

@@ -65,7 +65,9 @@ for (const scene of scenes) {
         move = `«${r.response.move}» → ${!m ? "то же место" : "error" in m ? `отклонён: ${m.error}` : `принят: ${m.to.name}`}`;
       }
       results.push({ scene: scene.id, model, ms: Date.now() - t0, response: r.response, move, rolls: r.rolls.map((x) => x.summary), usage: r.usage, degraded: r.degraded, requests: r.requests });
-      console.log(`${Date.now() - t0} мс, $${r.usage.costUsd.toFixed(4)}${r.degraded ? ", JSON не разобран" : ""}${move ? `, move ${move}` : ""}`);
+      // Эмоции реплик (gm-7): у кого и какие — сверить с текстом при оценке.
+      const emotions = r.response.beats.filter((b) => b.emotion).map((b) => `${b.speaker}: ${b.emotion}`);
+      console.log(`${Date.now() - t0} мс, $${r.usage.costUsd.toFixed(4)}${r.degraded ? ", JSON не разобран" : ""}${move ? `, move ${move}` : ""}${emotions.length ? `, эмоции ${emotions.join("; ")}` : ""}`);
     } catch (e) {
       results.push({ scene: scene.id, model, error: (e as Error).message });
       console.log(`ошибка: ${(e as Error).message}`);

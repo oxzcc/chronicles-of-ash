@@ -64,6 +64,8 @@ export interface TurnDeps {
   emit?: (e: GameEvent) => void;
   /** Рассказчик назвал NPC (ещё идёт ход) — для раннего старта портрета. */
   onSpeaker?: (speaker: Speaker) => void;
+  /** У реплики NPC появилась эмоция (ещё идёт ход) — лицо начинает рисоваться раньше. Зовётся по разу на имя и эмоцию. */
+  onEmotion?: (name: string, emotion: string) => void;
   /** Герой оказался в локации (начало, переход) — ещё до рассказа: фон начинает рисоваться сразу. */
   onArrive?: () => Promise<void>;
 }
