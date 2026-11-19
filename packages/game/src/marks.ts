@@ -1,4 +1,4 @@
-import type { TurnEffect } from "@ash/engine";
+import { CASE_LIMITS, findPlace, type Campaign, type Character, type TurnEffect } from "@ash/engine";
 import type { Beat, BeatMark } from "@ash/llm";
 
 /** Ярлык подсветки в тексте реплики. Что сюда не входит, в тексте не подсвечивается — только в сводке хода. */
@@ -41,7 +41,7 @@ export function resolveMarks(beats: Beat[], effects: TurnEffect[]): Beat[] {
       const e = match(r.ref);
       if (!e) continue;
       used.add(e);
-      marks.push({ kind: e.kind, quote: findQuote(b.text, r.quote), label: LABEL[e.kind]!(e) });
+      marks.push({ kind: e.kind, quote: findQuote(b.text, r.quote), label: LABEL[e.kind]!(e), ...(e.ref ? { ref: e.ref } : {}) });
     }
     return marks.length ? { ...rest, marks } : rest;
   });
@@ -56,6 +56,59 @@ export function tagLast(beats: Beat[], effects: TurnEffect[]): Beat[] {
   const narr = out.map((b) => b.speaker).lastIndexOf(null);
   const i = narr >= 0 ? narr : out.length - 1;
   const b = out[i]!;
-  out[i] = { ...b, marks: [...(b.marks ?? []), ...left.map((e) => ({ kind: e.kind, quote: null, label: LABEL[e.kind]!(e) }))] };
+  out[i] = { ...b, marks: [...(b.marks ?? []), ...left.map((e) => ({ kind: e.kind, quote: null, label: LABEL[e.kind]!(e), ...(e.ref ? { ref: e.ref } : {}) }))] };
   return out;
+}
+
+/** Пометки — тоже предложение мастера: рассказал о находке, значит нашёл. Улики и адреса из них идут в проверку движка вместе с clues и reveal. */
+export function proposedFromFinds(w: Campaign, beats: Beat[]): { clues: string[]; reveal: string[] } {
+  const refs = [...new Set(beats.flatMap((b) => (b.refs ?? []).map((r) => r.ref.trim())))].filter((r) => !/^(sanity|hp)$/i.test(r));
+  const cs = w.case;
+  if (!cs) return { clues: [], reveal: [] };
+  const clues = refs.filter((r) => cs.clues.some((x) => x.id === r));
+  const reveal = refs.filter((r) => !clues.includes(r) && findPlace(w, r));
+  return { clues, reveal };
+}
+
+/**
+ * Подсветка, пока мастер ещё пишет: те же проверки, что сделает движок (улика здесь и не найдена,
+ * не больше двух за ход; адрес ещё не известен). Игрок видит находку на той реплике, где она случилась,
+ * а не после конца хода. Цели не подсвечиваются заранее — их засчитывает только questDone.
+ */
+export function previewMarks(c: Character, w: Campaign, beats: Beat[]): Beat[] {
+  const cs = w.case;
+  const seen = new Set<string>();
+  let clues = 0;
+  return beats.map((b, i) => {
+    const { refs, marks: _old, ...rest } = b;
+    const marks: BeatMark[] = [];
+    // Последняя реплика ещё пишется: пометку без найденных слов не показываем — слова, скорее всего, ещё не дописаны.
+    const writing = i === beats.length - 1;
+    for (const r of refs ?? []) {
+      const ref = r.ref.trim();
+      if (!ref || seen.has(ref)) continue;
+      const quote = findQuote(b.text, r.quote);
+      if (writing && !quote) continue;
+      let m: BeatMark | null = null;
+      const clue = cs?.clues.find((x) => x.id === ref);
+      if (clue) {
+        if (!clue.found && !clue.requires && clue.at === w.current && clues < CASE_LIMITS.cluesPerTurn) {
+          clues++;
+          m = { kind: "clue", quote, label: "улика", ref: clue.id };
+        }
+      } else if (norm(ref) === "sanity") {
+        if (c.sanity !== undefined) m = { kind: "sanity", quote, label: "рассудок" };
+      } else if (norm(ref) === "hp") {
+        m = { kind: "hp", quote, label: "здоровье" };
+      } else if (cs) {
+        const place = findPlace(w, ref);
+        if (place && !cs.known.includes(place.id)) m = { kind: "address", quote, label: "адрес", ref: place.id };
+      }
+      if (m) {
+        seen.add(ref);
+        marks.push(m);
+      }
+    }
+    return marks.length ? { ...rest, marks } : rest;
+  });
 }

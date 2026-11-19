@@ -6,7 +6,7 @@ import { locationById, locationTypeName, matchName, type CheckResult, type Comba
 import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnEffect, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
-import { BeatText, beatsOf, Bust, Drawer, Icon, Pips, SceneSummary, TextFrame, type FxAction } from "@/components/vn";
+import { BeatText, beatsOf, Bust, Drawer, Icon, Pips, TextFrame, type Mark } from "@/components/vn";
 import { CaseFile, CloseCase, Directory, Newspaper } from "@/components/case";
 
 type Input =
@@ -69,6 +69,11 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const [dice, setDice] = useState<DiceView | null>(null);
   const [asking, setAsking] = useState<{ index: number; s: Suggestion & { check: { skill: string; dc: number } } } | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  /** Куда навести панель: id улики в досье или места в справочнике (клик по подсвеченной находке). */
+  const [focus, setFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!panel) setFocus(null);
+  }, [panel]);
   const [enter, setEnter] = useState<Enter | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
@@ -213,7 +218,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "BUTTON" || panel || asking) return;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "BUTTON" || t.classList.contains("vn-mark") || panel || asking) return;
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
         advance();
@@ -271,25 +276,16 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const submit = () => text.trim() && send({ kind: "action", text: text.trim() }, text.trim());
   const R = worldOf(c).rules;
   const ab = R.classes[c.cls]!.ability;
-  // Итог последнего действия: плашки появляются, когда игрок дочитал ход.
+  // Итог последнего действия: полоски здоровья и рассудка вспыхивают при потере.
   const fx = batch.flatMap((t) => t.effects ?? []);
-  const showFx = !busy && !enter && atEnd && fx.length > 0;
   const hurt = (kind: TurnEffect["kind"]) => fx.some((e) => e.kind === kind && !e.good);
-  // Действие у находки в сводке: улику — в досье, адрес — сразу пойти (если можно), вещь — в лист героя.
-  const timeLeft = !w.case || w.case.visits < w.case.limit;
-  const actionOf = (e: TurnEffect): FxAction | null => {
-    if (e.kind === "clue" || e.kind === "deduction" || e.kind === "objective" || e.kind === "quest") return { label: w.case ? "В досье" : "В журнал", run: () => setPanel("quest") };
-    if (e.kind === "address" && e.ref) {
-      const loc = locationById(w, e.ref);
-      if (loc && e.ref !== w.current && timeLeft && !w.combat) return { label: "Пойти", run: () => send({ kind: "travel", to: e.ref! }, `Путь в «${loc.name}»`) };
-      return { label: w.case ? "В справочнике" : "На карте", run: () => setPanel(w.case ? "directory" : "map") };
-    }
-    if (e.kind === "item") return { label: "Вещи", run: () => setPanel("hero") };
-    return null;
+  // Клик по подсвеченной находке: улика — в досье, адрес — в справочник (или на карту), рассудок и здоровье — лист героя.
+  const openMark = (m: Mark) => {
+    setFocus(m.ref ?? null);
+    if (m.kind === "address") setPanel(w.case ? "directory" : "map");
+    else if (m.kind === "clue" || m.kind === "deduction" || m.kind === "objective") setPanel("quest");
+    else setPanel("hero");
   };
-  const costNote = fx.some((e) => e.kind === "sanity" && !e.good) && c.sanity !== undefined && c.sanityMax
-    ? `Рассудок: ${c.sanity} из ${c.sanityMax}${c.sanity * 3 <= c.sanityMax ? " — ты на грани." : "."}`
-    : undefined;
 
   return (
     <div className="vn">
@@ -354,13 +350,12 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       <section className="vn-dock" hidden={titleCard}>
         {(beat || streaming) && (
           <TextFrame speaker={speakerName} role={role} onAdvance={!atEnd ? advance : undefined} hint={!atEnd ? "Пробел" : undefined}>
-            {beat ? <BeatText key={`${view.turnNo}:${cursor}`} beat={beat} /> : <span className="vn-writing">{live?.waiting}</span>}
+            {beat ? <BeatText beat={beat} onMark={openMark} /> : <span className="vn-writing">{live?.waiting}</span>}
             {beat && streaming && atEnd && <span className="vn-caret" aria-hidden="true" />}
           </TextFrame>
         )}
         <Pips total={beats.length} at={cursor} />
         {error && <p className="error small">{error}</p>}
-        {showFx && <SceneSummary key={view.turnNo} items={fx} isCase={!!w.case} actionOf={busy ? undefined : actionOf} costNote={costNote} />}
 
         {w.combat && atEnd && !streaming && !enter && <CombatPanel w={w} c={c} disabled={busy} onMove={(move, target) => send({ kind: "combat", move, target }, move)} />}
 
@@ -434,7 +429,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       {panel === "quest" && (
         <Drawer title={w.case ? "Досье" : "Журнал"} onClose={() => setPanel(null)}>
           {w.case ? (
-            <CaseFile w={w} busy={busy} onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)} onClose={() => setPanel("close")} />
+            <CaseFile w={w} busy={busy} focus={focus} onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)} onClose={() => setPanel("close")} />
           ) : (
             <>
               <Quest w={w} doneText={worldOf(c).ui.questDone} />
@@ -460,6 +455,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           <Directory
             w={w}
             busy={busy}
+            focus={focus}
             onLookup={(q) => send({ kind: "lookup", query: q }, `Справочник: «${q}»`)}
             onTravel={(to) => send({ kind: "travel", to }, `Путь в «${locationById(w, to)?.name}»`)}
           />

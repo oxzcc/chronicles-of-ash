@@ -73,29 +73,63 @@ const FX_LABEL: Record<EffectKind, string> = {
 /** В деле цель — то, что нужно выяснить. */
 const fxLabel = (e: TurnEffect, isCase?: boolean) => (e.kind === "objective" && isCase ? "Выяснено" : FX_LABEL[e.kind]);
 
+/** Подсвеченная находка в тексте реплики. */
+export type Mark = NonNullable<Beat["marks"]>[number];
+
 /**
- * Текст реплики с подсвеченными находками: слова, где герой нашёл улику или узнал адрес,
- * и ярлык рядом. Пометку без найденных слов — ярлыком в конце реплики.
+ * Текст реплики с подсвеченными находками: слова, где герой нашёл улику, узнал адрес
+ * или потерял рассудок, и ярлык рядом. С onMark находка — кнопка: ведёт к улике в досье,
+ * к адресу в справочнике, к листу героя. Пометка без найденных слов — ярлыком в конце.
  */
-export function BeatText({ beat }: { beat: Beat }) {
+export function BeatText({ beat, onMark }: { beat: Beat; onMark?: (m: Mark) => void }) {
   const marks = beat.marks ?? [];
   if (!marks.length) return <>{beat.text}</>;
   const placed = marks
     .map((m) => ({ m, i: m.quote ? beat.text.indexOf(m.quote) : -1 }))
     .filter((x) => x.i >= 0)
     .sort((a, b) => a.i - b.i);
+  const one = (m: Mark, key: string, tail: boolean) => {
+    const inner = (
+      <>
+        {!tail && <span className="hl">{m.quote}</span>}
+        <span className="vn-tag">{m.label}</span>
+      </>
+    );
+    const cls = `vn-mark ${m.kind} ${tail ? "tail" : ""}`;
+    // Не <button>: кнопка не переносится по строкам, а подсвеченная фраза бывает длинной. Клавиатура — Enter и пробел.
+    return onMark ? (
+      <span
+        key={key}
+        role="button"
+        tabIndex={0}
+        className={`${cls} link`}
+        title={MARK_HINT[m.kind] ?? undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          onMark(m);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          e.stopPropagation();
+          onMark(m);
+        }}
+      >
+        {inner}
+      </span>
+    ) : (
+      <span key={key} className={cls}>
+        {inner}
+      </span>
+    );
+  };
   const parts: ReactNode[] = [];
-  const shown = new Set<(typeof marks)[number]>();
+  const shown = new Set<Mark>();
   let at = 0;
   for (const { m, i } of placed) {
     if (i < at) continue;
     if (i > at) parts.push(beat.text.slice(at, i));
-    parts.push(
-      <span key={`m${i}`} className={`vn-mark ${m.kind}`}>
-        <span className="hl">{m.quote}</span>
-        <span className="vn-tag">{m.label}</span>
-      </span>,
-    );
+    parts.push(one(m, `m${i}`, false));
     shown.add(m);
     at = i + m.quote!.length;
   }
@@ -103,73 +137,16 @@ export function BeatText({ beat }: { beat: Beat }) {
   return (
     <>
       {parts}
-      {marks
-        .filter((m) => !shown.has(m))
-        .map((m, k) => (
-          <span key={`t${k}`} className={`vn-mark ${m.kind} tail`}>
-            <span className="vn-tag">{m.label}</span>
-          </span>
-        ))}
+      {marks.filter((m) => !shown.has(m)).map((m, k) => one(m, `t${k}`, true))}
     </>
   );
 }
 
-/** Действие у строки сводки: «В досье», «Пойти». */
-export interface FxAction {
-  label: string;
-  run: () => void;
-}
-
-/** Что в сводке считается ценой хода: потери. Остальное — найденное. */
-const isCost = (e: TurnEffect) => !e.good;
-
-/**
- * Итог сцены после последней реплики: слева — что найдено (с действием: в досье, пойти),
- * справа — цена (рассудок, здоровье, деньги, потерянные вещи). Одна колонка, если другой нет.
- */
-export function SceneSummary({ items, isCase, actionOf, costNote }: { items: TurnEffect[]; isCase?: boolean; actionOf?: (e: TurnEffect) => FxAction | null; costNote?: string }) {
-  if (!items.length) return null;
-  const all = sortEffects(items);
-  const found = all.filter((e) => !isCost(e));
-  const cost = all.filter(isCost);
-  return (
-    <div className={`vn-summary ${found.length && cost.length ? "two" : ""}`} aria-live="polite">
-      {found.length > 0 && (
-        <div className="col">
-          <div className="h">Найдено в этой сцене</div>
-          {found.map((e, i) => {
-            const a = actionOf?.(e);
-            return (
-              <div key={i} className={`row ${e.kind}`}>
-                <span className="k">{fxLabel(e, isCase)}</span>
-                <span className="t" title={e.detail ?? e.text}>
-                  {e.text}
-                </span>
-                {a && (
-                  <button type="button" className="act" onClick={a.run}>
-                    {a.label}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {cost.length > 0 && (
-        <div className="col cost">
-          <div className="h">Цена</div>
-          {cost.map((e, i) => (
-            <div key={i} className={`row ${e.kind}`}>
-              <span className="k">{fxLabel(e, isCase)}</span>
-              <span className="t">{e.text}</span>
-            </div>
-          ))}
-          {costNote && <div className="note">{costNote}</div>}
-        </div>
-      )}
-    </div>
-  );
-}
+/** Подсказка при наведении: куда ведёт находка. */
+const MARK_HINT: Record<string, string> = {
+  clue: "Открыть в досье", deduction: "Открыть в досье", objective: "Открыть журнал",
+  address: "Открыть адрес", sanity: "Лист героя", hp: "Лист героя",
+};
 
 /** Те же плашки в «Истории» — тихо, без анимации. */
 export function EffectChips({ items, isCase }: { items: TurnEffect[] | undefined; isCase?: boolean }) {

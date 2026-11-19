@@ -42,12 +42,12 @@ describe("разбор ответа мастера", () => {
     expect(r.value.suggestions).toEqual([{ text: "Иду" }, { text: "Лгу", check: { skill: "Обман", dc: 25 } }, { text: "Колдую" }]);
     expect(r.value.combat).toBeNull();
   });
-  it("пометки находок (finds) и «предъявить»: битые отбрасываются, на лету клиенту не уходят", () => {
+  it("пометки находок (finds) и «предъявить»: битые отбрасываются, на лету доходят до игры", () => {
     const json = '{"beats":[{"speaker":null,"text":"На дне — осадок.","finds":[{"ref":"c1","quote":"«осадок»"},{"quote":"без ref"},7]},{"speaker":null,"text":"Тихо.","finds":"мусор"}],"suggestions":[{"text":"Показываю осадок","present":" c1 "},{"text":"Ухожу","present":""}]}';
     const r = parseGmResponse(json, R);
     expect(r.ok && r.value.beats).toEqual([{ speaker: null, text: "На дне — осадок.", refs: [{ ref: "c1", quote: "осадок" }] }, { speaker: null, text: "Тихо." }]);
     expect(r.ok && r.value.suggestions).toEqual([{ text: "Показываю осадок", present: "c1" }, { text: "Ухожу" }]);
-    expect(partialBeats(json)[0]).toEqual({ speaker: null, text: "На дне — осадок." });
+    expect(partialBeats(json)[0]).toEqual({ speaker: null, text: "На дне — осадок.", refs: [{ ref: "c1", quote: "осадок" }] });
     // Улики объектами вместо id (живая модель так делала) — берётся id, мусор отбрасывается.
     const objs = parseGmResponse('{"beats":[{"speaker":null,"text":"Тьма."}],"clues":[{"id":"c5","text":"книга"},"c6",{"text":"без id"},null],"reveal":[{"ref":"Бакалея Финнегана"}]}', R);
     expect(objs.ok && [objs.value.clues, objs.value.reveal]).toEqual([["c5", "c6"], ["Бакалея Финнегана"]]);

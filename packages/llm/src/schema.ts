@@ -60,6 +60,8 @@ export interface BeatMark {
   kind: string;
   quote: string | null;
   label: string;
+  /** id улики, места или цели — по клику игрок попадает к ней в досье или справочник. */
+  ref?: string;
 }
 
 export interface Beat {
@@ -257,8 +259,8 @@ export function partialBeats(text: string): Beat[] {
   if (Array.isArray(raw.beats))
     return raw.beats
       .map((b) => BeatSchema.safeParse(b))
-      // Пометки мастера (refs) клиенту не нужны: подсветку игра ставит после проверки.
-      .flatMap((x) => (x.success && x.data.text ? [{ speaker: x.data.speaker, text: stripCjk(x.data.text) }] : []));
+      // Пометки мастера (refs) остаются: игра проверит их и превратит в подсветку, прежде чем отдать клиенту.
+      .flatMap((x) => (x.success && x.data.text ? [{ ...x.data, text: stripCjk(x.data.text) }] : []));
   if (typeof raw.narration === "string" && raw.narration.trim()) return [{ speaker: null, text: stripCjk(raw.narration) }];
   return [];
 }

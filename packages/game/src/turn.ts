@@ -10,7 +10,7 @@ import {
 import { worldOf } from "@ash/worlds";
 import { GameError, type GameState, type TurnDeps, type TurnInput, type TurnOutcome, type TurnRecord } from "./types";
 import { toHistory, type Recordish } from "./history";
-import { resolveMarks, tagLast } from "./marks";
+import { previewMarks, proposedFromFinds, resolveMarks, tagLast } from "./marks";
 
 export const MAX_ACTION_LENGTH = 500;
 export const MAX_ANSWER_LENGTH = 400;
@@ -35,7 +35,8 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     const r = await runNarratorTurn({
       provider, model, world, worldBible: deps.worldBible, rng: deps.rng, signal: deps.signal,
       scene: { character: c, campaign: w, history: history(), action },
-      onBeats: (beats) => deps.emit?.({ type: "beats", beats }),
+      // Реплики идут игроку сразу — уже с подсветкой находок, которые движок примет.
+      onBeats: (beats) => deps.emit?.({ type: "beats", beats: previewMarks(c, w, beats) }),
       onRoll: (roll) => deps.emit?.({ type: "roll", roll }),
       onSpeaker: deps.onSpeaker,
       allowChecks: !opts.preRolls?.length,
@@ -50,7 +51,9 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       questComplete: w.case ? false : resp.questComplete,
     });
     if (w.case) {
-      const found = applyCaseChanges(w, { clues: resp.clues, reveal: resp.reveal });
+      // Улики и адреса, помеченные в тексте, — первыми: это то, что игрок уже видел подсвеченным.
+      const fromFinds = proposedFromFinds(w, resp.beats);
+      const found = applyCaseChanges(w, { clues: [...new Set([...fromFinds.clues, ...resp.clues])], reveal: [...new Set([...fromFinds.reveal, ...resp.reveal])] });
       applied.notes.push(...found.notes);
       applied.effects.push(...found.effects);
       applied.rejected.push(...found.rejected);

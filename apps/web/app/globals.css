@@ -316,6 +316,14 @@ textarea { resize: vertical; }
 .vn-mark .hl { color: #f6e2b3; font-style: normal; padding: 0 2px; border-bottom: 1px solid var(--mk-line); background-image: linear-gradient(var(--mk-bg), var(--mk-bg)); background-repeat: no-repeat; background-position: 0 100%; background-size: 100% 100%; animation: vnMark 0.9s 0.3s ease-out both; }
 .vn-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 3px; background: var(--mk-tag); color: #1a120b; font-family: var(--sans); font-size: 11px; font-weight: 700; font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.6; vertical-align: 3px; white-space: nowrap; animation: vnTag 0.4s 1s ease-out both; }
 .vn-mark.tail .vn-tag { margin-left: 8px; }
+/* Находка — кнопка внутри текста: выглядит как текст, по наведению ярче. */
+.vn-mark.link { cursor: pointer; }
+.vn-mark.link:hover .hl { color: #fff3d6; border-bottom-width: 2px; }
+.vn-mark.link:hover .vn-tag { filter: brightness(1.15); }
+.vn-mark.link:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; border-radius: 2px; }
+/* Запись, к которой привёл клик по находке. */
+.case-clues li.focus, .dir-entry.focus { background: rgba(217, 119, 58, 0.14); box-shadow: inset 0 0 0 1px rgba(217, 119, 58, 0.55); border-radius: 6px; animation: vnFocus 1.6s ease-out 1; }
+@keyframes vnFocus { 0%, 30% { background: rgba(217, 119, 58, 0.32); } }
 .vn-mark.clue, .vn-mark.deduction { --mk-bg: rgba(217, 119, 58, 0.22); --mk-line: var(--ember); --mk-tag: var(--ember); }
 .vn-mark.address { --mk-bg: rgba(217, 178, 92, 0.2); --mk-line: var(--gold); --mk-tag: var(--gold); }
 .vn-mark.sanity { --mk-bg: rgba(138, 111, 174, 0.25); --mk-line: #8a6fae; --mk-tag: #b9a0dc; }
@@ -323,23 +331,6 @@ textarea { resize: vertical; }
 @keyframes vnMark { from { background-size: 0% 100%; } }
 @keyframes vnTag { from { opacity: 0; transform: translateY(4px); } }
 
-/* Итог сцены: найдено и цена */
-.vn-summary { display: grid; grid-template-columns: minmax(0, 1fr); background: rgba(23, 17, 12, 0.95); border: 1px solid #4a3a28; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); animation: vnSum 0.45s ease-out both; }
-.vn-summary.two { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
-.vn-summary .col { display: flex; flex-direction: column; gap: 6px; padding: 12px 18px; min-width: 0; }
-.vn-summary.two .col + .col { border-left: 1px solid var(--line); }
-.vn-summary .h { font-family: var(--sans); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-.vn-summary .row { display: flex; align-items: center; gap: 12px; min-height: 30px; }
-.vn-summary .k { flex: none; width: 92px; font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); }
-.vn-summary .row.clue .k, .vn-summary .row.deduction .k { color: #e9915a; }
-.vn-summary .row.item .k, .vn-summary .row.gold .k { color: var(--muted); }
-.vn-summary .t { flex: 1; min-width: 0; font-size: 17px; color: #f1e6d2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vn-summary .cost .t { color: #f0a38f; }
-.vn-summary .cost .row.sanity .t { color: #cdb6ea; }
-.vn-summary .act { flex: none; min-height: 36px; padding: 0 12px; background: transparent; border: 1px solid #4a3a28; border-radius: 4px; color: var(--gold); font-family: var(--sans); font-size: 13px; }
-.vn-summary .act:hover { border-color: var(--gold); }
-.vn-summary .note { font-family: var(--sans); font-size: 13px; line-height: 1.4; color: var(--muted); }
-@keyframes vnSum { from { opacity: 0; transform: translateY(10px); } }
 .vn-choices .check-tag.present { background: var(--ember); }
 .check-tag.present { color: #1a120b; background: var(--ember); border-color: var(--ember); }
 
@@ -353,16 +344,10 @@ textarea { resize: vertical; }
 .vn-sanity.hurt { animation: vnMind 0.9s ease-out 2; }
 @keyframes vnHurt { 30% { box-shadow: 0 0 0 2px rgba(196, 71, 59, 0.9), 0 0 14px rgba(196, 71, 59, 0.7); } }
 @keyframes vnMind { 30% { box-shadow: 0 0 0 2px rgba(138, 111, 174, 0.9), 0 0 14px rgba(138, 111, 174, 0.7); } }
-@media (prefers-reduced-motion: reduce) { .vn-mark .hl, .vn-tag, .vn-summary, .vn-hp.hurt, .vn-sanity.hurt { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .vn-mark .hl, .vn-tag, .vn-hp.hurt, .vn-sanity.hurt { animation: none; } }
 @media (max-width: 760px) {
-  .vn-summary.two { grid-template-columns: minmax(0, 1fr); }
-  .vn-summary.two .col + .col { border-left: 0; border-top: 1px solid var(--line); }
-  .vn-summary .k { width: 76px; }
-  .vn-summary .t { font-size: 15px; white-space: normal; }
-  .vn-summary .col { padding: 10px 12px; gap: 4px; }
-  /* Сводка и варианты не залезают на шапку: длинный список вариантов прокручивается сам. */
+  /* Варианты не залезают на шапку: длинный список прокручивается сам. */
   .vn-dock { max-height: calc(100% - 104px); }
   .vn-choices { min-height: 0; }
 }
-.vn-summary .cost .k { color: var(--muted); }
 .case-title { font-weight: 700; color: #f1e6d2; }

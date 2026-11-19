@@ -100,8 +100,8 @@ describe("мир Аркхэма", () => {
     expect(t.records[0]!.applied!.effects.map((e) => [e.kind, e.ref])).toEqual([["clue", "c1"], ["address", "L5"]]);
     // Подсвечена только принятая улика; адрес без пометки — ярлыком в конце; предъявить можно только найденное.
     expect(t.records[0]!.beats[0]!.marks).toEqual([
-      { kind: "clue", quote: "горький зеленоватый осадок", label: "улика" },
-      { kind: "address", quote: null, label: "адрес" },
+      { kind: "clue", quote: "горький зеленоватый осадок", label: "улика", ref: "c1" },
+      { kind: "address", quote: null, label: "адрес", ref: "L5" },
     ]);
     expect(t.records[0]!.response!.beats).toBe(t.records[0]!.beats);
     expect(t.records[0]!.suggestions).toEqual([{ text: "Показываю осадок", present: "c1" }, { text: "Показываю футляр" }]);
