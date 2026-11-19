@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { checkable, DC_MAX, DC_MIN, raceKeys, type Ruleset } from "@ash/engine";
+import { checkable, DC_MAX, DC_MIN, raceKeys, type NpcNote, type Ruleset } from "@ash/engine";
 
 /**
  * JSON-контракт ответа мастера (gm-2). Ответ — последовательность реплик (beats):
@@ -157,6 +157,23 @@ const rawResponseSchema = (r: Ruleset) => z.object({
   clues: idList(4, 8).default([]),
   reveal: idList(4, 80).default([]),
   suggestions: z.array(z.unknown()).catch([]).default([]),
+  /** Память о людях: манера речи, сдвиг отношения, что сказал. Проверяет движок (applyNpcNotes). */
+  npcs: z
+    .array(z.unknown())
+    .catch([])
+    .default([])
+    .transform((a): NpcNote[] =>
+      a
+        .map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}))
+        .map((x) => ({
+          name: String(x.name ?? "").trim().slice(0, 40),
+          voice: typeof x.voice === "string" ? stripCjk(x.voice).trim().slice(0, 100) : undefined,
+          attitude: Number.isFinite(Number(x.attitude)) ? Math.round(Number(x.attitude)) : 0,
+          told: Array.isArray(x.told) ? x.told.filter((t): t is string => typeof t === "string" && !!t.trim()).map((t) => stripCjk(t).trim().slice(0, 160)).slice(0, 4) : [],
+        }))
+        .filter((x) => x.name)
+        .slice(0, 4),
+    ),
   /** Герой по ходу рассказа пришёл в другое место карты: название или id; проверяет движок. */
   move: z
     .string()
@@ -190,6 +207,7 @@ function buildGmResponseSchema(rules: Ruleset) {
       clues: r.clues,
       reveal: r.reveal,
       move: r.move,
+      npcs: r.npcs,
       suggestions,
     };
   });

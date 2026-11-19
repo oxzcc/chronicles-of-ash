@@ -5,6 +5,7 @@ export * from "./character";
 export * from "./checks";
 export * from "./changes";
 export * from "./effects";
+export * from "./npcs";
 export * from "./combat";
 export * from "./world";
 export * from "./case";

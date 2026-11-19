@@ -10,7 +10,7 @@ export type Recordish = Pick<TurnRecord, "kind" | "action" | "narration" | "spea
 export function toHistory(records: Recordish[]): HistoryEntry[] {
   const out: HistoryEntry[] = [];
   for (const r of records) {
-    if (r.kind === "action" || r.kind === "choice") out.push({ who: "player", text: r.action });
+    if (r.kind === "action" || r.kind === "choice" || r.kind === "present") out.push({ who: "player", text: r.action });
     else if (r.kind === "combat") {
       out.push({ who: "combat", text: r.narration });
       continue;

@@ -19,7 +19,11 @@ export type EffectKind =
   /** Получен предмет. */
   | "item"
   /** Потерян предмет. */
-  | "lost";
+  | "lost"
+  /** Отношение NPC к герою сдвинулось. ref — имя. */
+  | "attitude"
+  /** Предъявленная улика уличила человека во лжи (дело). ref — имя. */
+  | "caught";
 
 export interface TurnEffect {
   kind: EffectKind;
@@ -49,8 +53,12 @@ export const effect = {
   gold: (delta: number, amount: string): TurnEffect => ({ kind: "gold", text: `${delta > 0 ? "+" : "−"}${amount}`, good: delta > 0, delta }),
   item: (name: string): TurnEffect => ({ kind: "item", text: name, good: true }),
   lost: (name: string): TurnEffect => ({ kind: "lost", text: name, good: false }),
+  /** word — отношение после сдвига: «насторожен», «доверяет». */
+  attitude: (name: string, delta: number, word: string): TurnEffect => ({ kind: "attitude", text: `${name}: ${word}`, good: delta > 0, ref: name, delta }),
+  /** lie — что человек утверждал. */
+  caught: (name: string, lie: string): TurnEffect => ({ kind: "caught", text: name, detail: lie, good: true, ref: name }),
 };
 
 /** Порядок плашек: сначала находки дела, потом цели, потом состояние героя. */
-const ORDER: EffectKind[] = ["deduction", "clue", "address", "objective", "quest", "sanity", "hp", "gold", "item", "lost"];
+const ORDER: EffectKind[] = ["caught", "deduction", "clue", "address", "objective", "quest", "attitude", "sanity", "hp", "gold", "item", "lost"];
 export const sortEffects = (xs: TurnEffect[]) => [...xs].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));

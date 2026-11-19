@@ -66,7 +66,7 @@ export function Beats({ beats }: { beats: Beat[] }) {
 }
 
 export function Entry({ t, isCase }: { t: Pick<TurnView, "kind" | "action" | "beats" | "rolls" | "combatEvents" | "effects">; isCase?: boolean }) {
-  const player = t.kind === "action" || t.kind === "choice";
+  const player = t.kind === "action" || t.kind === "choice" || t.kind === "present";
   return (
     <div className="entry">
       {player && <div className="you">{t.action}</div>}

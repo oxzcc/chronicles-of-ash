@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getWorld } from "@ash/worlds";
 import {
-  applyCaseChanges, closeCase, deductionCandidates, effect, layoutCase, lookup, markDeduction, mulberry32, publicCampaign, travelCase, type CaseSeed,
+  applyCaseChanges, checkTwist, closeCase, deductionCandidates, effect, presentClue, layoutCase, lookup, markDeduction, mulberry32, publicCampaign, travelCase, type CaseSeed,
 } from "../src/index";
 
 const W = getWorld("arkham");
@@ -118,6 +118,45 @@ describe("дело: ходы", () => {
   });
 });
 
+describe("дело: тайны жителей, поворот, предъявление", () => {
+  it("мотив, алиби, секрет и ложь с опровергающей уликой; поворот — из дела", () => {
+    const c = fresh().case!;
+    const kit = c.people.find((p) => p.name === "Кит Ларкин")!;
+    expect(kit).toMatchObject({ motive: expect.stringMatching(/бутлегерами/), alibi: expect.any(String), secret: expect.stringMatching(/Отравил/), lie: { text: expect.any(String), breaks: "c1" } });
+    expect(c.people.find((p) => p.name === "Хэтти Колдуэлл")!.lie).toBeUndefined();
+    expect(c.twist).toMatch(/реки/);
+    // Номер улики вне списка — ложь есть, опровергнуть нечем.
+    const seed = { ...W.fallbackCase!, people: [{ name: "Икс", role: "?", at: 1, lie: { text: "не был", breaks: 99 } }] } as CaseSeed;
+    expect(layoutCase(R, seed, "s").case!.people[0]!.lie).toEqual({ text: "не был" });
+  });
+  it("предъявление: уличает только своя улика и только раз; ненайденную не показать", () => {
+    const w = fresh();
+    expect(() => presentClue(w, "c1", "Кит")).toThrow(/не найдена/);
+    for (const id of ["c1", "c4"]) w.case!.clues.find((x) => x.id === id)!.found = true;
+    expect(presentClue(w, "c4", "Кит").caught).toBe(false);
+    const r = presentClue(w, "c1", "Кит");
+    expect(r).toMatchObject({ caught: true, person: { name: "Кит Ларкин" } });
+    expect(r.person!.lie!.broken).toBe(true);
+    expect(presentClue(w, "c1", "Кит Ларкин").caught).toBe(false);
+    expect(presentClue(w, "c1", "Хэтти").caught).toBe(false);
+    expect(presentClue(w, "c1", "Незнакомец").person).toBeUndefined();
+  });
+  it("поворот наступает на половине ключевых улик, один раз", () => {
+    const w = fresh();
+    const keys = w.case!.clues.filter((x) => x.key && !x.requires);
+    keys[0]!.found = true;
+    expect(checkTwist(w)).toBe(false);
+    keys[1]!.found = true;
+    keys[2]!.found = true;
+    w.turn = 7;
+    expect(checkTwist(w)).toBe(true);
+    expect(w.case!.twistAt).toBe(7);
+    w.turn = 9;
+    expect(checkTwist(w)).toBe(false);
+    expect(w.case!.twistAt).toBe(7);
+  });
+});
+
 describe("дело: что видит клиент", () => {
   it("без разгадки, ответов, ненайденных улик и неизвестных мест", () => {
     const w = fresh();
@@ -131,6 +170,9 @@ describe("дело: что видит клиент", () => {
     expect(pub.case!.questions[0]).toEqual({ id: "a1", text: "Кто виновен в смерти миссис Вейл и зачем?", points: 20 });
     expect(pub.case!.people.map((p) => p.name)).not.toContain("Арчибальд Хоу");
     expect(pub.locations.map((l) => l.id).sort()).toEqual(["L0", "L1", "L2", "L3", "L6"]);
+    // Тайны жителей и поворот — только у мастера.
+    expect(json).not.toMatch(/motive|alibi|secret|"lie"|twist/);
+    expect(json).not.toContain("подписал «сердечный приступ»");
   });
   it("после закрытия — разбор целиком", () => {
     const w = fresh();

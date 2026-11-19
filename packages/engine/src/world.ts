@@ -1,3 +1,4 @@
+import type { NpcMemory } from "./npcs";
 import { clamp } from "./dice";
 import { hashStr, mulberry32, type Rng } from "./rng";
 import { locationTypeKeys, startLocationTypes, type LocationType, type Ruleset } from "./rules";
@@ -45,6 +46,8 @@ export interface Campaign {
   complete: boolean;
   turn: number;
   npc: Speaker | null;
+  /** Люди, которых герой встретил: манера речи, отношение, что рассказали. У старых кампаний — нет. */
+  memory?: NpcMemory[];
   combat: CombatState | null;
   /** Детективное дело — в мирах, где оно есть (Аркхэм). Секреты: см. publicCampaign. */
   case?: CaseState;

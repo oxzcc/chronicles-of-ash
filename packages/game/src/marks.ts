@@ -1,4 +1,4 @@
-import { CASE_LIMITS, findPlace, type Campaign, type Character, type TurnEffect } from "@ash/engine";
+import { CASE_LIMITS, findPlace, sameName, type Campaign, type Character, type TurnEffect } from "@ash/engine";
 import type { Beat, BeatMark } from "@ash/llm";
 
 /** Ярлык подсветки в тексте реплики. Что сюда не входит, в тексте не подсвечивается — только в сводке хода. */
@@ -9,10 +9,15 @@ const LABEL: Partial<Record<TurnEffect["kind"], (e: TurnEffect) => string>> = {
   objective: () => "цель",
   sanity: (e) => `рассудок ${e.text}`,
   hp: (e) => `здоровье ${e.text}`,
+  attitude: (e) => `доверие ${(e.delta ?? 0) > 0 ? "+" : "−"}${Math.abs(e.delta ?? 1)}`,
+  caught: () => "ложь раскрыта",
 };
 
+/** Находки о человеке — ярлыком у его последней реплики, а не у рассказчика. */
+const ABOUT_SPEAKER: TurnEffect["kind"][] = ["attitude", "caught"];
+
 /** Находки, которые видны в тексте всегда: без пометки мастера — ярлыком в конце реплики. */
-const ALWAYS: TurnEffect["kind"][] = ["clue", "deduction", "address", "sanity"];
+const ALWAYS: TurnEffect["kind"][] = ["clue", "deduction", "address", "sanity", "caught"];
 
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е").trim();
 
@@ -50,13 +55,19 @@ export function resolveMarks(beats: Beat[], effects: TurnEffect[]): Beat[] {
 
 /** Ярлыки находок в конце последней реплики рассказчика (или последней вообще) — для того, что движок добавил сам. */
 export function tagLast(beats: Beat[], effects: TurnEffect[]): Beat[] {
-  const left = effects.filter((e) => LABEL[e.kind] && ALWAYS.includes(e.kind));
-  if (!left.length || !beats.length) return beats;
+  if (!beats.length) return beats;
   const out = [...beats];
   const narr = out.map((b) => b.speaker).lastIndexOf(null);
-  const i = narr >= 0 ? narr : out.length - 1;
-  const b = out[i]!;
-  out[i] = { ...b, marks: [...(b.marks ?? []), ...left.map((e) => ({ kind: e.kind, quote: null, label: LABEL[e.kind]!(e), ...(e.ref ? { ref: e.ref } : {}) }))] };
+  for (const e of effects) {
+    if (!LABEL[e.kind]) continue;
+    // О человеке — у его последней реплики; если он не говорил — у рассказчика (ложь) или нигде (отношение).
+    let i = -1;
+    if (ABOUT_SPEAKER.includes(e.kind) && e.ref) for (let k = out.length - 1; k >= 0 && i < 0; k--) if (out[k]!.speaker && sameName(out[k]!.speaker!, e.ref)) i = k;
+    if (i < 0 && ALWAYS.includes(e.kind)) i = narr >= 0 ? narr : out.length - 1;
+    if (i < 0) continue;
+    const b = out[i]!;
+    out[i] = { ...b, marks: [...(b.marks ?? []), { kind: e.kind, quote: null, label: LABEL[e.kind]!(e), ...(e.ref ? { ref: e.ref } : {}) }] };
+  }
   return out;
 }
 

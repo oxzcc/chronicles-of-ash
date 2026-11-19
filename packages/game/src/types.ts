@@ -20,7 +20,9 @@ export type TurnInput =
   /** Дело: версия событий по найденным уликам. */
   | { kind: "reconstruct"; text: string }
   /** Дело: ответы на вопросы по id вопроса. */
-  | { kind: "close"; answers: Record<string, string> };
+  | { kind: "close"; answers: Record<string, string> }
+  /** Дело: показать найденную улику собеседнику; text — что герой при этом говорит (из варианта). */
+  | { kind: "present"; clue: string; text?: string };
 
 export type TurnKind = TurnInput["kind"] | "knockout" | "breakdown";
 

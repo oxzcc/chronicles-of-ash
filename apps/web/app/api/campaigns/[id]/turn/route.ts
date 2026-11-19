@@ -28,6 +28,8 @@ function parseInput(body: any): TurnInput {
       return { kind: "lookup", query: String(body.query ?? "") };
     case "reconstruct":
       return { kind: "reconstruct", text: String(body.text ?? "") };
+    case "present":
+      return { kind: "present", clue: String(body.clue ?? "").slice(0, 8), text: typeof body.text === "string" ? body.text.slice(0, 300) : undefined };
     case "close": {
       const raw = body.answers && typeof body.answers === "object" ? body.answers : {};
       const answers = Object.fromEntries(Object.entries(raw).slice(0, 6).map(([k, v]) => [String(k).slice(0, 8), String(v ?? "")]));

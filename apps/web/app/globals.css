@@ -351,3 +351,15 @@ textarea { resize: vertical; }
   .vn-choices { min-height: 0; }
 }
 .case-title { font-weight: 700; color: #f1e6d2; }
+/* Показания и знакомые: отношение к герою и что рассказали */
+.case-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.case-people > li { padding: 8px 10px; font-family: var(--sans); font-size: 14px; line-height: 1.45; }
+.case-people .who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.case-people .att { margin-left: auto; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.case-people .att.a1, .case-people .att.a2 { color: var(--ok); }
+.case-people .att.a-1, .case-people .att.a-2 { color: #f0a38f; }
+.case-people ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink); }
+.case-people > li.focus { background: rgba(217, 119, 58, 0.14); box-shadow: inset 0 0 0 1px rgba(217, 119, 58, 0.55); border-radius: 6px; animation: vnFocus 1.6s ease-out 1; }
+.case-present { display: block; margin-top: 6px; }
+.vn-mark.attitude { --mk-bg: rgba(143, 193, 143, 0.18); --mk-line: var(--ok); --mk-tag: #a9d3a9; }
+.vn-mark.caught { --mk-bg: rgba(217, 119, 58, 0.22); --mk-line: var(--ember); --mk-tag: var(--ember); }

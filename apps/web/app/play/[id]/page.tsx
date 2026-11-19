@@ -7,7 +7,7 @@ import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnEffect, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
 import { BeatText, beatsOf, Bust, Drawer, Icon, Pips, TextFrame, type Mark } from "@/components/vn";
-import { CaseFile, CloseCase, Directory, Newspaper } from "@/components/case";
+import { CaseFile, CloseCase, Directory, Newspaper, People } from "@/components/case";
 
 type Input =
   | { kind: "start" }
@@ -18,7 +18,8 @@ type Input =
   | { kind: "combat"; move: CombatMove; target?: number }
   | { kind: "lookup"; query: string }
   | { kind: "reconstruct"; text: string }
-  | { kind: "close"; answers: Record<string, string> };
+  | { kind: "close"; answers: Record<string, string> }
+  | { kind: "present"; clue: string; text?: string };
 
 interface Live {
   label: string;
@@ -283,7 +284,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const openMark = (m: Mark) => {
     setFocus(m.ref ?? null);
     if (m.kind === "address") setPanel(w.case ? "directory" : "map");
-    else if (m.kind === "clue" || m.kind === "deduction" || m.kind === "objective") setPanel("quest");
+    else if (m.kind === "clue" || m.kind === "deduction" || m.kind === "objective" || m.kind === "attitude" || m.kind === "caught") setPanel("quest");
     else setPanel("hero");
   };
 
@@ -378,7 +379,9 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
                 disabled={busy}
                 onPick={(index) => {
                   const s = suggestions[index]!;
-                  if (s.check) setAsking({ index, s: s as typeof s & { check: NonNullable<typeof s.check> } });
+                  // «Предъявить» — свой ход: уличит ли улика собеседника, решает игра.
+                  if (s.present && w.case && w.npc) send({ kind: "present", clue: s.present, text: s.text }, s.text);
+                  else if (s.check) setAsking({ index, s: s as typeof s & { check: NonNullable<typeof s.check> } });
                   else send({ kind: "choice", index }, s.text);
                 }}
               />
@@ -429,10 +432,19 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       {panel === "quest" && (
         <Drawer title={w.case ? "Досье" : "Журнал"} onClose={() => setPanel(null)}>
           {w.case ? (
-            <CaseFile w={w} busy={busy} focus={focus} onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)} onClose={() => setPanel("close")} />
+            <CaseFile
+              w={w}
+              busy={busy}
+              focus={focus}
+              onPresent={(clue) => {
+                const x = w.case?.clues.find((k) => k.id === clue);
+                send({ kind: "present", clue }, `Показываю ${w.npc?.name ?? ""}: ${x?.title ?? x?.text ?? "улику"}`);
+              }}
+              onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)} onClose={() => setPanel("close")} />
           ) : (
             <>
               <Quest w={w} doneText={worldOf(c).ui.questDone} />
+              <People w={w} focus={focus} title="Знакомые" />
               <p className="small muted" style={{ marginTop: 12 }}>
                 {w.hook}
               </p>
