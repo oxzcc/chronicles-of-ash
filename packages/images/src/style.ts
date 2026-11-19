@@ -28,12 +28,13 @@ export const stylePart = (world: World, lora = false) =>
   lora && world.art.lora ? `${world.art.lora.trigger}, ${world.art.lora.stylePrefix}` : world.art.stylePrefix;
 
 /**
- * Портрет с LoRA — строго по образцу подписей датасета: «<триггер>, three-quarter portrait of <кто это,
+ * Портрет с LoRA — строго по образцу подписей датасета: «<триггер>, waist-up portrait of <кто это,
  * телосложение, внешность, одежда, поза, выражение>, plain light grey background». Любые лишние слова
  * (техника, свет, кадр) разбавляют триггер: на подписях из датасета LoRA повторяет оригиналы почти один в один,
  * а с прежним префиксом рисовала сдержанно и «по каталогу» (data/lora/captest). Кадр — 2:3, как в датасете.
  */
-export const LORA_PORTRAIT_FRAME = "three-quarter portrait of";
+// «waist-up» — как 23 из 38 портретов датасета: с «three-quarter» масштаб скакал от крупного плана до фигуры по бёдра.
+export const LORA_PORTRAIT_FRAME = "waist-up portrait of";
 export const LORA_PORTRAIT_BACKGROUND = "plain light grey background";
 
 export const portraitPrompt = (world: World, description: string, lora = false) =>

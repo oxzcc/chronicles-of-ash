@@ -11,7 +11,9 @@ export function toWireMessages(messages: ChatMessage[]) {
           ? { role: "system", content: [{ type: "text", text: m.content, cache_control: { type: "ephemeral" } }] }
           : { role: "system", content: m.content };
       case "user":
-        return { role: "user", content: m.content };
+        return m.images?.length
+          ? { role: "user", content: [{ type: "text", text: m.content }, ...m.images.map((url) => ({ type: "image_url", image_url: { url } }))] }
+          : { role: "user", content: m.content };
       case "assistant":
         return {
           role: "assistant",

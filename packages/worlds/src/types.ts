@@ -127,6 +127,21 @@ export interface ArtStyle {
    * Без этого все варианты на выбор одеты одинаково.
    */
   heroOutfitsEn?: Record<string, string[]>;
+  /**
+   * Четыре наряда героини того же класса — женская одежда эпохи (один можно оставить мужским костюмом).
+   * Без списка героиня одета по heroOutfitsEn. `{under}` — место верхней одежды, под которой код решает,
+   * что надето (underlayersEn). Предмет в руках — через «with …», без глагола: держит его поза.
+   */
+  heroOutfitsFemaleEn?: Record<string, string[]>;
+  /**
+   * Что под верхней одеждой у женщин: закрыто или открыто. Выбирает код (у NPC — по имени, у героини —
+   * не больше одной открытой из четырёх), не служебная модель и не LoRA: в датасете «пышная» всегда с вырезом.
+   * openShare — доля открытых (только 20–45 лет); у ролей из figures.roles — openShareRoles; у modestRoles
+   * (учительница воскресной школы, вдова, монахиня…) — всегда закрыто.
+   */
+  underlayersEn?: { closed: string[]; open: string[]; openShare: number; openShareRoles: number; modestRoles?: RegExp };
+  /** Причёски эпохи. Выбирает код: служебная модель сама всем делает пучок. */
+  hairstylesEn?: { f: string[]; m: string[] };
   locationEn: Record<LocationType, string>;
   /** Места, которые рисуются изнутри (и ночью). */
   interiorTypes: LocationType[];

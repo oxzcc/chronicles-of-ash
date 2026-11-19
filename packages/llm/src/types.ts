@@ -9,7 +9,8 @@ export interface ToolCall {
 
 export type ChatMessage =
   | { role: "system"; content: string; cache?: boolean }
-  | { role: "user"; content: string }
+  /** images — data: или https-адреса картинок для модели со зрением (проверка портретов). */
+  | { role: "user"; content: string; images?: string[] }
   | { role: "assistant"; content: string; toolCalls?: ToolCall[] }
   | { role: "tool"; toolCallId: string; content: string };
 

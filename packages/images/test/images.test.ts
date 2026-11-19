@@ -139,7 +139,7 @@ describe("LoRA стиля", () => {
     const { backgroundPrompt, stylePart, baseHero } = await import("../src/index");
     const hero = baseHero(arkham, { race: "human", cls: "journalist", gender: "f" });
     expect(hero).toMatch(/^a woman newspaper reporter/);
-    expect(portraitPrompt(arkham, hero, true)).toBe(`mthnr style, three-quarter portrait of ${hero}, plain light grey background`);
+    expect(portraitPrompt(arkham, hero, true)).toBe(`mthnr style, waist-up portrait of ${hero}, plain light grey background`);
     const bg = backgroundPrompt(arkham, "x", "night", true);
     expect(bg).toMatch(/^mthnr style, /);
     expect(bg).toMatch(/1926/);
@@ -182,7 +182,8 @@ describe("LoRA стиля", () => {
     // Пожилые — без утрирования.
     for (let i = 0; i < 50; i++) expect(buildFor(arkham, { name: `Старуха ${i}`, gender: "f" })!.elderly).not.toMatch(/bust/);
     // Певица — всегда «песочные часы»; у мира без правил выбора нет.
-    for (let i = 0; i < 20; i++) expect(buildFor(arkham, { name: `Певица ${i}`, gender: "f", role: "певица в подпольном баре" })!.young).toBe(hourglass);
+    const seductive = fig.roles![0]!.f!;
+    for (let i = 0; i < 20; i++) expect(buildFor(arkham, { name: `Певица ${i}`, gender: "f", role: "певица в подпольном баре" })!.young).toBe(seductive);
     expect(buildFor(world, { name: "x", gender: "f" })).toBeUndefined();
   });
 
@@ -193,48 +194,148 @@ describe("LoRA стиля", () => {
     const failing: any = { route: () => ({ model: "m", provider: { complete: async () => { throw new Error("down"); } } }) };
     const d = { race: "human" as const, cls: "journalist", gender: "f" as const };
     const v = await heroVariants(failing, arkham, d, "", undefined, mulberry32(7));
-    // Фигуры — в порядке мира, по одной на облик.
-    v.forEach((x, i) => expect(x.prompt).toContain(fig.hero.f[i]!));
-    // Наряды — четыре разных из списка класса, и именно они идут в основу вместо classEn.
+    // Фигуры — все четыре из мира, по одной на облик, но в случайном порядке: «песочные часы» не всегда первые.
+    expect(fig.hero.f.every((b) => v.some((x) => x.prompt.includes(b)))).toBe(true);
+    const firsts = new Set<number>();
+    for (let seed = 1; seed <= 30; seed++) {
+      const vv = await heroVariants(failing, arkham, d, "", undefined, mulberry32(seed));
+      firsts.add(fig.hero.f.findIndex((b) => vv[0]!.prompt.includes(b)));
+    }
+    expect(firsts.size).toBeGreaterThan(2);
+    // Наряды героини — четыре разных из женского списка класса (слой подставлен), поза — сразу после наряда.
+    const list = arkham.art.heroOutfitsFemaleEn!.journalist!;
     expect(new Set(v.map((x) => x.outfit)).size).toBe(4);
-    for (const x of v) expect(arkham.art.heroOutfitsEn!.journalist).toContain(x.outfit);
+    for (const x of v) {
+      expect(list.some((o) => x.outfit!.startsWith(o.split(" {under}")[0]!.split(",")[0]!))).toBe(true);
+      expect(x.outfit).not.toMatch(/\{under\}/);
+      expect(x.outfit).toMatch(/the object/);
+      expect(x.prompt).not.toMatch(/the object/);
+    }
     expect(baseHero(arkham, d, v[1]!.outfit)).toBe(`a woman ${v[1]!.outfit}`);
-    // Позы — четыре разные: последний кусок промпта.
-    expect(new Set(v.map((x) => x.prompt.split(", ").slice(-1)[0])).size).toBe(4);
+    // Позы — четыре разные; ни одной «one hand … the other» с предметом у воротника.
+    const poses = v.map((x) => x.outfit!.slice(x.outfit!.lastIndexOf(", ") + 2));
+    expect(new Set(v.map((x) => x.outfit!.split("the object")[0])).size).toBe(4);
+    for (const p of poses) expect(p).not.toMatch(/collar/);
+    // Мужчина-журналист — по общему списку, без меток слоя.
+    const m = await heroVariants(failing, arkham, { ...d, gender: "m" }, "", undefined, mulberry32(7));
+    for (const x of m) expect(arkham.art.heroOutfitsEn!.journalist!.some((o) => x.outfit!.startsWith(o))).toBe(true);
     // В подписи нет телосложения.
     for (const x of v) expect(x.label).not.toMatch(/форм|пышн|строй|спортив/);
     // Модель всё же вписала фигуру в подпись — убираем.
     const chatty: any = { route: () => ({ model: "m", provider: { complete: async () => ({ text: JSON.stringify(Array.from({ length: 4 }, (_, i) => ({ label: `Молодая, рыжая ${i}, с формами`, prompt: `woman in her twenties, red hair ${i}` }))) }) } }) };
     for (const x of await heroVariants(chatty, arkham, d, "", undefined, mulberry32(1))) expect(x.label).toMatch(/^Молодая, рыжая \d$/);
-    // Цвет волос и приметы раздаёт код: четыре разных цвета, примета у одного-двух; без «walking» в позах.
+    // Цвет волос, причёску, приметы и выражение раздаёт код.
     let asked = "";
     const spy: any = { route: () => ({ model: "m", provider: { complete: async (r: any) => { asked = r.messages[0].content; throw new Error("down"); } } }) };
     for (let seed = 1; seed <= 20; seed++) {
       const vv = await heroVariants(spy, arkham, d, "", undefined, mulberry32(seed));
       const hairs = [...asked.matchAll(/years old, ([a-z -]+?) hair/g)].map((m) => m[1]);
       expect(new Set(hairs).size).toBe(4);
-      const marked = (asked.match(/one noticeable scar/g) ?? []).length;
+      // Рыжий — один цвет из десяти: в четвёрке не больше одной рыжей.
+      expect(hairs.filter((h) => /red|auburn|copper/.test(h!)).length).toBeLessThanOrEqual(1);
+      const styles = arkham.art.hairstylesEn!.f.filter((h) => asked.includes(h));
+      expect(styles.length).toBe(4);
+      // Приметы — у одной-двух, без шрамов, ожогов и ран.
+      const marked = 4 - (asked.match(/a clean face without scars/g) ?? []).length;
       expect(marked).toBeGreaterThanOrEqual(1);
       expect(marked).toBeLessThanOrEqual(2);
-      for (const x of vv) expect(x.prompt).not.toMatch(/walking/);
-      // Возраст: четыре разных, кто-то моложе 32 и кто-то старше 45; облик с формами — не старше 45.
+      expect(asked.replace(/without scars, burns or marks/g, "")).not.toMatch(/\bscar|burn|wound/);
+      // Выражения — четыре разных.
+      expect(new Set([...asked.matchAll(/expression: ([a-z -]+)/g)].map((m) => m[1])).size).toBe(4);
+      for (const x of vv) expect(x.outfit).not.toMatch(/walking/);
+      // Возраст: четыре разных, кто-то моложе 32 и кто-то старше 45; облик с формами — не старше 45; юным — «youthful face».
       const ages = [...asked.matchAll(/(\d+) years old/g)].map((m) => Number(m[1]));
       expect(ages).toHaveLength(4);
       expect(Math.min(...ages)).toBeLessThan(32);
       expect(Math.max(...ages)).toBeGreaterThan(45);
-      expect(ages[0]).toBeLessThanOrEqual(45);
+      vv.forEach((x, i) => {
+        if (/voluptuous|curvy|plump/.test(x.prompt) && /voluptuous/.test(x.prompt)) expect(ages[i]).toBeLessThanOrEqual(45);
+        expect(/youthful face/.test(x.prompt)).toBe(ages[i]! < 32);
+      });
     }
     // Свои слова игрока о волосах и приметах — важнее.
     await heroVariants(spy, arkham, d, "рыжая, шрам через бровь", undefined, mulberry32(5));
-    expect(asked).not.toMatch(/[a-z-]+ hair(,|;|\.| streaked)|noticeable scar|clean face/);
+    expect(asked).not.toMatch(/[a-z-]+ hair(,|;|\.| streaked)|clean face|laugh lines|mole|freckles/);
+    expect(arkham.art.hairstylesEn!.f.some((h) => asked.includes(h))).toBe(false);
     await heroVariants(spy, arkham, d, "пожилая", undefined, mulberry32(6));
     expect(asked).not.toMatch(/\d\) \d+ years old/);
-    // Игрок сам описал фигуру и одежду — их не навязываем.
+    // Игрок сам описал фигуру и одежду — их не навязываем, поза уходит в промпт.
     const own = await heroVariants(failing, arkham, d, "худая, высокая, в потёртом кожаном плаще", undefined, mulberry32(3));
     for (const x of own) {
       expect(x.prompt).not.toMatch(/bust|slender|athletic|plump/);
       expect(x.outfit).toBeUndefined();
+      expect(x.prompt).toMatch(/the object/);
     }
+  });
+
+  it("слой под верхней одеждой у героини: не больше одного открытого, только 20–45, иногда ни одного", async () => {
+    const { heroVariants } = await import("../src/index");
+    const { mulberry32 } = await import("@ash/engine");
+    const u = arkham.art.underlayersEn!;
+    const failing: any = { route: () => ({ model: "m", provider: { complete: async () => { throw new Error("down"); } } }) };
+    let sets = 0;
+    let withOpen = 0;
+    for (const cls of Object.keys(arkham.art.classEn))
+      for (let seed = 1; seed <= 40; seed++) {
+        const v = await heroVariants(failing, arkham, { race: "human", cls, gender: "f" }, "", undefined, mulberry32(seed * 31 + cls.length));
+        const open = v.filter((x) => u.open.some((o) => x.outfit!.includes(o)));
+        expect(open.length).toBeLessThanOrEqual(1);
+        sets++;
+        if (open.length) withOpen++;
+        // Закрытый слой стоит у каждого наряда с верхней одеждой.
+        for (const x of v) expect(x.outfit).not.toMatch(/\{under\}/);
+      }
+    // Открытый облик — в части наборов, а не во всех и не ни в одном.
+    expect(withOpen / sets).toBeGreaterThan(0.15);
+    expect(withOpen / sets).toBeLessThan(0.85);
+    // Мужчины — без слоёв.
+    const m = await heroVariants(failing, arkham, { race: "human", cls: "detective", gender: "m" }, "", undefined, mulberry32(1));
+    for (const x of m) for (const l of [...u.open, ...u.closed]) expect(x.outfit).not.toContain(l);
+  });
+
+  it("NPC: причёска, цвет волос и слой — от кода по имени; поза одной фразой; приметы зажившие", async () => {
+    const { describeNpc, guessNpc, npcStyle } = await import("../src/index");
+    let asked = "";
+    const reply: any = { route: () => ({ model: "m", provider: { complete: async (r: any) => ((asked = r.messages[0].content), { text: "a young woman maid, slim", toolCalls: [], usage: {}, model: "m" }) } }) };
+    const card = { name: "Агата Мур", race: "human" as const, gender: "f" as const, role: "горничная" };
+    await describeNpc(reply, arkham, card);
+    const st = npcStyle(arkham, card);
+    expect(npcStyle(arkham, card)).toEqual(st);
+    expect(asked).toContain(st.hair!);
+    expect(asked).toContain(st.under!.closed);
+    expect(asked).toMatch(/ONE phrase that accounts for both hands/);
+    expect(asked).toMatch(/nothing modern/);
+    expect(asked).toMatch(/no dark circles/);
+    // Возраст и примета — от кода: модель не делает всех молодыми и не ставит всем родинку из примера.
+    expect(asked).toContain(`age: ${st.age}`);
+    expect(asked).toContain(`face: '${st.mark}'`);
+    expect(asked).not.toMatch(/youthful|small mole|beauty mark/);
+    const many = Array.from({ length: 400 }, (_, i) => npcStyle(arkham, { name: `Н${i}`, gender: "f" }));
+    expect(many.filter((x) => x.age!.includes("twenties")).length / 400).toBeLessThan(0.4);
+    expect(many.filter((x) => x.mark!.includes("clean face")).length / 400).toBeCloseTo(0.55, 1);
+    // Слой — только под распахнутой верхней одеждой, не под платьем.
+    expect(asked).toMatch(/ONLY if they wear an open coat/);
+    // Мастер описал лицо и возраст — их не задаём.
+    await describeNpc(reply, arkham, { ...card, look: "пожилая, со шрамом" });
+    expect(asked).not.toContain("age: in their");
+    expect(asked).toMatch(/faint, pale and healed/);
+    // Мастер сам описал волосы — их не задаём.
+    await describeNpc(reply, arkham, { ...card, look: "рыжая, с косой" });
+    expect(asked).not.toContain(st.hair!);
+    // Мужчинам слоёв нет; у «роковых» ролей открытый слой чаще.
+    expect(npcStyle(arkham, { name: "Том", gender: "m" }).under).toBeUndefined();
+    const share = (role: string) => Array.from({ length: 600 }, (_, i) => npcStyle(arkham, { name: `Ж${i}`, gender: "f", role })).filter((x) => x.under!.open).length / 600;
+    expect(share("горничная")).toBeCloseTo(arkham.art.underlayersEn!.openShare, 1);
+    expect(share("певица в баре")).toBeCloseTo(arkham.art.underlayersEn!.openShareRoles, 1);
+    // Скромные роли — всегда закрыто.
+    for (let i = 0; i < 200; i++) expect(npcStyle(arkham, { name: `У${i}`, gender: "f", role: "учительница воскресной школы" }).under!.open).toBeUndefined();
+    // Шрамы код не раздаёт: LoRA рисует их свежей раной.
+    expect(Array.from({ length: 300 }, (_, i) => npcStyle(arkham, { name: `Ш${i}`, gender: "f" }).mark).some((m) => /scar/.test(m!))).toBe(false);
+    // Пол угадывает модель — правила для обоих.
+    await guessNpc(reply, arkham, { name: "Сэм", lines: ["Пришла!"], scene: "бар" });
+    expect(asked).toMatch(/if a woman: age: [^;]+; hair in these words/);
+    // Мир без причёсок и слоёв — без них.
+    expect(npcStyle(world, { name: "x", gender: "f" }).under).toBeUndefined();
   });
 
   it("конвейер шлёт LoRA в fal только миру, для которого она задана", async () => {
@@ -271,9 +372,92 @@ describe("LoRA стиля", () => {
     const { renderPortrait } = await import("../src/index");
     const pa = await renderPortrait({ world: arkham, provider, storage, description: "a woman librarian", key: "npc/a", seed: 1 });
     expect(calls[0]!.body.image_size).toEqual({ width: 1024, height: 1536 });
-    expect(pa.prompt).toBe("mthnr style, three-quarter portrait of a woman librarian, plain light grey background");
+    expect(pa.prompt).toBe("mthnr style, waist-up portrait of a woman librarian, plain light grey background");
     calls.length = 0;
     await renderPortrait({ world, provider, storage, description: "a woman, female character, elf", key: "npc/f", seed: 1 });
     expect(calls[0]!.body.image_size).toEqual({ width: 1024, height: 1024 });
+  });
+});
+
+describe("проверка портрета моделью со зрением", () => {
+  const figure = (svg: string, w = 200, h = 300) =>
+    sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${svg}</svg>`)).png().toBuffer();
+
+  it("разбор ответа: лишние руки, подбородок, мусор", async () => {
+    const { parseCheck } = await import("../src/index");
+    expect(parseCheck('```json {"arms":2,"hands":3,"extra_limb":false,"chin":0.25,"note":"third hand"} ```')).toMatchObject({ limbs: true, chin: 0.25 });
+    expect(parseCheck('{"arms":3,"hands":2,"extra_limb":false,"chin":0.3}')!.limbs).toBe(true);
+    expect(parseCheck('{"arms":2,"hands":2,"extra_limb":true}')!.limbs).toBe(true);
+    expect(parseCheck('{"arms":1,"hands":1,"extra_limb":false,"chin":0.31}')).toMatchObject({ limbs: false, chin: 0.31 });
+    expect(parseCheck('{"arms":2,"hands":2,"chin":7}')!.chin).toBeUndefined();
+    expect(parseCheck("не знаю")).toBeNull();
+  });
+
+  it("без VISION_MODEL проверки нет; с ней — картинка уходит модели", async () => {
+    const { portraitInspector } = await import("../src/index");
+    expect(portraitInspector(fakeRouter())).toBeUndefined();
+    expect(portraitInspector(createRouter({ fake: true, models: { narratorPaid: "p", narratorFree: "f", utility: "u", vision: "v" } }))).toBeUndefined();
+    let msg: any;
+    const inspect = portraitInspector({ vision: () => ({ model: "v", provider: { name: "x", complete: async (r: any) => ((msg = r.messages[0]), { text: '{"arms":2,"hands":2,"extra_limb":false,"chin":0.3}', toolCalls: [], usage: { costUsd: 0.0001 }, model: "v", finishReason: "stop" }) } as any }) })!;
+    const r = await inspect(await figure(`<rect x="50" y="20" width="100" height="280" fill="#800"/>`));
+    expect(r).toMatchObject({ limbs: false, chin: 0.3, costUsd: 0.0001 });
+    expect(msg.images[0]).toMatch(/^data:image\/jpeg;base64,/);
+    const { toWireMessages } = await import("@ash/llm");
+    expect((toWireMessages([msg])[0] as any).content[1].type).toBe("image_url");
+  });
+
+  it("размер головы: крупный кадр, мелкая фигура приближается", async () => {
+    const { headFrame, finishPortrait, TOO_CLOSE } = await import("../src/process");
+    const big = await headFrame(await figure(`<rect x="40" y="3" width="120" height="297" fill="#800"/>`), 0.5);
+    expect(big!.tooClose).toBe(true);
+    expect(big!.head).toBeGreaterThan(TOO_CLOSE);
+    const small = await headFrame(await figure(`<rect x="120" y="60" width="40" height="240" fill="#800"/>`), 0.33);
+    expect(small!.tooClose).toBe(false);
+    expect(small!.zoom).toBeGreaterThan(1);
+    expect(small!.cx).toBeCloseTo(0.7, 1);
+    const ok = await headFrame(await figure(`<rect x="60" y="30" width="80" height="270" fill="#800"/>`), 0.35);
+    expect(ok!.zoom).toBe(1);
+    expect(await headFrame(await figure(`<rect x="60" y="30" width="80" height="270" fill="#800"/>`), 0.05)).toBeUndefined();
+    // Приближённый портрет — того же размера, макушка ближе к верху, фигура шире.
+    const src = await figure(`<rect x="120" y="60" width="40" height="240" fill="#800"/>`, 400, 600);
+    const out = await finishPortrait(src, small!);
+    const plain = await finishPortrait(src);
+    expect([out.width, out.height]).toEqual([plain.width, plain.height]);
+    const bbox = async (b: Buffer) => {
+      const { data, info } = await sharp(b).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      let top = info.height, minX = info.width, maxX = 0;
+      for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) if (data[(y * info.width + x) * 4 + 3]! > 128) { top = Math.min(top, y); minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
+      return { top: top / info.height, width: (maxX - minX) / info.width };
+    };
+    const [z, p] = [await bbox(out.bytes), await bbox(plain.bytes)];
+    expect(z.top).toBeLessThan(p.top);
+    expect(z.width).toBeGreaterThan(p.width);
+  });
+
+  it("конвейер перерисовывает третью руку и крупный кадр, берёт лучший; без проверяющего — как раньше", async () => {
+    const { renderPortrait } = await import("../src/index");
+    const storage = new LocalStorage(await mkdtemp(join(tmpdir(), "ash-inspect-")));
+    const seeds: number[] = [];
+    const provider = new FakeImageProvider();
+    const gen = provider.generate.bind(provider);
+    provider.generate = (r: any) => (seeds.push(r.seed), gen(r));
+    const answers = [
+      { limbs: true, chin: 0.3, note: "third hand", costUsd: 0.001 },
+      { limbs: false, chin: 0.3, note: "", costUsd: 0.001 },
+    ];
+    let k = 0;
+    const r = await renderPortrait({ world, provider, storage, description: "a woman", key: "npc/i", seed: 5, inspect: async () => answers[k++] ?? null });
+    expect(seeds).toEqual([5, 5 + 7919]);
+    expect(r.redrawn).toBe(true);
+    expect(r.issues).toEqual([]);
+    // Все попытки с третьей рукой — после двух перерисовок сдаёмся и берём лучший.
+    seeds.length = 0;
+    const bad = await renderPortrait({ world, provider, storage, description: "a woman", key: "npc/j", seed: 1, inspect: async () => ({ limbs: true, note: "", costUsd: 0 }) });
+    expect(seeds).toHaveLength(3);
+    expect(bad.issues[0]).toMatch(/extra limbs/);
+    // Без проверяющего — одна попытка на целый кадр.
+    seeds.length = 0;
+    await renderPortrait({ world, provider, storage, description: "a woman", key: "npc/k", seed: 1 });
+    expect(seeds).toHaveLength(1);
   });
 });

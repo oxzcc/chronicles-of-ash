@@ -2,7 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { characters, images, npcs, type Db } from "@ash/db";
 import { hashStr, locationById, matchName, neighbors, sameName, type Campaign, type CharacterDraft, type LocationType } from "@ash/engine";
 import {
-  baseHero, describeLocation, describeNpc, guessNpc, heroVariants, renderBackground, renderPortrait,
+  baseHero, describeLocation, describeNpc, guessNpc, heroVariants, portraitInspector, renderBackground, renderPortrait,
   type ImageProvider, type ImageStorage, type NpcCard, type TimeOfDay,
 } from "@ash/images";
 import type { ModelRouter, Speaker } from "@ash/llm";
@@ -373,18 +373,20 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
     const j = row.job;
     const world = getWorld(isWorldId(j.world) ? j.world : DEFAULT_WORLD);
     const rev = j.rev ? `-r${j.rev}` : "";
+    // Проверка рук и кадра моделью со зрением — только если задана VISION_MODEL.
+    const inspect = portraitInspector(d.router);
     let r;
     if (j.type === "npc") {
       const description = await describeNpc(d.router, world, j.card, signal);
-      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description, key: `npc/${row.id}${rev}`, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description, key: `npc/${row.id}${rev}`, signal, inspect });
     } else if (j.type === "npc-guess") {
       const g = await guessNpc(d.router, world, j, signal);
       await d.db.update(npcs).set({ race: g.card.race, gender: g.card.gender, role: g.card.role }).where(eq(npcs.id, j.npcId));
-      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: g.description, key: `npc/${row.id}${rev}`, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: g.description, key: `npc/${row.id}${rev}`, signal, inspect });
     } else if (j.type === "portrait") {
-      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `npc/${row.id}${rev}`, seed: j.seed, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `npc/${row.id}${rev}`, seed: j.seed, signal, inspect });
     } else if (j.type === "hero") {
-      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `hero/${row.id}${rev}`, seed: j.seed, signal });
+      r = await renderPortrait({ world, provider: d.provider, storage: d.storage, description: j.description, key: `hero/${row.id}${rev}`, seed: j.seed, signal, inspect });
     } else {
       const description = await describeLocation(d.router, world, { name: j.name, type: j.locType, desc: j.desc }, signal);
       r = await renderBackground({ world, provider: d.provider, storage: d.storage, description, time: j.time, key: `bg/${row.id}${rev}`, signal });
