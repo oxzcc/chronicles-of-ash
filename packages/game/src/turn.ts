@@ -1,7 +1,7 @@
 import {
-  applyCaseChanges, applyChanges, breakDown, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
+  applyCaseChanges, applyChanges, breakDown, effect, emptyApplied, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
   playerMove, skillCheck, startCombat, storyMove, travel, travelCase,
-  type CombatEvent, type CombatOutcome, type Verdict,
+  type CombatEvent, type CombatOutcome, type TurnEffect, type Verdict,
 } from "@ash/engine";
 import {
   addUsage, caseActions, deducePrompt, emptyUsage, gradePrompt, parseDeduction, parseVerdicts, roughVerdict, runNarratorTurn, systemActions,
@@ -10,6 +10,7 @@ import {
 import { worldOf } from "@ash/worlds";
 import { GameError, type GameState, type TurnDeps, type TurnInput, type TurnOutcome, type TurnRecord } from "./types";
 import { toHistory, type Recordish } from "./history";
+import { previewMarks, proposedFromFinds, resolveMarks, tagLast } from "./marks";
 
 export const MAX_ACTION_LENGTH = 500;
 export const MAX_ANSWER_LENGTH = 400;
@@ -34,7 +35,8 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     const r = await runNarratorTurn({
       provider, model, world, worldBible: deps.worldBible, rng: deps.rng, signal: deps.signal,
       scene: { character: c, campaign: w, history: history(), action },
-      onBeats: (beats) => deps.emit?.({ type: "beats", beats }),
+      // Реплики идут игроку сразу — уже с подсветкой находок, которые движок примет.
+      onBeats: (beats) => deps.emit?.({ type: "beats", beats: previewMarks(c, w, beats) }),
       onRoll: (roll) => deps.emit?.({ type: "roll", roll }),
       onSpeaker: deps.onSpeaker,
       allowChecks: !opts.preRolls?.length,
@@ -49,8 +51,11 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       questComplete: w.case ? false : resp.questComplete,
     });
     if (w.case) {
-      const found = applyCaseChanges(w, { clues: resp.clues, reveal: resp.reveal });
+      // Улики и адреса, помеченные в тексте, — первыми: это то, что игрок уже видел подсвеченным.
+      const fromFinds = proposedFromFinds(w, resp.beats);
+      const found = applyCaseChanges(w, { clues: [...new Set([...fromFinds.clues, ...resp.clues])], reveal: [...new Set([...fromFinds.reveal, ...resp.reveal])] });
       applied.notes.push(...found.notes);
+      applied.effects.push(...found.effects);
       applied.rejected.push(...found.rejected);
       if (applied.sanity < 0) w.case.sanityLost += -applied.sanity;
     }
@@ -63,6 +68,15 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
         await deps.onArrive?.();
       }
     }
+    // Подсветка находок в тексте — только принятых движком; «предъявить» — только найденную улику.
+    resp.beats = resolveMarks(resp.beats, applied.effects);
+    resp.suggestions = resp.suggestions.map((s) => {
+      if (!s.present) return s;
+      const clue = w.case?.clues.find((x) => x.id === s.present && x.found && !x.requires);
+      if (clue) return s;
+      const { present: _drop, ...rest } = s;
+      return rest;
+    });
     w.npc = resp.speaker;
     w.turn++;
     records.push({
@@ -76,10 +90,10 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   };
 
   /** Запись без модели (справочник): журнал и история для мастера. */
-  const engineRecord = (kind: TurnRecord["kind"], label: string, text: string) => {
+  const engineRecord = (kind: TurnRecord["kind"], label: string, text: string, effects: TurnEffect[] = []) => {
     records.push({
       kind, action: label, narration: text, beats: [{ speaker: null, text }], speaker: null, line: "",
-      suggestions: [], response: null, applied: null, rolls: [], combatEvents: [],
+      suggestions: [], response: null, applied: effects.length ? { ...emptyApplied(), notes: effects.map((e) => e.text), effects } : null, rolls: [], combatEvents: [],
       model: "engine", promptVersion: "-", usage: emptyUsage(), degraded: false,
     });
   };
@@ -117,9 +131,22 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
     else await knockedOut(foes);
   };
 
+  /** Плашка к последней записи: то, что изменил сам движок, а не мастер (поражение, срыв, вывод). */
+  const addEffect = (e: TurnEffect, first = false) => {
+    const rec = records.at(-1);
+    const a = rec?.applied;
+    if (!rec || !a) return;
+    if (first) a.effects.unshift(e);
+    else a.effects.push(e);
+    // Вывод и срыв видны и в тексте — ярлыком в конце реплики.
+    rec.beats = tagLast(rec.beats, [e]);
+    if (rec.response) rec.response.beats = rec.beats;
+  };
+
   const knockedOut = async (foes?: string) => {
     const { goldLost } = knockOut(c);
     await narrate("knockout", "Герой потерял сознание", systemActions.knockedOut(R.money.amount(goldLost), foes), { keepHp: true });
+    if (goldLost) addEffect(effect.gold(-goldLost, R.money.amount(goldLost)));
   };
 
   /** Если ответ мастера объявил бой — начинаем его; враги могут ударить первыми. */
@@ -139,13 +166,14 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   /** Рассудок кончился — срыв: половина рассудка возвращается, в деле теряется время. */
   const checkBroken = async () => {
     if (c.sanity !== 0 || w.combat) return;
-    breakDown(c);
+    const { restored } = breakDown(c);
     let lost = 0;
     if (w.case && !w.case.result) {
       lost = Math.min(CASE_LIMITS.breakdownVisits, Math.max(0, w.case.limit - w.case.visits));
       w.case.visits += lost;
     }
     await narrate("breakdown", "Срыв", systemActions.breakdown(lost), { keepHp: true, keepSanity: true });
+    if (restored) addEffect(effect.sanity(restored));
   };
 
   switch (input.kind) {
@@ -225,7 +253,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       }
       const place = locationById(w, hit.place)!;
       const who = hit.person ? `${hit.person.name}, ${hit.person.role}. ` : "";
-      engineRecord("lookup", `Справочник: «${q}»`, `${who}Адрес: ${place.name}.${hit.revealed ? " Новый адрес отмечен на карте." : ""}`);
+      engineRecord("lookup", `Справочник: «${q}»`, `${who}Адрес: ${place.name}.${hit.revealed ? " Новый адрес отмечен на карте." : ""}`, hit.revealed ? [effect.address(place.id, place.name)] : []);
       break;
     }
     case "reconstruct": {
@@ -238,7 +266,10 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const id = parseDeduction(r.text, candidates.map((d) => d.id));
       const d = id ? markDeduction(w, id) : null;
       await narrate("reconstruct", `Реконструкция: ${text}`, caseActions.reconstruct(text, d?.text ?? null), { extraUsage: r.usage });
-      if (d) records.at(-1)!.applied?.notes.unshift(`вывод: ${d.text}`);
+      if (d) {
+        records.at(-1)!.applied?.notes.unshift(`вывод: ${d.text}`);
+        addEffect(effect.deduction(d.id, d.text), true);
+      }
       await checkBroken();
       break;
     }

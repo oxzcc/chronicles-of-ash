@@ -1,6 +1,6 @@
 "use client";
 
-import type { Character, CheckResult, CombatEvent, CombatOutcome, CombatState, LocationType, PublicCampaign } from "@ash/engine";
+import type { Character, CheckResult, CombatEvent, CombatOutcome, CombatState, LocationType, PublicCampaign, TurnEffect } from "@ash/engine";
 import type { Beat, Suggestion } from "@ash/llm";
 import type { SceneView } from "@ash/game";
 
@@ -19,7 +19,11 @@ export interface TurnView {
   rolls: CheckResult[];
   suggestions: Suggestion[];
   combatEvents: CombatEvent[];
+  /** Что изменил ход: улики, адреса, рассудок, деньги, предметы — плашки в сцене и в истории. */
+  effects: TurnEffect[];
 }
+
+export type { TurnEffect };
 
 export interface CampaignView {
   id: string;

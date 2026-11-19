@@ -4,9 +4,9 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { locationById, locationTypeName, matchName, type CheckResult, type CombatEvent, type CombatMove, type CombatState, type LocationType } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
-import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnView } from "@/lib/client";
+import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnEffect, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
-import { beatsOf, Bust, Drawer, Icon, Pips, TextFrame } from "@/components/vn";
+import { BeatText, beatsOf, Bust, Drawer, Icon, Pips, TextFrame, type Mark } from "@/components/vn";
 import { CaseFile, CloseCase, Directory, Newspaper } from "@/components/case";
 
 type Input =
@@ -69,6 +69,11 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const [dice, setDice] = useState<DiceView | null>(null);
   const [asking, setAsking] = useState<{ index: number; s: Suggestion & { check: { skill: string; dc: number } } } | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  /** Куда навести панель: id улики в досье или места в справочнике (клик по подсвеченной находке). */
+  const [focus, setFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!panel) setFocus(null);
+  }, [panel]);
   const [enter, setEnter] = useState<Enter | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
@@ -213,7 +218,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "BUTTON" || panel || asking) return;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "BUTTON" || t.classList.contains("vn-mark") || panel || asking) return;
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
         advance();
@@ -271,6 +276,16 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const submit = () => text.trim() && send({ kind: "action", text: text.trim() }, text.trim());
   const R = worldOf(c).rules;
   const ab = R.classes[c.cls]!.ability;
+  // Итог последнего действия: полоски здоровья и рассудка вспыхивают при потере.
+  const fx = batch.flatMap((t) => t.effects ?? []);
+  const hurt = (kind: TurnEffect["kind"]) => fx.some((e) => e.kind === kind && !e.good);
+  // Клик по подсвеченной находке: улика — в досье, адрес — в справочник (или на карту), рассудок и здоровье — лист героя.
+  const openMark = (m: Mark) => {
+    setFocus(m.ref ?? null);
+    if (m.kind === "address") setPanel(w.case ? "directory" : "map");
+    else if (m.kind === "clue" || m.kind === "deduction" || m.kind === "objective") setPanel("quest");
+    else setPanel("hero");
+  };
 
   return (
     <div className="vn">
@@ -295,11 +310,11 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
             {scene?.hero?.url ? <img src={scene.hero.url} alt="" /> : <span className="vn-hero-ph">{c.name[0]}</span>}
             <span className="vn-hero-info">
               <span className="n">{c.name}</span>
-              <span className="vn-hp" role="img" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
+              <span key={`hp${view.turnNo}`} className={`vn-hp ${hurt("hp") ? "hurt" : ""}`} role="img" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
                 <span style={{ width: `${(100 * c.hp) / c.hpMax}%` }} />
               </span>
               {c.sanity !== undefined && c.sanityMax ? (
-                <span className={`vn-hp vn-sanity ${c.sanity * 3 <= c.sanityMax ? "low" : ""}`} role="img" aria-label={`Рассудок ${c.sanity} из ${c.sanityMax}`}>
+                <span key={`sn${view.turnNo}`} className={`vn-hp vn-sanity ${c.sanity * 3 <= c.sanityMax ? "low" : ""} ${hurt("sanity") ? "hurt" : ""}`} role="img" aria-label={`Рассудок ${c.sanity} из ${c.sanityMax}`}>
                   <span style={{ width: `${(100 * c.sanity) / c.sanityMax}%` }} />
                 </span>
               ) : null}
@@ -335,7 +350,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       <section className="vn-dock" hidden={titleCard}>
         {(beat || streaming) && (
           <TextFrame speaker={speakerName} role={role} onAdvance={!atEnd ? advance : undefined} hint={!atEnd ? "Пробел" : undefined}>
-            {beat ? beat.text : <span className="vn-writing">{live?.waiting}</span>}
+            {beat ? <BeatText beat={beat} onMark={openMark} /> : <span className="vn-writing">{live?.waiting}</span>}
             {beat && streaming && atEnd && <span className="vn-caret" aria-hidden="true" />}
           </TextFrame>
         )}
@@ -407,14 +422,14 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       {panel === "history" && (
         <Drawer title="История" onClose={() => setPanel(null)}>
           {view.turns.map((t) => (
-            <Entry key={t.turnNo} t={t} />
+            <Entry key={t.turnNo} t={t} isCase={!!w.case} />
           ))}
         </Drawer>
       )}
       {panel === "quest" && (
         <Drawer title={w.case ? "Досье" : "Журнал"} onClose={() => setPanel(null)}>
           {w.case ? (
-            <CaseFile w={w} busy={busy} onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)} onClose={() => setPanel("close")} />
+            <CaseFile w={w} busy={busy} focus={focus} onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)} onClose={() => setPanel("close")} />
           ) : (
             <>
               <Quest w={w} doneText={worldOf(c).ui.questDone} />
@@ -440,6 +455,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           <Directory
             w={w}
             busy={busy}
+            focus={focus}
             onLookup={(q) => send({ kind: "lookup", query: q }, `Справочник: «${q}»`)}
             onTravel={(to) => send({ kind: "travel", to }, `Путь в «${locationById(w, to)?.name}»`)}
           />

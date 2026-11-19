@@ -16,7 +16,12 @@ const VERDICT: Record<Verdict, { text: string; cls: string }> = {
 };
 
 /** Досье: цели, найденные улики, выводы, визиты; кнопки реконструкции и закрытия. */
-export function CaseFile({ w, busy, onReconstruct, onClose }: { w: PublicCampaign; busy: boolean; onReconstruct: (text: string) => void; onClose: () => void }) {
+/** Подвести панель к записи, на которую игрок нажал в тексте, и подсветить её. */
+const focusRef = (on: boolean) => (el: HTMLElement | null) => {
+  if (on && el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+};
+
+export function CaseFile({ w, busy, focus, onReconstruct, onClose }: { w: PublicCampaign; busy: boolean; focus?: string | null; onReconstruct: (text: string) => void; onClose: () => void }) {
   const c = w.case!;
   const [version, setVersion] = useState("");
   const clues = c.clues.filter((x) => !x.requires);
@@ -43,8 +48,9 @@ export function CaseFile({ w, busy, onReconstruct, onClose }: { w: PublicCampaig
       {clues.length ? (
         <ul className="case-clues">
           {clues.map((x) => (
-            <li key={x.id}>
+            <li key={x.id} ref={focusRef(x.id === focus)} className={x.id === focus ? "focus" : undefined}>
               <span className="case-where">{placeName(w, x.at)}</span>
+              {x.title && <strong className="case-title">{x.title}. </strong>}
               {x.text}
             </li>
           ))}
@@ -58,7 +64,10 @@ export function CaseFile({ w, busy, onReconstruct, onClose }: { w: PublicCampaig
           <h3 className="case-h">Выводы</h3>
           <ul className="case-clues deductions">
             {deductions.map((x) => (
-              <li key={x.id}>{x.text}</li>
+              <li key={x.id} ref={focusRef(x.id === focus)} className={x.id === focus ? "focus" : undefined}>
+                {x.title && <strong className="case-title">{x.title}. </strong>}
+                {x.text}
+              </li>
             ))}
           </ul>
         </>
@@ -183,7 +192,7 @@ export function Newspaper({ c }: { c: PublicCase }) {
 }
 
 /** Справочник: поиск по имени или названию и список известных адресов с жителями. */
-export function Directory({ w, busy, onLookup, onTravel }: { w: PublicCampaign; busy: boolean; onLookup: (q: string) => void; onTravel: (id: string) => void }) {
+export function Directory({ w, busy, focus, onLookup, onTravel }: { w: PublicCampaign; busy: boolean; focus?: string | null; onLookup: (q: string) => void; onTravel: (id: string) => void }) {
   const c = w.case!;
   const [q, setQ] = useState("");
   const blocked = busy || !!w.combat || !!c.result || c.visits >= c.limit;
@@ -206,7 +215,7 @@ export function Directory({ w, busy, onLookup, onTravel }: { w: PublicCampaign; 
         const here = l.id === w.current;
         const people = c.people.filter((p) => p.at === l.id);
         return (
-          <div key={l.id} className={`dir-entry ${here ? "here" : ""}`}>
+          <div key={l.id} ref={focusRef(l.id === focus)} className={`dir-entry ${here ? "here" : ""} ${l.id === focus ? "focus" : ""}`}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <b>{l.name}</b>
               {here ? (

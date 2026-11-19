@@ -83,7 +83,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         turnNo, character: out.state.character, campaign: publicCampaign(out.state.campaign),
         turns: out.records.map((r, i) => ({
           turnNo: c.turnNo + i + 1, kind: r.kind, action: r.action, narration: r.narration, beats: r.beats, speaker: r.speaker, line: r.line,
-          rolls: r.rolls, suggestions: r.suggestions, combatEvents: r.combatEvents,
+          rolls: r.rolls, suggestions: r.suggestions, combatEvents: r.combatEvents, effects: r.applied?.effects ?? [],
         })),
         costUsd: out.records.reduce((s, r) => s + r.usage.costUsd, 0),
         scene: await sceneView(db, c.id, c.characterId, out.state.campaign),

@@ -1,4 +1,5 @@
 import { clamp } from "./dice";
+import { effect, type TurnEffect } from "./effects";
 import { findPlace, layoutCampaign, locationById, travel, type Campaign, type MapLocation, type QuestSeed } from "./world";
 import { normName, sameWord } from "./names";
 import type { Rng } from "./rng";
@@ -17,6 +18,8 @@ export interface CaseClue {
   id: string;
   /** Что находит герой (видно игроку после находки). */
   text: string;
+  /** Короткое название, 2–5 слов: «Осадок в чайной чашке». У старых дел — нет. */
+  title?: string;
   /** Где лежит улика: id места. У вывода — "" (он складывается в голове). */
   at: string;
   /** Ключевая: без неё дело не раскрыть, находится без кубика. */
@@ -138,7 +141,8 @@ export function layoutCase(r: Ruleset, seed: CaseSeed, layoutSeed: string): Camp
     const at = idx(c?.at, n);
     const text = str(c?.text, 300);
     if (at === null || !text) continue;
-    clues.push({ id: `c${clues.length + 1}`, text, at: loc(at), key: c?.key === true, found: false });
+    const title = str(c?.title, 60);
+    clues.push({ id: `c${clues.length + 1}`, text, ...(title ? { title } : {}), at: loc(at), key: c?.key === true, found: false });
   }
   if (clues.length < CASE_LIMITS.clues[0]) throw new Error(`Case needs at least ${CASE_LIMITS.clues[0]} clues`);
   // Ключевые улики нужны всегда: если модель не отметила ни одной — ключевые первые три.
@@ -147,9 +151,10 @@ export function layoutCase(r: Ruleset, seed: CaseSeed, layoutSeed: string): Camp
   const placed = clues.length;
   for (const d of arr(seed.deductions).slice(0, CASE_LIMITS.deductions) as any[]) {
     const text = str(d?.text, 300);
+    const title = str(d?.title, 60);
     const requires = [...new Set(arr(d?.requires).map((x) => idx(Number(x) - 1, placed)).filter((x): x is number => x !== null))].map((i) => clues[i]!.id);
     if (!text || requires.length < 2) continue;
-    clues.push({ id: `c${clues.length + 1}`, text, at: "", key: false, requires, found: false });
+    clues.push({ id: `c${clues.length + 1}`, text, ...(title ? { title } : {}), at: "", key: false, requires, found: false });
   }
 
   const people: CasePerson[] = [];
@@ -243,6 +248,7 @@ export interface AppliedCaseChanges {
   revealed: string[];
   rejected: string[];
   notes: string[];
+  effects: TurnEffect[];
 }
 
 /**
@@ -250,7 +256,7 @@ export interface AppliedCaseChanges {
  * вывод так не находится — только реконструкцией. Открыть можно только место из дела.
  */
 export function applyCaseChanges(w: Campaign, p: CaseChanges): AppliedCaseChanges {
-  const out: AppliedCaseChanges = { clues: [], revealed: [], rejected: [], notes: [] };
+  const out: AppliedCaseChanges = { clues: [], revealed: [], rejected: [], notes: [], effects: [] };
   const c = w.case;
   if (!c) return out;
   for (const id of p.clues ?? []) {
@@ -264,6 +270,7 @@ export function applyCaseChanges(w: Campaign, p: CaseChanges): AppliedCaseChange
       clue.found = true;
       out.clues.push(id);
       out.notes.push(`улика: ${clue.text}`);
+      out.effects.push(effect.clue(clue.id, clue.text, clue.title));
     }
   }
   for (const raw of p.reveal ?? []) {
@@ -273,6 +280,7 @@ export function applyCaseChanges(w: Campaign, p: CaseChanges): AppliedCaseChange
       c.known.push(l.id);
       out.revealed.push(l.id);
       out.notes.push(`новый адрес: ${l.name}`);
+      out.effects.push(effect.address(l.id, l.name));
     }
   }
   return out;
@@ -340,7 +348,7 @@ export function closeCase(w: Campaign, answers: { id: string; answer: string; ve
 
 /** Что дело показывает игроку: найденное, известное и вопросы без ответов. После закрытия — всё. */
 export interface PublicCase {
-  clues: Pick<CaseClue, "id" | "text" | "at" | "requires">[];
+  clues: Pick<CaseClue, "id" | "text" | "title" | "at" | "requires">[];
   people: CasePerson[];
   newspaper: CaseState["newspaper"];
   known: string[];
@@ -367,7 +375,7 @@ export function publicCampaign(w: Campaign): PublicCampaign {
   const known = new Set(c.known);
   const { case: _secret, ...rest } = w;
   const pub: PublicCase = {
-    clues: c.clues.filter((x) => x.found).map(({ id, text, at, requires }) => ({ id, text, at, ...(requires ? { requires } : {}) })),
+    clues: c.clues.filter((x) => x.found).map(({ id, text, title, at, requires }) => ({ id, text, at, ...(title ? { title } : {}), ...(requires ? { requires } : {}) })),
     people: c.people.filter((p) => known.has(p.at)),
     newspaper: c.newspaper,
     known: c.known,

@@ -6,6 +6,7 @@ import {
 } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
 import type { Beat, Suggestion, TurnView } from "@/lib/client";
+import { BeatText, EffectChips } from "./vn";
 
 /** Кубик на экране — из проверки навыка или из боя. */
 export type DiceView = { label: string; d20: number; calc: string; verdict: string; tone: "crit" | "ok" | "bad" };
@@ -44,8 +45,14 @@ export function Beats({ beats }: { beats: Beat[] }) {
         b.speaker ? (
           <div key={i} className="say">
             <div className="say-name">{b.speaker}</div>
-            <div className="say-text">{b.text}</div>
+            <div className="say-text">
+              <BeatText beat={b} />
+            </div>
           </div>
+        ) : b.marks?.length ? (
+          <p key={i} className="narr">
+            <BeatText beat={b} />
+          </p>
         ) : (
           b.text.split(/\n+/).filter(Boolean).map((p, k) => (
             <p key={`${i}-${k}`} className="narr">
@@ -58,7 +65,7 @@ export function Beats({ beats }: { beats: Beat[] }) {
   );
 }
 
-export function Entry({ t }: { t: Pick<TurnView, "kind" | "action" | "beats" | "rolls" | "combatEvents"> }) {
+export function Entry({ t, isCase }: { t: Pick<TurnView, "kind" | "action" | "beats" | "rolls" | "combatEvents" | "effects">; isCase?: boolean }) {
   const player = t.kind === "action" || t.kind === "choice";
   return (
     <div className="entry">
@@ -79,6 +86,7 @@ export function Entry({ t }: { t: Pick<TurnView, "kind" | "action" | "beats" | "
         </div>
       )}
       <Beats beats={t.beats} />
+      <EffectChips items={t.effects} isCase={isCase} />
     </div>
   );
 }
@@ -97,6 +105,7 @@ export function Suggestions({ items, c, disabled, onPick }: { items: Suggestion[
     <div className="suggestions">
       {items.map((s, i) => (
         <button key={i} disabled={disabled} onClick={() => onPick(i)}>
+          {s.present && <span className="check-tag present">Предъявить</span>}
           {s.check && (
             <span className="check-tag">
               {s.check.skill} · СЛ {s.check.dc}

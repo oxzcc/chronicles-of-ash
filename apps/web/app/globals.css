@@ -311,3 +311,43 @@ textarea { resize: vertical; }
   box-shadow: 0 0 12px rgba(217, 178, 92, 0.45); }
 .gen-meta { display: flex; justify-content: space-between; margin-top: 8px; font-family: var(--ui); font-size: 13px; color: var(--muted); }
 .gen-hint { margin-top: 22px; font-family: var(--ui); font-size: 13px; color: var(--muted); }
+
+/* Находки: подсветка в тексте реплики */
+.vn-mark .hl { color: #f6e2b3; font-style: normal; padding: 0 2px; border-bottom: 1px solid var(--mk-line); background-image: linear-gradient(var(--mk-bg), var(--mk-bg)); background-repeat: no-repeat; background-position: 0 100%; background-size: 100% 100%; animation: vnMark 0.9s 0.3s ease-out both; }
+.vn-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 3px; background: var(--mk-tag); color: #1a120b; font-family: var(--sans); font-size: 11px; font-weight: 700; font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.6; vertical-align: 3px; white-space: nowrap; animation: vnTag 0.4s 1s ease-out both; }
+.vn-mark.tail .vn-tag { margin-left: 8px; }
+/* Находка — кнопка внутри текста: выглядит как текст, по наведению ярче. */
+.vn-mark.link { cursor: pointer; }
+.vn-mark.link:hover .hl { color: #fff3d6; border-bottom-width: 2px; }
+.vn-mark.link:hover .vn-tag { filter: brightness(1.15); }
+.vn-mark.link:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; border-radius: 2px; }
+/* Запись, к которой привёл клик по находке. */
+.case-clues li.focus, .dir-entry.focus { background: rgba(217, 119, 58, 0.14); box-shadow: inset 0 0 0 1px rgba(217, 119, 58, 0.55); border-radius: 6px; animation: vnFocus 1.6s ease-out 1; }
+@keyframes vnFocus { 0%, 30% { background: rgba(217, 119, 58, 0.32); } }
+.vn-mark.clue, .vn-mark.deduction { --mk-bg: rgba(217, 119, 58, 0.22); --mk-line: var(--ember); --mk-tag: var(--ember); }
+.vn-mark.address { --mk-bg: rgba(217, 178, 92, 0.2); --mk-line: var(--gold); --mk-tag: var(--gold); }
+.vn-mark.sanity { --mk-bg: rgba(138, 111, 174, 0.25); --mk-line: #8a6fae; --mk-tag: #b9a0dc; }
+.vn-mark.hp { --mk-bg: rgba(196, 71, 59, 0.22); --mk-line: #c4473b; --mk-tag: #e0857a; }
+@keyframes vnMark { from { background-size: 0% 100%; } }
+@keyframes vnTag { from { opacity: 0; transform: translateY(4px); } }
+
+.vn-choices .check-tag.present { background: var(--ember); }
+.check-tag.present { color: #1a120b; background: var(--ember); border-color: var(--ember); }
+
+/* Те же находки в «Истории» */
+.vn-fx-chip { display: inline-block; margin: 2px 6px 4px 0; font-family: var(--sans); font-size: 13px; border-radius: 999px; padding: 4px 11px; border: 1px solid #5a4423; background: rgba(42, 32, 20, 0.94); color: var(--gold); }
+.vn-fx-chip.bad { color: #f0a38f; border-color: #5a2a23; background: rgba(42, 23, 20, 0.94); }
+.vn-fx-chip.sanity { color: #b9d3c1; border-color: #3f5a4a; background: rgba(24, 36, 30, 0.94); }
+.vn-fx-chip.sanity.bad { color: #cdb6ea; border-color: #4a3560; background: rgba(34, 26, 44, 0.94); }
+.fx-chips { margin-top: 4px; }
+.vn-hp.hurt { animation: vnHurt 0.8s ease-out 2; }
+.vn-sanity.hurt { animation: vnMind 0.9s ease-out 2; }
+@keyframes vnHurt { 30% { box-shadow: 0 0 0 2px rgba(196, 71, 59, 0.9), 0 0 14px rgba(196, 71, 59, 0.7); } }
+@keyframes vnMind { 30% { box-shadow: 0 0 0 2px rgba(138, 111, 174, 0.9), 0 0 14px rgba(138, 111, 174, 0.7); } }
+@media (prefers-reduced-motion: reduce) { .vn-mark .hl, .vn-tag, .vn-hp.hurt, .vn-sanity.hurt { animation: none; } }
+@media (max-width: 760px) {
+  /* Варианты не залезают на шапку: длинный список прокручивается сам. */
+  .vn-dock { max-height: calc(100% - 104px); }
+  .vn-choices { min-height: 0; }
+}
+.case-title { font-weight: 700; color: #f1e6d2; }

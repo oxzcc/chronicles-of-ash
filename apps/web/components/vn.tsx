@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { Beat, TurnView } from "@/lib/client";
+import { sortEffects, type EffectKind } from "@ash/engine";
+import type { Beat, TurnEffect, TurnView } from "@/lib/client";
 
 /** Реплики хода в порядке показа: ответ мастера, раунды боя — голосом рассказчика. */
 export function beatsOf(t: Pick<TurnView, "beats" | "combatEvents" | "narration" | "kind">): Beat[] {
@@ -60,6 +61,106 @@ export function TextFrame({ speaker, role, children, onAdvance, hint }: { speake
           </svg>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Подпись находки. Пусто — текст говорит сам за себя. */
+const FX_LABEL: Record<EffectKind, string> = {
+  clue: "Улика", deduction: "Вывод", address: "Адрес", objective: "Цель", quest: "Квест",
+  hp: "Здоровье", sanity: "Рассудок", gold: "Деньги", item: "Вещь", lost: "Потеряно",
+};
+/** В деле цель — то, что нужно выяснить. */
+const fxLabel = (e: TurnEffect, isCase?: boolean) => (e.kind === "objective" && isCase ? "Выяснено" : FX_LABEL[e.kind]);
+
+/** Подсвеченная находка в тексте реплики. */
+export type Mark = NonNullable<Beat["marks"]>[number];
+
+/**
+ * Текст реплики с подсвеченными находками: слова, где герой нашёл улику, узнал адрес
+ * или потерял рассудок, и ярлык рядом. С onMark находка — кнопка: ведёт к улике в досье,
+ * к адресу в справочнике, к листу героя. Пометка без найденных слов — ярлыком в конце.
+ */
+export function BeatText({ beat, onMark }: { beat: Beat; onMark?: (m: Mark) => void }) {
+  const marks = beat.marks ?? [];
+  if (!marks.length) return <>{beat.text}</>;
+  const placed = marks
+    .map((m) => ({ m, i: m.quote ? beat.text.indexOf(m.quote) : -1 }))
+    .filter((x) => x.i >= 0)
+    .sort((a, b) => a.i - b.i);
+  const one = (m: Mark, key: string, tail: boolean) => {
+    const inner = (
+      <>
+        {!tail && <span className="hl">{m.quote}</span>}
+        <span className="vn-tag">{m.label}</span>
+      </>
+    );
+    const cls = `vn-mark ${m.kind} ${tail ? "tail" : ""}`;
+    // Не <button>: кнопка не переносится по строкам, а подсвеченная фраза бывает длинной. Клавиатура — Enter и пробел.
+    return onMark ? (
+      <span
+        key={key}
+        role="button"
+        tabIndex={0}
+        className={`${cls} link`}
+        title={MARK_HINT[m.kind] ?? undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          onMark(m);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          e.stopPropagation();
+          onMark(m);
+        }}
+      >
+        {inner}
+      </span>
+    ) : (
+      <span key={key} className={cls}>
+        {inner}
+      </span>
+    );
+  };
+  const parts: ReactNode[] = [];
+  const shown = new Set<Mark>();
+  let at = 0;
+  for (const { m, i } of placed) {
+    if (i < at) continue;
+    if (i > at) parts.push(beat.text.slice(at, i));
+    parts.push(one(m, `m${i}`, false));
+    shown.add(m);
+    at = i + m.quote!.length;
+  }
+  parts.push(beat.text.slice(at));
+  return (
+    <>
+      {parts}
+      {marks.filter((m) => !shown.has(m)).map((m, k) => one(m, `t${k}`, true))}
+    </>
+  );
+}
+
+/** Подсказка при наведении: куда ведёт находка. */
+const MARK_HINT: Record<string, string> = {
+  clue: "Открыть в досье", deduction: "Открыть в досье", objective: "Открыть журнал",
+  address: "Открыть адрес", sanity: "Лист героя", hp: "Лист героя",
+};
+
+/** Те же плашки в «Истории» — тихо, без анимации. */
+export function EffectChips({ items, isCase }: { items: TurnEffect[] | undefined; isCase?: boolean }) {
+  if (!items?.length) return null;
+  return (
+    <div className="fx-chips">
+      {sortEffects(items).map((e, i) => {
+        const k = fxLabel(e, isCase);
+        return (
+          <span key={i} className={`vn-fx-chip ${e.kind} ${e.good ? "" : "bad"}`} title={e.detail}>
+            {k ? `${k}: ${e.text}` : e.text}
+          </span>
+        );
+      })}
     </div>
   );
 }

@@ -64,7 +64,7 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-4+arkham-5");
+    expect(a.records[0]!.promptVersion).toBe("gm-5+arkham-5");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
@@ -82,22 +82,37 @@ describe("мир Аркхэма", () => {
     expect(look.records[0]).toMatchObject({ kind: "lookup", model: "engine" });
     expect(look.records[0]!.narration).toMatch(/Бакалея Финнегана/);
     expect(w.case!.known).toContain("L4");
+    expect(look.records[0]!.applied!.effects).toEqual([{ kind: "address", text: "Бакалея Финнегана", good: true, ref: "L4" }]);
     recs = [...recs, ...look.records];
     await expect(playTurn(deps(), g, recs, { kind: "travel", to: "L5" })).rejects.toThrow(/не знаешь/);
     // Мастер нашёл улику в доме Вейлов — движок принимает её только там.
-    const scripted = scriptedRouter([{ clues: ["c1", "c3"], reveal: ["L5"] }]);
+    const scripted = scriptedRouter([{
+      beats: [{ speaker: null, text: "В чашке — горький зеленоватый осадок.", finds: [{ ref: "c1", quote: "горький зеленоватый осадок" }, { ref: "c3", quote: "в чашке" }] }],
+      clues: ["c1", "c3"], reveal: ["L5"],
+      suggestions: [{ text: "Показываю осадок", present: "c1" }, { text: "Показываю футляр", present: "c4" }],
+    }]);
     const t = await playTurn(deps({ router: scripted }), g, recs, { kind: "travel", to: "L1" });
     expect(w.case!.visits).toBe(1);
     expect(w.case!.clues.find((x) => x.id === "c1")!.found).toBe(true);
     expect(w.case!.clues.find((x) => x.id === "c3")!.found).toBe(false);
     expect(t.records[0]!.applied!.rejected.join()).toMatch(/c3 лежит не здесь/);
     expect(w.case!.known).toContain("L5");
+    expect(t.records[0]!.applied!.effects.map((e) => [e.kind, e.ref])).toEqual([["clue", "c1"], ["address", "L5"]]);
+    // Подсвечена только принятая улика; адрес без пометки — ярлыком в конце; предъявить можно только найденное.
+    expect(t.records[0]!.beats[0]!.marks).toEqual([
+      { kind: "clue", quote: "горький зеленоватый осадок", label: "улика", ref: "c1" },
+      { kind: "address", quote: null, label: "адрес", ref: "L5" },
+    ]);
+    expect(t.records[0]!.response!.beats).toBe(t.records[0]!.beats);
+    expect(t.records[0]!.suggestions).toEqual([{ text: "Показываю осадок", present: "c1" }, { text: "Показываю футляр" }]);
+    expect(t.records[0]!.applied!.effects[0]!.text).toBe("Осадок в чайной чашке");
     // Реконструкция: без нужных улик — понятная ошибка; с ними — вывод от служебной модели.
     await expect(playTurn(deps(), g, recs, { kind: "reconstruct", text: "Кит отравил тётю ради денег" })).rejects.toThrow(/мало/);
     for (const id of ["c2", "c3"]) w.case!.clues.find((x) => x.id === id)!.found = true;
     const rc = await playTurn(deps(), g, recs, { kind: "reconstruct", text: "Кит подал отравленный чай, потому что ему нужны были деньги на долги" });
     expect(rc.records[0]!.kind).toBe("reconstruct");
     expect(w.case!.clues.find((x) => x.id === "c9")!.found).toBe(true);
+    expect(rc.records[0]!.applied!.effects[0]).toMatchObject({ kind: "deduction", ref: "c9", good: true });
     // Закрытие: оценка (фейковая модель — по словам), счёт, разбор.
     const close = await playTurn(deps(), g, recs, { kind: "close", answers: { a1: "Племянник Кит Ларкин отравил её наперстянкой ради наследства", a2: "Не знаю" } });
     expect(close.records[0]!.kind).toBe("close");
@@ -122,6 +137,8 @@ describe("мир Аркхэма", () => {
     const visits = g.campaign.case!.visits;
     r = await playTurn(deps({ router: scriptedRouter([{ changes: { sanity: -4 } }, { changes: { sanity: -2 } }]) }), g, [], { kind: "action", text: "Смотрю в круг" });
     expect(r.records.map((x) => x.kind)).toEqual(["action", "breakdown"]);
+    expect(r.records[0]!.applied!.effects).toContainEqual({ kind: "sanity", text: "−4", good: false, delta: -4 });
+    expect(r.records[1]!.applied!.effects).toContainEqual(expect.objectContaining({ kind: "sanity", good: true }));
     expect(c.sanity).toBe(Math.ceil(c.sanityMax! / 2)); // мастер в срыве рассудок не трогает
     expect(g.campaign.case!.visits).toBe(visits + 2);
     expect(g.campaign.case!.sanityLost).toBe(7);
@@ -219,6 +236,7 @@ describe("ход", () => {
     const r = await playTurn(deps({ router: scriptedRouter([{ changes: { hp: -99 } }, { changes: { hp: 50 } }]) }), g, [], { kind: "action", text: "Прыгаю со скалы" });
     expect(r.records.map((x) => x.kind)).toEqual(["action", "knockout"]);
     expect(g.character.hp).toBe(1); // мастер не может «вылечить» в сцене поражения
+    expect(r.records[1]!.applied!.effects).toContainEqual(expect.objectContaining({ kind: "gold", good: false }));
   });
   it("удачный отдых возвращает умение", async () => {
     const g = await freshGame();
@@ -249,6 +267,11 @@ describe.skipIf(!url)("база", () => {
     expect(again.recent[0]!.beats).toHaveLength(3);
     expect(again.recent[0]!.suggestions[2]!.check).toEqual({ skill: "Внимательность", dc: 12 });
     expect((await campaignTurns(db, id))[0]!.suggestions).toHaveLength(3);
+    // Плашки хода сохраняются и возвращаются при загрузке.
+    const c2 = await loadCampaign(db, uid, id);
+    const r2 = await playTurn(deps({ router: scriptedRouter([{ changes: { gold: 3, addItems: ["Ключ"] } }]) }), c2.state, c2.recent, { kind: "action", text: "Обыскиваю стол" });
+    await saveTurn(db, c2, r2.state, r2.records);
+    expect((await campaignTurns(db, id)).at(-1)!.effects.map((e) => e.kind)).toEqual(["gold", "item"]);
     await expect(loadCampaign(db, crypto.randomUUID(), id)).rejects.toThrow(/не найдена/);
   });
 });

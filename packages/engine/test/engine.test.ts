@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyChanges, itemName, createCharacter, layoutCampaign, mulberry32, neighbors, normalizeEnemies, playerMove, pointsSpent,
-  rollExpr, scriptedRng, skillCheck, startCombat, travel, validateDraft, knockOut, isDiceExpr, sheetText, isUnhinged, breakDown,
+  rollExpr, scriptedRng, skillCheck, startCombat, travel, validateDraft, knockOut, isDiceExpr, sheetText, isUnhinged, breakDown, sortEffects,
   type CharacterDraft, type QuestSeed,
 } from "../src/index";
 // Движок проверяется на правилах настоящего мира: так тесты ловят и ошибки в данных мира.
@@ -101,6 +101,20 @@ describe("изменения с ограничениями", () => {
     const ok = applyChanges(R, c, w, { questDone: ["q1", "q2"], questComplete: true });
     expect(ok.questComplete).toBe(true);
     expect(w.objectives.every((o) => o.done)).toBe(true);
+  });
+  it("плашки для игрока — только то, что движок реально применил", () => {
+    const c = createCharacter(R, draft(), mulberry32(1));
+    const w = layoutCampaign(R, quest, "seed");
+    const r = applyChanges(R, c, w, { gold: 10000, addItems: ["Ключ"], removeItems: ["Щит", "Корона"], questDone: ["q1", "q9"], hp: -3 });
+    expect(r.effects).toEqual([
+      { kind: "objective", text: w.objectives[0]!.text, good: true, ref: "q1" },
+      { kind: "hp", text: "−3", good: false, delta: -3 },
+      { kind: "gold", text: "+25 золота", good: true, delta: 25 },
+      { kind: "lost", text: "Щит", good: false },
+      { kind: "item", text: "Ключ", good: true },
+    ]);
+    expect(sortEffects([...r.effects].reverse()).map((e) => e.kind)).toEqual(["objective", "hp", "gold", "item", "lost"]);
+    expect(applyChanges(R, c, w, { hp: 0, gold: 0, addItems: [] }).effects).toEqual([]);
   });
   it("удаляет только то, что есть", () => {
     const c = createCharacter(R, draft(), mulberry32(1));

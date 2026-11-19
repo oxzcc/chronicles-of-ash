@@ -42,6 +42,16 @@ describe("разбор ответа мастера", () => {
     expect(r.value.suggestions).toEqual([{ text: "Иду" }, { text: "Лгу", check: { skill: "Обман", dc: 25 } }, { text: "Колдую" }]);
     expect(r.value.combat).toBeNull();
   });
+  it("пометки находок (finds) и «предъявить»: битые отбрасываются, на лету доходят до игры", () => {
+    const json = '{"beats":[{"speaker":null,"text":"На дне — осадок.","finds":[{"ref":"c1","quote":"«осадок»"},{"quote":"без ref"},7]},{"speaker":null,"text":"Тихо.","finds":"мусор"}],"suggestions":[{"text":"Показываю осадок","present":" c1 "},{"text":"Ухожу","present":""}]}';
+    const r = parseGmResponse(json, R);
+    expect(r.ok && r.value.beats).toEqual([{ speaker: null, text: "На дне — осадок.", refs: [{ ref: "c1", quote: "осадок" }] }, { speaker: null, text: "Тихо." }]);
+    expect(r.ok && r.value.suggestions).toEqual([{ text: "Показываю осадок", present: "c1" }, { text: "Ухожу" }]);
+    expect(partialBeats(json)[0]).toEqual({ speaker: null, text: "На дне — осадок.", refs: [{ ref: "c1", quote: "осадок" }] });
+    // Улики объектами вместо id (живая модель так делала) — берётся id, мусор отбрасывается.
+    const objs = parseGmResponse('{"beats":[{"speaker":null,"text":"Тьма."}],"clues":[{"id":"c5","text":"книга"},"c6",{"text":"без id"},null],"reveal":[{"ref":"Бакалея Финнегана"}]}', R);
+    expect(objs.ok && [objs.value.clues, objs.value.reveal]).toEqual([["c5", "c6"], ["Бакалея Финнегана"]]);
+  });
   it("старый формат narration + line превращается в реплики", () => {
     const r = parseGmResponse('{"narration":"Дверь скрипит.\\n\\nВходит стражник.","speaker":{"name":"Вейл"},"line":"Бумаги!"}', R);
     expect(r.ok && r.value.beats).toEqual([{ speaker: null, text: "Дверь скрипит." }, { speaker: null, text: "Входит стражник." }, { speaker: "Вейл", text: "Бумаги!" }]);
@@ -227,8 +237,8 @@ describe("промпты по мирам", () => {
     expect(a).toContain("ПОСТОЯННЫЕ ЛИЦА:");
     expect(a).toContain(`доктор Сайлас Уэйкфилд (наставник, отставной профессор антропологии): ${arkham.cast!.mentor.look}.`);
     expect(gmRules(world)).not.toContain("ПОСТОЯННЫЕ ЛИЦА");
-    expect(promptVersion(arkham)).toBe("gm-4+arkham-5");
-    expect(promptVersion(world)).toBe("gm-4");
+    expect(promptVersion(arkham)).toBe("gm-5+arkham-5");
+    expect(promptVersion(world)).toBe("gm-5");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
     const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] }, mulberry32(1));
@@ -246,7 +256,7 @@ describe("промпты по мирам", () => {
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-4+arkham-5");
+    expect(r.promptVersion).toBe("gm-5+arkham-5");
   });
 });
 

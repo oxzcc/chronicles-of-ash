@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getWorld } from "@ash/worlds";
 import {
-  applyCaseChanges, closeCase, deductionCandidates, layoutCase, lookup, markDeduction, mulberry32, publicCampaign, travelCase, type CaseSeed,
+  applyCaseChanges, closeCase, deductionCandidates, effect, layoutCase, lookup, markDeduction, mulberry32, publicCampaign, travelCase, type CaseSeed,
 } from "../src/index";
 
 const W = getWorld("arkham");
@@ -65,6 +65,13 @@ describe("дело: ходы", () => {
     expect(r.rejected.join()).toMatch(/неизвестная улика c99/);
     expect(r.revealed).toEqual(["L5"]);
     expect(r.rejected.join()).toMatch(/нет места L77/);
+    // Плашки — только принятое: две улики этого места и новый адрес.
+    expect(r.effects.map((e) => [e.kind, e.ref])).toEqual([["clue", "c1"], ["clue", "c4"], ["address", "L5"]]);
+    // Плашка — короткое название улики, полный текст — в detail.
+    expect(r.effects[0]).toMatchObject({ text: "Осадок в чайной чашке", detail: w.case!.clues.find((x) => x.id === "c1")!.text });
+    expect(publicCampaign(w).case!.clues.find((x) => x.id === "c1")!.title).toBe("Осадок в чайной чашке");
+    // Без названия (старые дела) — весь текст.
+    expect(effect.clue("c2", "Текст улики")).toEqual({ kind: "clue", text: "Текст улики", good: true, ref: "c2" });
   });
   it("reveal по названию: мастер написал «Бакалея» вместо L4 — место открывается, если подходит ровно одно", () => {
     const w = fresh();
