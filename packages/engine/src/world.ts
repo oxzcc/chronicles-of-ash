@@ -51,6 +51,8 @@ export interface Campaign {
   combat: CombatState | null;
   /** Детективное дело — в мирах, где оно есть (Аркхэм). Секреты: см. publicCampaign. */
   case?: CaseState;
+  /** Номер хода, на котором случился последний срыв: лицо героя на портрете — «срыв» ещё ход после (heroMood). */
+  brokeAt?: number;
 }
 
 /** Сырой квест от модели — до проверки. */

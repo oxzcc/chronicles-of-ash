@@ -1,9 +1,10 @@
-import { CLIP_LIMIT, clippedShare, EMPTY_LIMIT, finishBackground, finishPortrait, headFrame, opaqueShare } from "./process";
+import sharp from "sharp";
+import { CLIP_LIMIT, clippedShare, EMPTY_LIMIT, finishBackground, finishPortrait, finishVariant, headFrame, opaqueShare, portraitOnGrey } from "./process";
 import type { PortraitInspector } from "./inspect";
 import type { ImageProvider } from "./provider";
 import type { ImageStorage } from "./storage";
 import type { World } from "@ash/worlds";
-import { backgroundPrompt, portraitPrompt, worldLora, type TimeOfDay } from "./style";
+import { backgroundPrompt, editPrompt, portraitPrompt, worldLora, type TimeOfDay } from "./style";
 
 export interface Rendered {
   url: string;
@@ -73,4 +74,51 @@ export async function renderBackground(o: { world: World; provider: ImageProvide
   const done = await finishBackground(raw.bytes);
   const url = await o.storage.put(`${o.key}.webp`, done.bytes, "image/webp");
   return { url, prompt, model: raw.model, costUsd: raw.costUsd, width: done.width, height: done.height };
+}
+
+/**
+ * Вариант лица (эмоция NPC или состояние героя): правка готового портрета → вырезка → тот же размер.
+ * Кадр правки — 1024 по ширине и пропорции исходника (у портретов с LoRA — 1024×1536, как при генерации).
+ * Пустой кадр (fal иногда возвращает чёрную картинку) — одна перерисовка с другим seed.
+ */
+export async function renderVariant(o: {
+  world: World;
+  provider: ImageProvider;
+  storage: ImageStorage;
+  /** Адрес готового портрета (images.url). */
+  baseUrl: string;
+  /** Облик человека — из промпта портрета (lookFromPrompt). */
+  look: string;
+  /** Новое выражение по-английски (art.emotions). */
+  change: string;
+  key: string;
+  seed: number;
+  signal?: AbortSignal;
+}): Promise<Rendered> {
+  if (!o.provider.edit) throw new Error(`провайдер ${o.provider.name} не умеет правку`);
+  const base = await o.storage.get(o.baseUrl);
+  if (!base) throw new Error(`нет файла портрета ${o.baseUrl}`);
+  const meta = await sharp(base).metadata();
+  const bw = meta.width ?? 0;
+  const bh = meta.height ?? 0;
+  if (!bw || !bh) throw new Error("пустой портрет");
+  const width = 1024;
+  const height = Math.round((width * bh) / bw / 16) * 16;
+  const src = await portraitOnGrey(base, width, height);
+  const prompt = editPrompt(o.world, o.look, o.change);
+  const lora = worldLora(o.world, o.provider);
+  let cost = 0;
+  let model = "";
+  let cut: Buffer | undefined;
+  for (let k = 0; k < 2 && !cut; k++) {
+    const raw = await o.provider.edit({ image: src, prompt, width, height, seed: o.seed + 7919 * k, lora, signal: o.signal });
+    const c = await o.provider.removeBackground(raw.bytes, o.signal);
+    cost += raw.costUsd + c.costUsd;
+    model = `${raw.model}+${c.model}`;
+    if ((await opaqueShare(c.bytes)) >= EMPTY_LIMIT) cut = c.bytes;
+  }
+  if (!cut) throw new Error("правка вернула пустой кадр");
+  const done = await finishVariant(cut, bw, bh);
+  const url = await o.storage.put(`${o.key}.webp`, done.bytes, "image/webp");
+  return { url, prompt, model, costUsd: cost, width: done.width, height: done.height };
 }

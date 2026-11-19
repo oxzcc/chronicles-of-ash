@@ -5,12 +5,13 @@ import {
 } from "@ash/engine";
 import {
   addUsage, caseActions, deducePrompt, emptyUsage, gradePrompt, parseDeduction, parseVerdicts, roughVerdict, runNarratorTurn, systemActions,
-  type HistoryEntry, type Usage,
+  type Beat, type HistoryEntry, type Usage,
 } from "@ash/llm";
 import { worldOf } from "@ash/worlds";
 import { GameError, type GameState, type TurnDeps, type TurnInput, type TurnOutcome, type TurnRecord } from "./types";
 import { toHistory, type Recordish } from "./history";
 import { previewMarks, proposedFromFinds, resolveMarks, tagLast } from "./marks";
+import { normalizeEmotions } from "./emotions";
 
 export const MAX_ACTION_LENGTH = 500;
 export const MAX_ANSWER_LENGTH = 400;
@@ -28,6 +29,17 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const R = world.rules;
   const records: TurnRecord[] = [];
   const history = (): HistoryEntry[] => toHistory([...prior, ...records]);
+  const emotionsSent = new Set<string>();
+  /** Эмоции реплик — по списку мира; новые пары «имя + эмоция» — сразу в очередь картинок. */
+  const withEmotions = (beats: Beat[]) => {
+    const out = normalizeEmotions(world, beats);
+    for (const b of out)
+      if (b.speaker && b.emotion && !sameName(b.speaker, c.name) && !emotionsSent.has(`${b.speaker}|${b.emotion}`)) {
+        emotionsSent.add(`${b.speaker}|${b.emotion}`);
+        deps.onEmotion?.(b.speaker, b.emotion);
+      }
+    return out;
+  };
 
   /** Ход рассказчика: промпт, проверки, применение изменений, бой, если модель его объявила. */
   const narrate = async (kind: TurnRecord["kind"], label: string, action: string, opts: { keepHp?: boolean; keepSanity?: boolean; preRolls?: TurnRecord["rolls"]; extraUsage?: Usage; allowMove?: boolean } = {}) => {
@@ -36,12 +48,13 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       provider, model, world, worldBible: deps.worldBible, rng: deps.rng, signal: deps.signal,
       scene: { character: c, campaign: w, history: history(), action },
       // Реплики идут игроку сразу — уже с подсветкой находок, которые движок примет.
-      onBeats: (beats) => deps.emit?.({ type: "beats", beats: previewMarks(c, w, beats) }),
+      onBeats: (beats) => deps.emit?.({ type: "beats", beats: previewMarks(c, w, withEmotions(beats)) }),
       onRoll: (roll) => deps.emit?.({ type: "roll", roll }),
       onSpeaker: deps.onSpeaker,
       allowChecks: !opts.preRolls?.length,
     });
     const resp = r.response;
+    resp.beats = withEmotions(resp.beats);
     const applied = applyChanges(R, c, w, {
       ...resp.changes,
       hp: opts.keepHp ? 0 : resp.changes.hp,
@@ -174,6 +187,8 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const checkBroken = async () => {
     if (c.sanity !== 0 || w.combat) return;
     const { restored } = breakDown(c);
+    // Лицо героя — «срыв» на этот ход и ещё один (heroMood).
+    w.brokeAt = w.turn;
     let lost = 0;
     if (w.case && !w.case.result) {
       lost = Math.min(CASE_LIMITS.breakdownVisits, Math.max(0, w.case.limit - w.case.visits));

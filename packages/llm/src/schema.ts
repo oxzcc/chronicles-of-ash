@@ -72,6 +72,11 @@ export interface Beat {
   refs?: BeatRef[];
   /** Пометки после проверки: только то, что движок принял. */
   marks?: BeatMark[];
+  /**
+   * Эмоция говорящего (id из art.emotions мира: fear, anger…). Мастер пишет слово («страх»), игра сверяет
+   * со списком мира и оставляет id; у рассказчика эмоции нет. Рисовать ли лицо — решает код.
+   */
+  emotion?: string;
 }
 
 /** Убирает кавычки-ёлочки и тире, которыми модели иногда обрамляют реплику. */
@@ -88,12 +93,20 @@ const refsSchema = z
       .slice(0, 3),
   );
 
+/** Эмоция — одно слово; «нет», «нейтрально» и null — без эмоции. Сверку со списком мира делает игра. */
+const emotionSchema = z
+  .unknown()
+  .transform((x) => (typeof x === "string" ? x.trim().toLowerCase().replace(/ё/g, "е").slice(0, 20) : ""))
+  .transform((x) => (x && !/^(null|none|нет|нейтрально|нейтральная|neutral|-)$/.test(x) ? x : undefined))
+  .catch(undefined);
+
 const BeatSchema = z
-  .object({ speaker: z.string().nullable().catch(null).default(null), text: z.string().catch(""), finds: refsSchema.optional() })
+  .object({ speaker: z.string().nullable().catch(null).default(null), text: z.string().catch(""), finds: refsSchema.optional(), emotion: emotionSchema.optional() })
   .transform((b): Beat => {
     const speaker = b.speaker && b.speaker.trim() && !/^(рассказчик|мастер|narrator)$/i.test(b.speaker.trim()) ? b.speaker.trim().slice(0, 40) : null;
     const beat: Beat = { speaker, text: (speaker ? unquote(b.text) : b.text.trim()).slice(0, 1500) };
     if (b.finds?.length) beat.refs = b.finds;
+    if (speaker && b.emotion) beat.emotion = b.emotion;
     return beat;
   });
 

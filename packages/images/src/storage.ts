@@ -4,6 +4,8 @@ import { dirname, join, normalize } from "node:path";
 /** Хранилище готовых картинок. Локально — папка; на сервере (фаза 4) — S3 + CDN с тем же интерфейсом. */
 export interface ImageStorage {
   put(key: string, bytes: Buffer, contentType?: string): Promise<string>;
+  /** Готовая картинка по её адресу (из put) — исходник для правки (эмоции). null — нет такой. */
+  get(url: string): Promise<Buffer | null>;
 }
 
 const SAFE_KEY = /^[a-z0-9][a-z0-9/_-]{0,200}\.(webp|png|jpg)$/;
@@ -17,6 +19,11 @@ export class LocalStorage implements ImageStorage {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, bytes);
     return this.publicPrefix + key;
+  }
+
+  async get(url: string): Promise<Buffer | null> {
+    if (!url.startsWith(this.publicPrefix)) return null;
+    return this.read(url.slice(this.publicPrefix.length));
   }
 
   /** Для раздачи файлов из Next.js — с защитой от выхода за пределы папки. */

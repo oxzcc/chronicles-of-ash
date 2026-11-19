@@ -54,3 +54,21 @@ export const raceEn = (world: World, race: string, gender: "m" | "f") => world.a
 
 /** Места, которые рисуются изнутри. */
 export const isInterior = (world: World, type: string) => world.art.interiorTypes.includes(type);
+
+/**
+ * Промпт правки портрета (эмоция): тот же человек, меняется только выражение. Описание облика — обязательно:
+ * без него правка теряла очки героини во всех состояниях (проверка 19 ноября).
+ */
+export const editPrompt = (world: World, look: string, change: string) =>
+  `${world.art.lora ? `${world.art.lora.trigger}, ` : ""}the same person as in the reference image${look ? ` (${look})` : ""}: keep the exact same face, identity and age, hairstyle, glasses and every accessory, clothing, body, pose, framing and plain light grey background. Change only the facial expression to ${change}.`;
+
+/** Облик из промпта готового портрета: без триггера, кадра и фона — для промпта правки. */
+export function lookFromPrompt(world: World, prompt: string): string {
+  let s = prompt.trim();
+  if (world.art.lora && s.startsWith(`${world.art.lora.trigger}, `)) s = s.slice(world.art.lora.trigger.length + 2);
+  if (s.startsWith(`${LORA_PORTRAIT_FRAME} `)) s = s.slice(LORA_PORTRAIT_FRAME.length + 1);
+  s = s.replace(new RegExp(`,\\s*${LORA_PORTRAIT_BACKGROUND}\\s*$`), "");
+  // Без LoRA впереди стоят техника и свет мира — они длинные и не про человека.
+  for (const head of [world.art.stylePrefix, PORTRAIT_LIGHT]) if (s.startsWith(head)) s = s.slice(head.length).replace(/^,\s*/, "");
+  return s.slice(0, 600);
+}

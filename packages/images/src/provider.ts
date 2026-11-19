@@ -26,9 +26,23 @@ export interface ImageResult {
   costUsd: number;
 }
 
+/** Правка готовой картинки словами: тот же кадр, другое выражение лица (эмоции портретов). */
+export interface EditRequest {
+  /** Исходник — PNG без прозрачности (портрет на сером фоне, как при генерации). */
+  image: Buffer;
+  prompt: string;
+  width: number;
+  height: number;
+  seed?: number;
+  lora?: LoraRef;
+  signal?: AbortSignal;
+}
+
 export interface ImageProvider {
   readonly name: string;
   generate(req: GenerateRequest): Promise<ImageResult>;
+  /** Нет — эмоции у этого провайдера не рисуются. */
+  edit?(req: EditRequest): Promise<ImageResult>;
   /** PNG с прозрачным фоном. */
   removeBackground(image: Buffer, signal?: AbortSignal): Promise<ImageResult>;
   /** LoRA стиля для мира, если она настроена у этого провайдера. */
@@ -42,6 +56,8 @@ export interface FalConfig {
   cutoutModel: string;
   /** Эндпоинт для генерации с LoRA. */
   loraModel?: string;
+  /** Эндпоинт правки по картинке (эмоции): klein 9B Base с LoRA — та же модель, на которой обучена LoRA. */
+  editModel?: string;
   /** LoRA по id мира. */
   loras?: Record<string, LoraRef>;
   fetchImpl?: typeof fetch;
@@ -53,6 +69,8 @@ export interface FalConfig {
  * На `klein/9b/lora` та же LoRA почти не меняла картинку ни на какой силе.
  */
 export const DEFAULT_LORA_MODEL = "fal-ai/flux-2/klein/9b/base/lora";
+/** Правка: проверено 19 ноября — лицо, одежда, поза и стиль LoRA держатся, меняется только выражение. */
+export const DEFAULT_EDIT_MODEL = "fal-ai/flux-2/klein/9b/base/edit/lora";
 
 /** FAL_LORA_<ID>_URL / FAL_LORA_<ID>_SCALE → LoRA по мирам; сила по умолчанию 1, допустимо 0…2. */
 export function lorasFromEnv(env: Record<string, string | undefined>): Record<string, LoraRef> {
@@ -75,6 +93,7 @@ export function falConfigFromEnv(env: Record<string, string | undefined> = proce
     backgroundModel: env.FAL_BACKGROUND_MODEL || "fal-ai/flux-2/klein/4b",
     cutoutModel: env.FAL_CUTOUT_MODEL || "fal-ai/birefnet/v2",
     loraModel: env.FAL_LORA_MODEL || DEFAULT_LORA_MODEL,
+    editModel: env.FAL_EDIT_MODEL || DEFAULT_EDIT_MODEL,
     loras: lorasFromEnv(env),
   };
 }
@@ -99,6 +118,8 @@ const PRICE: Record<string, number> = {
   "fal-ai/flux-2/klein/9b/lora": 0.015,
   "fal-ai/flux-2/klein/4b/base/lora": 0.015,
   "fal-ai/flux-2/klein/9b/base/lora": 0.02,
+  // Правка: $0.02 за Мп входа (вход сжимается до 1 Мп) и выхода.
+  "fal-ai/flux-2/klein/9b/base/edit/lora": 0.02,
   "fal-ai/birefnet/v2": 0.002,
 };
 
@@ -141,6 +162,26 @@ export class FalImageProvider implements ImageProvider {
     const loras = req.lora ? { loras: [{ path: req.lora.url, scale: req.lora.scale }] } : {};
     const mp = (dims.width * dims.height) / 1_000_000;
     return this.call(model, { prompt: req.prompt, num_images: 1, ...size, ...loras, ...(req.seed !== undefined ? { seed: req.seed } : {}) }, req.signal, mp);
+  }
+
+  edit(req: EditRequest): Promise<ImageResult> {
+    const model = this.cfg.editModel || DEFAULT_EDIT_MODEL;
+    const loras = req.lora ? { loras: [{ path: req.lora.url, scale: req.lora.scale }] } : {};
+    const mp = 1 + (req.width * req.height) / 1_000_000;
+    return this.call(
+      model,
+      {
+        prompt: req.prompt,
+        image_urls: [`data:image/png;base64,${req.image.toString("base64")}`],
+        image_size: { width: req.width, height: req.height },
+        num_images: 1,
+        output_format: "png",
+        ...loras,
+        ...(req.seed !== undefined ? { seed: req.seed } : {}),
+      },
+      req.signal,
+      mp,
+    );
   }
 
   removeBackground(image: Buffer, signal?: AbortSignal): Promise<ImageResult> {

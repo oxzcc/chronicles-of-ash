@@ -4,11 +4,21 @@ import type { ReactNode } from "react";
 import { sortEffects, type EffectKind } from "@ash/engine";
 import type { Beat, TurnEffect, TurnView } from "@/lib/client";
 
-/** Реплики хода в порядке показа: ответ мастера, раунды боя — голосом рассказчика. */
-export function beatsOf(t: Pick<TurnView, "beats" | "combatEvents" | "narration" | "kind">): Beat[] {
-  if (t.beats?.length) return t.beats;
+/** Реплика на экране; hero — действие самого героя, первым кадром хода. */
+export type Shown = Beat & { hero?: true };
+
+/** Ходы, которые начинает сам игрок: его слова — первый кадр. */
+export const playerKinds = new Set(["action", "choice", "present"]);
+
+/** Кадр с действием героя: его имя и то, что игрок написал или выбрал. */
+export const heroBeat = (name: string, text: string): Shown => ({ speaker: name, text, hero: true });
+
+/** Реплики хода в порядке показа: действие героя, ответ мастера, раунды боя — голосом рассказчика. */
+export function beatsOf(t: Pick<TurnView, "beats" | "combatEvents" | "narration" | "kind" | "action">, heroName?: string): Shown[] {
+  const own: Shown[] = heroName && playerKinds.has(t.kind) && t.action ? [heroBeat(heroName, t.action)] : [];
+  if (t.beats?.length) return [...own, ...t.beats];
   if (t.combatEvents?.length) return t.combatEvents.map((e) => ({ speaker: null, text: e.text }));
-  return t.narration ? [{ speaker: null, text: t.narration }] : [];
+  return t.narration ? [...own, { speaker: null, text: t.narration }] : own;
 }
 
 /** Силуэт, пока портрет рисуется. */
@@ -28,19 +38,24 @@ export function Silhouette({ side = "left", still }: { side?: "left" | "right"; 
   );
 }
 
-/** Бюст говорящего: готовый портрет или силуэт. Тусклый, когда говорит рассказчик. */
-export function Bust({ url, name, side = "left", dim, failed }: { url: string | null | undefined; name: string; side?: "left" | "right"; dim?: boolean; failed?: boolean }) {
+/**
+ * Бюст говорящего: готовый портрет или силуэт. Тусклый, когда говорит рассказчик.
+ * over — вариант лица (эмоция, состояние героя): тот же кадр поверх портрета, проявляется без мигания.
+ */
+export function Bust({ url, over, name, side = "left", dim, failed }: { url: string | null | undefined; over?: string | null; name: string; side?: "left" | "right"; dim?: boolean; failed?: boolean }) {
   return (
     <div className={`vn-bust-wrap ${side} ${dim ? "dim" : ""}`}>
       {url ? <img key={url} className={`vn-bust ${side}`} src={url} alt={name} /> : <Silhouette side={side} still={failed} />}
+      {url && over && <img key={over} className={`vn-bust ${side} vn-bust-over`} src={over} alt="" />}
     </div>
   );
 }
 
-export function TextFrame({ speaker, role, children, onAdvance, hint }: { speaker?: string | null; role?: string; children: ReactNode; onAdvance?: () => void; hint?: string }) {
+/** hero — реплика самого героя (его действие): имя справа, маленький портрет у имени. */
+export function TextFrame({ speaker, role, children, onAdvance, hint, hero, avatar }: { speaker?: string | null; role?: string; children: ReactNode; onAdvance?: () => void; hint?: string; hero?: boolean; avatar?: string | null }) {
   return (
     <div
-      className={`vn-frame ${speaker ? "" : "narrator"} ${onAdvance ? "clickable" : ""}`}
+      className={`vn-frame ${speaker ? "" : "narrator"} ${hero ? "hero" : ""} ${onAdvance ? "clickable" : ""}`}
       onClick={onAdvance}
       role={onAdvance ? "button" : undefined}
       tabIndex={onAdvance ? 0 : undefined}
@@ -48,8 +63,11 @@ export function TextFrame({ speaker, role, children, onAdvance, hint }: { speake
     >
       {speaker && (
         <div className="vn-nameplate">
-          <div className="who">{speaker}</div>
-          {role && <div className="role">{role}</div>}
+          {hero && <span className="vn-avatar">{avatar ? <img key={avatar} src={avatar} alt="" /> : speaker[0]}</span>}
+          <div>
+            <div className="who">{speaker}</div>
+            {role && <div className="role">{role}</div>}
+          </div>
         </div>
       )}
       <div className={speaker ? "vn-line" : "vn-narr"}>{children}</div>

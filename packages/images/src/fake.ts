@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import type { GenerateRequest, ImageProvider, ImageResult } from "./provider";
+import type { EditRequest, GenerateRequest, ImageProvider, ImageResult } from "./provider";
 
 const hash = (s: string) => [...s].reduce((h, c) => (Math.imul(h ^ c.codePointAt(0)!, 16777619) >>> 0), 2166136261);
 
@@ -24,6 +24,13 @@ export class FakeImageProvider implements ImageProvider {
            <stop offset="0" stop-color="hsl(${hue},40%,${18 + (h % 12)}%)"/><stop offset="1" stop-color="hsl(${hue + 10},30%,6%)"/></linearGradient></defs>
            <rect width="100%" height="100%" fill="url(#g)"/><path d="M0 560 Q 340 ${430 + (h % 80)} 680 520 T 1344 ${480 + (h % 60)} V768 H0 Z" fill="hsl(${hue},25%,9%)"/></svg>`;
     return { bytes: await sharp(Buffer.from(svg)).png().toBuffer(), contentType: "image/png", model: "fake", costUsd: 0 };
+  }
+
+  /** Правка — тот же кадр с другим оттенком: видно, что лицо сменилось. */
+  async edit(req: EditRequest): Promise<ImageResult> {
+    if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
+    const bytes = await sharp(req.image).resize(req.width, req.height).modulate({ hue: 30 + (hash(req.prompt) % 120) }).png().toBuffer();
+    return { bytes, contentType: "image/png", model: "fake", costUsd: 0 };
   }
 
   async removeBackground(image: Buffer): Promise<ImageResult> {

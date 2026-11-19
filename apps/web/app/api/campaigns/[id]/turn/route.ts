@@ -1,5 +1,5 @@
 import { publicCampaign, secureRng, type CombatMove } from "@ash/engine";
-import { arrivalView, ensureBackground, ensureNpc, GameError, loadCampaign, playTurn, prepareVisuals, saveTurn, sceneView, type TurnInput } from "@ash/game";
+import { arrivalView, ensureBackground, ensureEmotion, ensureNpc, GameError, loadCampaign, playTurn, prepareVisuals, saveTurn, sceneView, type TurnInput } from "@ash/game";
 import { worldOf } from "@ash/worlds";
 import { currentUser, errorResponse, getDb, getRouter, getWorldBible, sseStream, withCampaignLock } from "@/lib/server";
 
@@ -65,6 +65,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           router: getRouter(), tier, worldBible: getWorldBible(world), rng: secureRng, signal: req.signal, emit: (e) => send(e.type, e),
           // Портрет нового NPC начинает рисоваться, пока мастер ещё дописывает ход.
           onSpeaker: (s) => void ensureNpc(db, c.id, world, s).catch((e) => console.error("[images] early npc", e)),
+          // Лицо с эмоцией — тоже пока мастер пишет; для нового NPC (портрета ещё нет) — после хода.
+          onEmotion: (name, emotion) => void ensureEmotion(db, c.id, world, name, emotion).catch((e) => console.error("[images] early emotion", e)),
           // Фон новой локации — в очередь до рассказа; клиент показывает его, как только он готов.
           onArrive: async () => {
             try {
