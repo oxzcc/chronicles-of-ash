@@ -64,7 +64,7 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-7+arkham-5");
+    expect(a.records[0]!.promptVersion).toBe("gm-7+arkham-6");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");

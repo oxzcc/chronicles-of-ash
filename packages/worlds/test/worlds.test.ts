@@ -97,6 +97,8 @@ describe("постоянные лица мира", () => {
       expect(m.id, m.name).toMatch(/^[a-z]+$/);
       expect(m.look, m.name).toMatch(/[а-я]/);
       expect(m.portrait, m.name).not.toMatch(/[а-яё]/i);
+      expect(m.portrait, m.name).not.toMatch(/bust|voluptuous|hourglass|wide hips|deep neckline|sultry|low angle|burly/i);
+      expect(m.look, m.name).not.toMatch(/пышн|глубоким вырезом|алая помада/i);
       // Пол — прямо в существительном, как в подписях датасета LoRA («a woman newspaper reporter»).
       expect(m.portrait, m.name).toMatch(m.gender === "f" ? /^an? [^,]*\bwoman\b/ : /^an? [^,]*\bman\b/);
       expect(m.label, m.name).toContain(m.name.split(" ").at(-1)!);
@@ -120,9 +122,12 @@ describe("телосложение мира", () => {
       expect(new Set(fig.hero[g]).size).toBe(4);
       for (const h of fig.hero[g]) expect(h).not.toMatch(/[а-яё]/i);
     }
-    // Одна героиня — с талией и изгибами, одна — полная целиком, две — без форм.
-    expect(fig.hero.f.filter((h) => /bust/.test(h))).toHaveLength(1);
-    expect(fig.hero.f.filter((h) => /plump/.test(h))).toHaveLength(1);
+    // Естественные пропорции у всех: без отдельных сексуализированных или гиператлетичных шаблонов.
+    const all = [...fig.young.f, ...fig.young.m, ...fig.elderly.f, ...fig.elderly.m].map((x) => x.en);
+    for (const text of [...all, ...fig.hero.f, ...fig.hero.m]) expect(text).not.toMatch(/bust|voluptuous|hourglass|wide hips|cinched waist|muscular|burly/i);
+    expect(fig.hero.f.join(" ")).toMatch(/average build/);
+    expect(fig.hero.f.join(" ")).toMatch(/solid full build/);
+    expect(fig.hero.f.join(" ")).toMatch(/broad-shouldered/);
   });
 });
 
@@ -180,14 +185,15 @@ describe("облик героинь и NPC", () => {
     expect(u.open.length).toBeGreaterThanOrEqual(1);
     expect(u.openShare).toBeGreaterThan(0);
     expect(u.openShare).toBeLessThan(0.5);
-    expect(u.openShareRoles).toBeGreaterThanOrEqual(u.openShare);
-    for (const x of [...u.closed, ...u.open]) expect(x).toMatch(/^(over|worn open)\b/);
+    for (const x of [...u.closed, ...u.open]) expect(x).toMatch(/^over\b/);
+    // «Открытый» слой — свободный ворот, не оголение и не глубокий вырез.
+    for (const x of u.open) expect(x).not.toMatch(/low-cut|bare skin|plunging|neckline/i);
     for (const g of ["f", "m"] as const) {
       expect(a.hairstylesEn![g].length).toBeGreaterThanOrEqual(6);
       for (const h of a.hairstylesEn![g]) expect(h).not.toMatch(/[а-яё]|\b(red|blond|black|brown|grey|auburn)\b/i);
     }
-    // Слово «very large bust» больше не у обычных женщин — только у ролей из figures.roles.
+    // Ни у обычных женщин, ни у особых ролей нет принудительного сексуализированного силуэта.
     const fig = a.figures!;
-    for (const o of [...fig.young.f.map((x) => x.en), ...fig.hero.f]) expect(o).not.toMatch(/very large bust/);
+    expect(fig.roles).toBeUndefined();
   });
 });

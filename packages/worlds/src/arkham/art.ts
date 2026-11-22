@@ -107,7 +107,8 @@ export const arkhamArt: ArtStyle = {
       "antiquarian occultist in a dusty menswear frock coat and waistcoat, a monocle, with a small brass astrolabe",
     ],
   },
-  // Под пальто, плащом, жакетом: открыто — примерно у каждой четвёртой женщины 20–45 лет, у «роковых» ролей — чаще.
+  // Под верхней одеждой — обычные слои эпохи. «Открытый» вариант означает лишь свободный ворот,
+  // не оголение; роль, возраст и фигура не делают одежду сексуализированной.
   underlayersEn: {
     closed: [
       "over a high-necked lace blouse",
@@ -115,9 +116,8 @@ export const arkhamArt: ArtStyle = {
       "over a fitted ribbed knit sweater",
       "over a plain cotton blouse with a rounded collar",
     ],
-    open: ["over a low-cut silk slip dress", "worn open over bare skin, a deep plunging neckline"],
+    open: ["over a cotton blouse with a softly folded open collar", "over a plain blouse with the top button undone"],
     openShare: 0.25,
-    openShareRoles: 0.6,
     modestRoles: /учительниц|монахин|настоятельниц|вдов|гувернантк|жена (пастора|священника)|бабушк|скорбящ/i,
   },
   // Причёски 1926 года: боб, волны, короткая стрижка; длинные волосы — только убранными.
@@ -161,52 +161,51 @@ export const arkhamArt: ArtStyle = {
     woods: "dark New England woods with old stone walls and fallen leaves",
     farm: "an isolated New England farmhouse with a barn and a dry field",
   },
-  // Владелец, 18 ноября: пожилые — без утрирования; роковые роли — всегда «песочные часы».
-  // 19 ноября: пышных стало слишком много — у молодых и средних лет женщин теперь 4/9 с формами,
-  // 2/9 «песочные часы», треть стройные (было 1/2, 1/3, 1/6).
+  // Новый принцип датасета: естественные пропорции и разнообразие обычных людей. Характер,
+  // профессия, возраст и осанка важнее гипертрофированной атлетичности или сексуализации.
   figures: {
     young: {
       f: [
-        { en: "curvy voluptuous build with a large bust and wide hips", weight: 2 },
-        { en: "voluptuous hourglass figure with a full bust and wide hips", weight: 1 },
-        { en: "slim slender build", weight: 1 / 2 },
-        { en: "petite slender build", weight: 1 / 2 },
-        { en: "slim athletic build", weight: 1 / 2 },
+        { en: "average build", weight: 2 },
+        { en: "lean average-built figure", weight: 1 },
+        { en: "slim narrow-shouldered build", weight: 1 },
+        { en: "solid full build with rounded shoulders", weight: 1 },
+        { en: "sturdy broad-shouldered build", weight: 1 },
       ],
       m: [
-        { en: "tall muscular athletic build", weight: 1 },
-        { en: "broad burly build", weight: 1 },
+        { en: "average build", weight: 1 },
         { en: "wiry lean build", weight: 1 },
-        { en: "heavyset portly build", weight: 1 },
-        { en: "stocky build", weight: 1 },
-        { en: "lean slender build", weight: 1 },
+        { en: "broad solid build with a soft belly", weight: 1 },
+        { en: "heavyset stocky build", weight: 1 },
+        { en: "sturdy broad-shouldered build", weight: 1 },
+        { en: "slim narrow-shouldered build", weight: 1 },
       ],
     },
     elderly: {
       f: [
-        { en: "stout heavyset build", weight: 1 },
-        { en: "slim upright build", weight: 1 },
         { en: "thin wiry build", weight: 1 },
+        { en: "solid full build with rounded shoulders", weight: 1 },
+        { en: "average build with a slight stoop", weight: 1 },
+        { en: "sturdy broad-shouldered build", weight: 1 },
       ],
       m: [
-        { en: "stocky build", weight: 1 },
         { en: "thin wiry build", weight: 1 },
-        { en: "heavyset portly build", weight: 1 },
-        { en: "gaunt bony build", weight: 1 },
+        { en: "gaunt narrow-shouldered build", weight: 1 },
+        { en: "heavyset stocky build", weight: 1 },
+        { en: "average build with a slight stoop", weight: 1 },
       ],
     },
     frail: "thin frail build",
-    roles: [{ match: /певиц|актрис|танцовщ|светск|жриц|куртизан|роков|кинозвезд|звезд[аы] /i, f: "voluptuous hourglass figure with a very large bust and wide hips" }],
-    // Четыре облика героини — четыре разных силуэта. «С формами» и «пышная» раньше обе были про грудь и бёдра
-    // и рисовались почти одинаково; теперь первая — «песочные часы» с очень большой грудью и тонкой талией, вторая — полная и мягкая целиком.
+    // Четыре облика героя — четыре разных естественных силуэта, без обязательной атлетичности
+    // у мужчин и без акцента на груди, талии или бёдрах у женщин.
     hero: {
       f: [
-        "voluptuous hourglass figure with a full bust, a narrow cinched waist and wide hips",
-        "plump full-figured build, soft rounded body with a thick waist, full arms and a round soft face",
-        "slim slender build, narrow shoulders and a flat figure",
-        "slim athletic build, lean and fit, not muscular",
+        "average build with slightly rounded shoulders",
+        "slim narrow-shouldered build",
+        "solid full build with rounded shoulders",
+        "sturdy broad-shouldered build",
       ],
-      m: ["tall muscular athletic build", "broad burly build", "wiry lean build", "heavyset stocky build"],
+      m: ["wiry lean build", "broad solid build with a soft belly", "heavyset stocky build", "sturdy broad-shouldered build"],
     },
   },
   interiorTypes: ["office", "hotel", "diner", "police", "library", "newspaper", "church", "speakeasy", "warehouse", "cellar"],
@@ -228,7 +227,7 @@ export const arkhamArt: ArtStyle = {
     perNpc: 2,
     perCampaign: 12,
   },
-  // Датасет: data/lora/arkham_dataset (58 картинок владельца, подписи — data/lora/arkham_captions.json).
+  // Датасет: data/lora/arkham_dataset (80 изображений владельца, подписи — data/lora/arkham_captions.json).
   lora: {
     trigger: "mthnr style",
     // «painterly…» обязательно: без слов о технике 9B рисует фотографию, и слабая LoRA её не перебивает.
