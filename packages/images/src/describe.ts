@@ -15,7 +15,7 @@ const CYR = /[а-яё]/i;
 const genderEn = (g: Gender) => (g === "f" ? "a woman, female character" : "a man, male character");
 
 /**
- * Мир с LoRA описывает людей языком подписей своего датасета: «a young woman newspaper reporter, curvy build, …».
+ * Мир с LoRA описывает людей языком подписей своего датасета: «a young woman newspaper reporter, average build, …».
  * Пол — прямо в существительном (woman/man), иначе FLUX путает пол у «пожилого библиотекаря».
  */
 const captionStyle = (world: World) => !!world.art.lora;
@@ -52,9 +52,9 @@ export interface NpcCard {
 }
 
 /**
- * Что просим описать у человека — словами подписей датасета LoRA мира: телосложение прямо
- * («thin frail build», «stout sturdy build», «voluptuous hourglass figure»), поза рук, ракурс для властных
- * и выражение лица. Без этого модель пишет «friendly smile», и все портреты улыбаются одинаково.
+ * Что просим описать у человека — словами подписей датасета LoRA мира: естественное телосложение
+ * («thin frail build», «average build», «solid full build»), осанка, одно действие рук и характерное
+ * выражение лица. Без этого модель пишет «friendly smile», и все портреты улыбаются одинаково.
  */
 /** Начало описания в стиле подписей датасета: кто это — одним существительным с возрастом и полом. */
 const CAPTION_START =
@@ -86,7 +86,7 @@ const buildRule = (b: NonNullable<ReturnType<typeof buildFor>>) =>
 const lookParts = (build?: string, style?: { text?: string; age: boolean; face: boolean }) => {
   const b = build
     ? `build in these exact words, chosen by the character's age and condition: ${build}`
-    : "build in plain body-type words that fit the role (e.g. thin frail, wiry, stout sturdy, heavyset, muscular, curvy, voluptuous hourglass)";
+    : "natural build in plain body-type words that fit the person (e.g. average, thin frail, wiry lean, stout sturdy, heavyset stocky, broad solid, slim narrow-shouldered)";
   // Руки — одной фразой вместе с предметом: «предмет в руке» и «поза» по отдельности дают третью руку.
   // Возраст и примету на лице, если их выбрал код, задаёт style; иначе модель пишет сама — без примеров,
   // которые она копирует всем подряд («a small mole beside her mouth» у девяти из десяти).
@@ -94,13 +94,13 @@ const lookParts = (build?: string, style?: { text?: string; age: boolean; face: 
   const face = style?.face
     ? ""
     : "face with one telling feature of this particular person if the notes give one, otherwise a clean face (a scar is always faint, pale and healed — a fresh wound or blood only if the notes say they are hurt); ";
-  return `${age}${b}; ${style?.text ? `${style.text}; ` : "hair; "}${face}no dark circles or streaks under the eyes; clothing from head to knees (no shoes or boots, nothing below the knees), only clothing and objects of the setting's era, nothing modern; one distinctive object and the pose that holds it, in ONE phrase that accounts for both hands (e.g. 'arms crossed, a ledger tucked under one arm', 'both hands wrapped around a teacup', 'a lantern raised in one hand, the other hand in a coat pocket'; a hand on the hip only for confident or seductive people) — do not mention hands or the object anywhere else; add 'low angle' only for imposing, powerful or seductive people; an expression that follows from the role and the moment (haughty, sultry, stern, smug, grieving, terrified, sly, grim, vacant, coy) — not a generic 'wary' or 'neutral'; a smile only if the role calls for one`;
+  return `${age}${b}; ${style?.text ? `${style.text}; ` : "hair; "}${face}no dark circles or streaks under the eyes; clothing from head to knees (no shoes or boots, nothing below the knees), only clothing and objects of the setting's era, nothing modern; practical period clothing with natural proportions, no sexualized pose or emphasis on breasts, waist, hips or muscles; one distinctive object and the pose that holds it, in ONE phrase that accounts for both hands (e.g. 'arms crossed, a ledger tucked under one arm', 'both hands wrapped around a teacup', 'a lantern raised in one hand, the other hand in a coat pocket'; a hand on the hip only for confident people) — do not mention hands or the object anywhere else; an expression that follows from the role and the moment (composed, assessing, quietly amused, stern, sceptical, grieving, terrified, sly, grim, vacant) — not a generic 'wary' or 'neutral'; a smile only if the role calls for one`;
 };
 
 /**
  * Причёска, цвет волос и что под верхней одеждой у NPC — выбирает код, seed от имени: один человек всегда
- * выглядит одинаково, а служебная модель не скатывается в «пучок» у всех и не раздевает «пышных» (LoRA
- * выучила «large bust» вместе с вырезом). Слова игрока/мастера о волосах важнее — тогда волосы не задаём.
+ * выглядит одинаково, а служебная модель не скатывается в «пучок» у всех. Открытый ворот не связан
+ * с фигурой, возрастом или профессией. Слова игрока/мастера о волосах важнее — тогда волосы не задаём.
  */
 export function npcStyle(world: World, who: { name: string; gender: Gender; role?: string; look?: string }) {
   const rng = mulberry32(hashStr(`${world.id}:${who.name}:${who.gender}:look`));
@@ -116,10 +116,7 @@ export function npcStyle(world: World, who: { name: string; gender: Gender; role
   const modest = u?.modestRoles?.test(who.role ?? "");
   let under: { open?: string; closed: string } | undefined;
   if (u && who.gender === "f") {
-    const seductive = world.art.figures?.roles?.some((r) => r.f && r.match.test(who.role ?? ""));
-    // Возраст знает код — он и решает: модель условие «только 20–45» не соблюдала (открыто у хозяйки за пятьдесят).
-    const young = !age || !/fifties|sixties|elderly/.test(age);
-    const open = !modest && young && rng() < (seductive ? u.openShareRoles : u.openShare);
+    const open = !modest && rng() < u.openShare;
     under = { closed: pick(u.closed), ...(open ? { open: pick(u.open) } : {}) };
   }
   return { hair, under, age, mark };
@@ -145,7 +142,7 @@ const styleRule = (s: ReturnType<typeof npcStyle>) =>
     s.hair && `hair in these words: '${s.hair}' (if elderly — grey or white, same style)`,
     s.under &&
       (s.under.open
-        ? `ONLY if they wear an open coat, jacket, cardigan or shawl, it is worn '${s.under.open}'${s.age ? "" : ` when they are 20 to 45 and well, otherwise '${s.under.closed}'`}; never put it under a dress or apron, skip it without outerwear`
+        ? `ONLY if they wear an open coat, jacket, cardigan or shawl, it is worn '${s.under.open}'; never put it under a dress or apron, skip it without outerwear`
         : `ONLY if they wear an open coat, jacket, cardigan or shawl, it is worn '${s.under.closed}'; never put it under a dress or apron, skip it without outerwear`),
     s.mark && `face: '${s.mark}'`,
   ]
@@ -290,7 +287,7 @@ const CLOTHES_NOTE = /плащ|пальто|костюм|шляп|кепк|пл�
 const POSES = [
   "standing in three-quarter view with arms crossed over the chest, the object tucked under one arm",
   "turned slightly away and glancing back over the shoulder, the object held in both hands at the waist",
-  "seen from a low angle, chin raised, the object held against the chest with both hands",
+  "standing at ease with one shoulder slightly forward, the object held loosely in both hands at waist level",
   "leaning forward slightly, studying the object held in both hands",
   "head tilted to one side, the object held up near the face in both hands",
   "standing straight, one hand on the hip, the object raised to shoulder height in the other hand",
@@ -323,8 +320,9 @@ const MARKS = [
 
 /** Выражения лица — по одному на облик: служебная модель всем пишет «stern». */
 const EXPRESSIONS = [
-  "a coy half-smile", "a smug look", "a haughty look", "a cool determined look", "an amused smirk",
-  "a stern frown", "a weary sad look", "a sharp curious look", "a guarded sidelong glance", "a warm open smile",
+  "a quietly knowing look", "a composed assessing look", "a cool determined look", "a restrained amused smile",
+  "a stern frown", "a weary sorrowful look", "a sharp curious look", "a guarded sidelong glance", "a warm open smile",
+  "a sceptical raised eyebrow",
 ];
 
 /** Подставить слой под верхней одеждой; без слоя — просто убрать метку. */
@@ -333,13 +331,14 @@ export const fillUnder = (outfit: string, layer?: string) =>
 
 /**
  * Что под верхней одеждой у четырёх обликов героини: у облика с `{under}` — закрытый слой, и с вероятностью
- * как у NPC (1 − (1 − openShare)^n) ровно один из подходящих (20–45 лет) — открытый. Больше одного — никогда.
+ * как у NPC (1 − (1 − openShare)^n) не больше одного варианта со свободным воротом. Возраст и фигура
+ * на этот выбор не влияют.
  */
-function heroLayers(world: World, gender: Gender, outfits: string[], ages: number[] | undefined, rng: Rng) {
+function heroLayers(world: World, gender: Gender, outfits: string[], rng: Rng) {
   const u = world.art.underlayersEn;
   if (!u || gender !== "f") return undefined;
   const layers = outfits.map((o) => (o.includes("{under}") ? u.closed[Math.floor(rng() * u.closed.length)]! : undefined));
-  const ok = outfits.map((o, i) => (o.includes("{under}") && (!ages || (ages[i]! >= 20 && ages[i]! <= 45)) ? i : -1)).filter((i) => i >= 0);
+  const ok = outfits.map((o, i) => (o.includes("{under}") ? i : -1)).filter((i) => i >= 0);
   if (ok.length && rng() < 1 - (1 - u.openShare) ** ok.length) layers[ok[Math.floor(rng() * ok.length)]!] = u.open[Math.floor(rng() * u.open.length)]!;
   return layers;
 }
@@ -350,14 +349,12 @@ const AGE_NOTE = /\d+\s*(лет|год)|молод|юн[аыо]|стар|пож�
 
 /**
  * Возраст тоже выбирает код: модель ставила полной героине всегда 40–50, стройной — 20–25.
- * Четыре разных отрезка; среди четырёх обязательно кто-то моложе 32 и кто-то старше 45;
- * облик с формами — не старше 45.
+ * Четыре разных отрезка; среди четырёх обязательно кто-то моложе 32 и кто-то старше 45.
+ * Возраст не зависит от телосложения.
  */
 const AGE_BANDS: [number, number][] = [[20, 25], [26, 31], [32, 38], [39, 45], [46, 53], [54, 65]];
-const CURVY = /curvy|voluptuous|hourglass/i;
-function pickAges(rng: Rng, builds?: readonly string[]): number[] {
-  const ok = (b: number[]) =>
-    b.some((x) => x <= 1) && b.some((x) => x >= 4) && b.every((x, i) => !(builds?.[i] && CURVY.test(builds[i]!)) || AGE_BANDS[x]![1] <= 45);
+function pickAges(rng: Rng): number[] {
+  const ok = (b: number[]) => b.some((x) => x <= 1) && b.some((x) => x >= 4);
   let bands = [0, 2, 3, 5];
   for (let t = 0; t < 100; t++) {
     const b = shuffled([0, 1, 2, 3, 4, 5], rng).slice(0, 4);
@@ -412,7 +409,7 @@ export async function heroVariants(
   signal?: AbortSignal,
   rng: Rng = secureRng,
 ): Promise<LookVariant[]> {
-  // Телосложения перемешаны: иначе первая карточка у героини всегда «песочные часы».
+  // Телосложения перемешаны: порядок карточек не закрепляет один тип фигуры за первым вариантом.
   const heroBuilds = world.art.figures?.hero[d.gender];
   const builds = BUILD_NOTE.test(notes) || !heroBuilds ? undefined : shuffled(heroBuilds, rng);
   const outfitList = (d.gender === "f" ? world.art.heroOutfitsFemaleEn?.[d.cls] : undefined) ?? world.art.heroOutfitsEn?.[d.cls];
@@ -422,7 +419,7 @@ export async function heroVariants(
   const hair = ownHair ? undefined : shuffled(HAIR, rng).slice(0, 4);
   const styleList = world.art.hairstylesEn?.[d.gender];
   const styles = ownHair || !styleList || styleList.length < 4 ? undefined : shuffled(styleList, rng).slice(0, 4);
-  const ages = AGE_NOTE.test(notes) ? undefined : pickAges(rng, builds);
+  const ages = AGE_NOTE.test(notes) ? undefined : pickAges(rng);
   // Примета на лице — у одного-двух из четырёх, остальные с чистым лицом. Без шрамов (см. MARKS).
   const marks = MARK_NOTE.test(notes) ? undefined : (() => {
     const n = rng() < 0.5 ? 1 : 2;
@@ -431,7 +428,7 @@ export async function heroVariants(
     return [0, 1, 2, 3].map((i) => (order.indexOf(i) < n ? picked[i]! : undefined));
   })();
   const faces = shuffled(EXPRESSIONS, rng).slice(0, 4);
-  const layers = outfits && heroLayers(world, d.gender, outfits, ages, rng);
+  const layers = outfits && heroLayers(world, d.gender, outfits, rng);
   // Наряд + поза рядом: предмет из наряда и руки, которые его держат, — в одном месте промпта.
   const dressed = outfits?.map((o, i) => `${fillUnder(o, layers?.[i])}, ${poses[i]}`);
   const specs = [0, 1, 2, 3].map((i) => {
@@ -457,7 +454,7 @@ export async function heroVariants(
       `You design 4 clearly DIFFERENT looks for a ${world.art.genreEn} player character. Base: ${baseHero(world, d, outfits ? "" : undefined)} (${world.rules.races[d.race]?.name ?? d.race}, ${world.rules.classes[d.cls]?.name ?? d.cls}).${notes ? ` Player's notes (Russian, must be respected in all 4): ${notes}` : ""}
 Vary ${ages ? "" : "age, "}${hair ? "" : "hair colour and style, "}face shape${marks ? "" : ", marks (old healed ones only, never fresh wounds)"}${outfits ? "" : ", a clothing detail"} so that the 4 people are easy to tell apart.
 Set by the game, in this order — copy these words as they are: ${specs.join("; ")}.
-${fixed[0]!.toUpperCase()}${fixed.slice(1)} are set by the game — do not describe them, do not mention hands or objects in hand.${builds ? ` Body builds, in this order: ${builds.map((b, i) => `${i + 1}) ${b}`).join("; ")}${ages ? "" : "; pick ages that suit them: a curvy, voluptuous or hourglass look is 20 to 45 years old"}.` : ""}
+${fixed[0]!.toUpperCase()}${fixed.slice(1)} are set by the game — do not describe them, do not mention hands or objects in hand.${builds ? ` Body builds, in this order: ${builds.map((b, i) => `${i + 1}) ${b}`).join("; ")}${ages ? "" : "; choose ages independently of body build"}.` : ""}
 Gender is fixed: every look is ${d.gender === "f" ? "a woman (no beards)" : "a man"}. Start every prompt with "${d.gender === "f" ? "woman" : "man"}" and ${ages ? "the age set above" : "an age"}.
 Return JSON only: [{"label":"3-6 слов по-русски: возраст, волосы и примета на лице, если она есть; без фигуры и одежды","prompt":"English fragment, 15-35 words, no style words"}] — exactly 4 items.`,
       signal,

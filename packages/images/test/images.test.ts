@@ -167,24 +167,27 @@ describe("LoRA стиля", () => {
     expect(await describeNpc(reply("tall, scarred"), world, { ...card, race: "elf" })).toMatch(/^a woman, female character, .+, tall, scarred$/);
   });
 
-  it("телосложение NPC выбирает код: по имени всегда одно, доли мира, роковые роли", async () => {
+  it("телосложение NPC выбирает код: по имени всегда одно, естественное разнообразие без шаблонов по роли", async () => {
     const { buildFor } = await import("../src/index");
     const fig = arkham.art.figures!;
-    const [curvy, hourglass] = [fig.young.f[0]!.en, fig.young.f[1]!.en];
     // Один и тот же NPC — всегда одна фигура.
     expect(buildFor(arkham, { name: "Мэри Хоббс", gender: "f" })).toEqual(buildFor(arkham, { name: "Мэри Хоббс", gender: "f" }));
-    // Доли: 4/9 с формами, 2/9 «песочные часы», треть стройные.
+    // Средняя фигура имеет вес 2 из 6, остальные четыре — по 1; все варианты реально встречаются.
     const n = 3000;
     const picks = Array.from({ length: n }, (_, i) => buildFor(arkham, { name: `Жительница ${i}`, gender: "f" })!.young);
     const share = (x: string) => picks.filter((p) => p === x).length / n;
-    expect(share(curvy)).toBeCloseTo(4 / 9, 1);
-    expect(share(hourglass)).toBeCloseTo(2 / 9, 1);
-    expect(1 - share(curvy) - share(hourglass)).toBeCloseTo(1 / 3, 1);
-    // Пожилые — без утрирования.
-    for (let i = 0; i < 50; i++) expect(buildFor(arkham, { name: `Старуха ${i}`, gender: "f" })!.elderly).not.toMatch(/bust/);
-    // Певица — всегда «песочные часы»; у мира без правил выбора нет.
-    const seductive = fig.roles![0]!.f!;
-    for (let i = 0; i < 20; i++) expect(buildFor(arkham, { name: `Певица ${i}`, gender: "f", role: "певица в подпольном баре" })!.young).toBe(seductive);
+    expect(share(fig.young.f[0]!.en)).toBeCloseTo(1 / 3, 1);
+    expect(new Set(picks)).toEqual(new Set(fig.young.f.map((x) => x.en)));
+    // Пожилые и взрослые — без гипертрофированных или сексуализированных описаний.
+    for (let i = 0; i < 50; i++) {
+      const b = buildFor(arkham, { name: `Жительница ${i}`, gender: "f" })!;
+      expect(`${b.young} ${b.elderly}`).not.toMatch(/bust|voluptuous|hourglass|wide hips/i);
+    }
+    // Профессия не назначает особый силуэт: певица получает ту же детерминированную фигуру, что и без роли.
+    for (let i = 0; i < 20; i++) {
+      const who = { name: `Певица ${i}`, gender: "f" as const };
+      expect(buildFor(arkham, { ...who, role: "певица в подпольном баре" })).toEqual(buildFor(arkham, who));
+    }
     expect(buildFor(world, { name: "x", gender: "f" })).toBeUndefined();
   });
 
@@ -195,7 +198,7 @@ describe("LoRA стиля", () => {
     const failing: any = { route: () => ({ model: "m", provider: { complete: async () => { throw new Error("down"); } } }) };
     const d = { race: "human" as const, cls: "journalist", gender: "f" as const };
     const v = await heroVariants(failing, arkham, d, "", undefined, mulberry32(7));
-    // Фигуры — все четыре из мира, по одной на облик, но в случайном порядке: «песочные часы» не всегда первые.
+    // Фигуры — все четыре из мира, по одной на облик, но в случайном порядке.
     expect(fig.hero.f.every((b) => v.some((x) => x.prompt.includes(b)))).toBe(true);
     const firsts = new Set<number>();
     for (let seed = 1; seed <= 30; seed++) {
@@ -244,15 +247,13 @@ describe("LoRA стиля", () => {
       // Выражения — четыре разных.
       expect(new Set([...asked.matchAll(/expression: ([a-z -]+)/g)].map((m) => m[1])).size).toBe(4);
       for (const x of vv) expect(x.outfit).not.toMatch(/walking/);
-      // Возраст: четыре разных, кто-то моложе 32 и кто-то старше 45; облик с формами — не старше 45; юным — «youthful face».
+      // Возраст: четыре разных, кто-то моложе 32 и кто-то старше 45; юным — «youthful face».
       const ages = [...asked.matchAll(/(\d+) years old/g)].map((m) => Number(m[1]));
       expect(ages).toHaveLength(4);
       expect(Math.min(...ages)).toBeLessThan(32);
       expect(Math.max(...ages)).toBeGreaterThan(45);
-      vv.forEach((x, i) => {
-        if (/voluptuous|curvy|plump/.test(x.prompt) && /voluptuous/.test(x.prompt)) expect(ages[i]).toBeLessThanOrEqual(45);
-        expect(/youthful face/.test(x.prompt)).toBe(ages[i]! < 32);
-      });
+      expect(asked).not.toMatch(/curvy|voluptuous|hourglass|large bust|seductive|sultry|coy/i);
+      vv.forEach((x, i) => expect(/youthful face/.test(x.prompt)).toBe(ages[i]! < 32));
     }
     // Свои слова игрока о волосах и приметах — важнее.
     await heroVariants(spy, arkham, d, "рыжая, шрам через бровь", undefined, mulberry32(5));
@@ -263,13 +264,13 @@ describe("LoRA стиля", () => {
     // Игрок сам описал фигуру и одежду — их не навязываем, поза уходит в промпт.
     const own = await heroVariants(failing, arkham, d, "худая, высокая, в потёртом кожаном плаще", undefined, mulberry32(3));
     for (const x of own) {
-      expect(x.prompt).not.toMatch(/bust|slender|athletic|plump/);
+      for (const b of fig.hero.f) expect(x.prompt).not.toContain(b);
       expect(x.outfit).toBeUndefined();
       expect(x.prompt).toMatch(/the object/);
     }
   });
 
-  it("слой под верхней одеждой у героини: не больше одного открытого, только 20–45, иногда ни одного", async () => {
+  it("слой под верхней одеждой у героини: не больше одного свободного ворота, иногда ни одного", async () => {
     const { heroVariants } = await import("../src/index");
     const { mulberry32 } = await import("@ash/engine");
     const u = arkham.art.underlayersEn!;
@@ -323,20 +324,16 @@ describe("LoRA стиля", () => {
     // Мастер сам описал волосы — их не задаём.
     await describeNpc(reply, arkham, { ...card, look: "рыжая, с косой" });
     expect(asked).not.toContain(st.hair!);
-    // Мужчинам слоёв нет; у «роковых» ролей открытый слой чаще.
+    // Мужчинам этих слоёв нет; профессия и возраст не меняют долю свободного ворота.
     expect(npcStyle(arkham, { name: "Том", gender: "m" }).under).toBeUndefined();
-    // Доля открытых — среди тех, кому код дал возраст до пятидесяти.
     const share = (role: string) => {
-      const young = Array.from({ length: 900 }, (_, i) => npcStyle(arkham, { name: `Ж${i}`, gender: "f", role })).filter((x) => !/fifties|sixties|elderly/.test(x.age!));
-      return young.filter((x) => x.under!.open).length / young.length;
+      const people = Array.from({ length: 900 }, (_, i) => npcStyle(arkham, { name: `Ж${i}`, gender: "f", role }));
+      return people.filter((x) => x.under!.open).length / people.length;
     };
     expect(share("горничная")).toBeCloseTo(arkham.art.underlayersEn!.openShare, 1);
-    expect(share("певица в баре")).toBeCloseTo(arkham.art.underlayersEn!.openShareRoles, 1);
-    // Открыто — только у тех, кому код дал возраст до сорока с небольшим.
-    for (let i = 0; i < 400; i++) {
-      const x = npcStyle(arkham, { name: `В${i}`, gender: "f", role: "хозяйка пансиона" });
-      if (/fifties|sixties|elderly/.test(x.age!)) expect(x.under!.open).toBeUndefined();
-    }
+    expect(share("певица в баре")).toBeCloseTo(arkham.art.underlayersEn!.openShare, 1);
+    const older = Array.from({ length: 900 }, (_, i) => npcStyle(arkham, { name: `В${i}`, gender: "f", role: "хозяйка пансиона" })).filter((x) => /fifties|sixties|elderly/.test(x.age!));
+    expect(older.some((x) => x.under!.open)).toBe(true);
     // Скромные роли — всегда закрыто.
     for (let i = 0; i < 200; i++) expect(npcStyle(arkham, { name: `У${i}`, gender: "f", role: "учительница воскресной школы" }).under!.open).toBeUndefined();
     // Шрамы код не раздаёт: LoRA рисует их свежей раной.

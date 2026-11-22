@@ -98,7 +98,7 @@ export interface Figures {
   elderly: { f: BuildOption[]; m: BuildOption[] };
   /** Больные, голодные, утопленники — у всех. */
   frail: string;
-  /** Роли (по-русски), которым телосложение задано всегда: певица, светская дама… */
+  /** Необязательная рабочая осанка или телосложение для конкретной профессии (роли — по-русски). */
   roles?: { match: RegExp; f?: string; m?: string }[];
   /** Четыре облика героя на выбор — четыре заметно разных силуэта (в подпись не идут). */
   hero: { f: string[]; m: string[] };
@@ -134,12 +134,12 @@ export interface ArtStyle {
    */
   heroOutfitsFemaleEn?: Record<string, string[]>;
   /**
-   * Что под верхней одеждой у женщин: закрыто или открыто. Выбирает код (у NPC — по имени, у героини —
-   * не больше одной открытой из четырёх), не служебная модель и не LoRA: в датасете «пышная» всегда с вырезом.
-   * openShare — доля открытых (только 20–45 лет); у ролей из figures.roles — openShareRoles; у modestRoles
-   * (учительница воскресной школы, вдова, монахиня…) — всегда закрыто.
+   * Что под верхней одеждой у женщин: закрытый ворот или свободный открытый ворот, без оголения.
+   * Выбирает код (у NPC — по имени, у героини — не больше одного открытого ворота из четырёх), не модель.
+   * openShare — доля вариантов со свободным воротом; возраст, фигура и профессия на неё не влияют.
+   * У modestRoles (монахиня, настоятельница…) — всегда закрыто по требованиям одежды роли.
    */
-  underlayersEn?: { closed: string[]; open: string[]; openShare: number; openShareRoles: number; modestRoles?: RegExp };
+  underlayersEn?: { closed: string[]; open: string[]; openShare: number; modestRoles?: RegExp };
   /** Причёски эпохи. Выбирает код: служебная модель сама всем делает пучок. */
   hairstylesEn?: { f: string[]; m: string[] };
   locationEn: Record<LocationType, string>;
