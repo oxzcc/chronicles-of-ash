@@ -193,7 +193,7 @@ export default function NewHero() {
             <button key={k} className={`choice ${cls === k ? "on" : ""}`} onClick={() => pickClass(k)}>
               <b>{R.classes[k]!.name}</b>
               <span>
-                {R.classes[k]!.desc} Умение: {R.classes[k]!.ability.name} — {R.classes[k]!.ability.desc}.
+                {R.classes[k]!.desc} {world.features.combat !== false ? `Умение: ${R.classes[k]!.ability.name} — ${R.classes[k]!.ability.desc}.` : ""}
               </span>
             </button>
           ))}

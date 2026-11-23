@@ -117,7 +117,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         const shown = v.campaign.case?.result ? ([...v.turns].reverse().find((t) => t.kind === "close") ?? last) : last;
         if (shown) {
           setBatch([shown]);
-          setCursor(Math.max(0, beatsOf(shown, v.character.name).length - 1));
+          setCursor(Math.max(0, beatsOf(shown, v.character.name, worldOf(v.character).features.combat !== false).length - 1));
           // Закрытое дело всегда открывается на финальном экране, а не на старом диалоге.
           if (v.campaign.case?.result) setClosing("resolution");
         }
@@ -233,6 +233,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     }
   }, [view, send]);
 
+  const combatEnabled = view ? worldOf(view.character).features.combat !== false : true;
+  const combat = combatEnabled && view ? view.campaign.combat : null;
   // Реплики хода: пока ход идёт — потоковые, после — сохранённые. Первым кадром — действие самого героя.
   const heroName = view?.character.name;
   const all: Shown[] = useMemo(() => {
@@ -240,10 +242,10 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       return [
         ...(heroName && playerKinds.has(live.kind) ? [heroBeat(heroName, live.label)] : []),
         ...live.beats,
-        ...live.combatEvents.map((e) => ({ speaker: null, text: e.text })),
+        ...(combatEnabled ? live.combatEvents : []).map((e) => ({ speaker: null, text: e.text })),
       ];
-    return batch.flatMap((t) => beatsOf(t, heroName));
-  }, [live, batch, heroName]);
+    return batch.flatMap((t) => beatsOf(t, heroName, combatEnabled));
+  }, [live, batch, heroName, combatEnabled]);
   const firstSpeaker = all.findIndex((b) => b.speaker && !b.hero);
   // При входе в локацию: во время заставки реплик нет, потом — только рассказчик, пока NPC не вышел.
   const gate = !enter || enter.phase === "open" ? all.length : enter.phase === "title" ? 0 : firstSpeaker < 0 ? all.length : firstSpeaker;
@@ -312,10 +314,10 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     const npc = npcView(scene, view.campaign.npc?.name);
     // Все, кто говорит в текущих репликах, — их портреты тоже ждём. И противника в бою.
     const speakers = all.map((b) => npcView(scene, b.speaker));
-    const foe = view.campaign.combat ? npcView(scene, foeOf(view.campaign.combat)?.name) : undefined;
+    const foe = combat ? npcView(scene, foeOf(combat)?.name) : undefined;
     // Варианты лица (эмоции, состояние героя) тоже приходят опросом.
     return !!scene.variantsPending || [bg, npc, foe, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"));
-  }, [view, scene, all, enter?.to]);
+  }, [view, scene, all, enter?.to, combat]);
   // Пока ход не сохранён, сервер не знает фон новой локации — передаём его явно.
   const sceneUrl = `/api/campaigns/${id}/scene` + (enter?.imageId ? `?loc=${encodeURIComponent(enter.to)}&bg=${enter.imageId}` : "");
   useEffect(() => {
@@ -358,21 +360,22 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   // На сцене — тот, кто говорит; когда звучит голос рассказчика — последний собеседник, приглушённо.
   // При входе в локацию прежний собеседник остался позади: до выхода NPC сцена пуста, потом — тот, кто заговорит.
   const nextNpc = all.find((b) => b.speaker)?.speaker ?? null;
-  const onStage = closureActive ? speakerName : enter ? (enter.phase === "open" ? (speakerName ?? nextNpc) : null) : (speakerName ?? (w.combat ? null : (w.npc?.name ?? null)));
+  const onStage = closureActive ? speakerName : enter ? (enter.phase === "open" ? (speakerName ?? nextNpc) : null) : (speakerName ?? (combat ? null : (w.npc?.name ?? null)));
   const stage = npcView(scene, onStage);
   // До первой реплики развязки остаётся задумчивый герой; затем на сцене только говорящие NPC.
   const closingHero = closing === "answers" || (closing === "resolution" && !beat);
   const role = speakerName && w.npc && matchName(speakerName, [w.npc.name]) === 0 ? w.npc.role : undefined;
-  const foe = w.combat ? foeOf(w.combat) : undefined;
+  const foe = combat ? foeOf(combat) : undefined;
   const foeImg = npcView(scene, foe?.name);
   const lastWithSuggestions = [...view.turns].reverse().find((t) => t.suggestions.length);
-  const suggestions = !w.combat && lastWithSuggestions ? lastWithSuggestions.suggestions : [];
-  const showChoices = !busy && !enter && atEnd && !w.combat && !closureActive;
+  const suggestions = !combat && lastWithSuggestions ? lastWithSuggestions.suggestions : [];
+  const showChoices = !busy && !enter && atEnd && !combat && !closureActive;
   const atHub = w.current === CASE_HUB_ID;
   const showHub = showChoices && !!w.case && atHub && !w.case.result;
   const finale = closing === "resolution" && !!w.case?.result && atEnd && !streaming && !live && !!beat && !beat.speaker && !beat.hero;
   const submit = () => text.trim() && send({ kind: "action", text: text.trim() }, text.trim());
-  const R = worldOf(c).rules;
+  const world = worldOf(c);
+  const R = world.rules;
   const ab = R.classes[c.cls]!.ability;
   // Итог последнего действия: полоски здоровья и рассудка вспыхивают при потере.
   const fx = batch.flatMap((t) => t.effects ?? []);
@@ -396,7 +399,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         ) : (
           onStage && <StageBust name={onStage} sceneLocation={sceneLocation} beats={all} index={cursor} stage={stage} />
         )
-      ) : w.combat ? (
+      ) : combat ? (
         <>
           <Bust url={scene?.hero?.url} over={heroOver} name={c.name} side="left" />
           <Bust url={foeImg?.url} name={foe?.name ?? "Противник"} side="right" failed={!foeImg || foeImg.status === "failed" || foeImg.status === "none"} />
@@ -424,7 +427,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
                 </span>
               ) : null}
               <span className="vn-stat">
-                {c.hp}/{c.hpMax} · КД {c.ac} · {R.money.short(c.gold)}
+                {c.hp}/{c.hpMax}{combatEnabled ? ` · КД ${c.ac}` : ""} · {R.money.short(c.gold)}
               </span>
             </span>
           </button>
@@ -432,7 +435,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
             <button className="vn-icon" onClick={() => setPanel("quest")} aria-label={`Журнал: ${worldOf(c).ui.quest.toLowerCase()}`}>
               {Icon.journal}
             </button>
-            <button className="vn-icon" onClick={() => setPanel("map")} aria-label="Карта" disabled={!!w.combat}>
+            <button className="vn-icon" onClick={() => setPanel("map")} aria-label="Карта" disabled={!!combat}>
               {Icon.map}
             </button>
             {w.case && (
@@ -440,12 +443,12 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
                 <button className="vn-icon" onClick={() => setPanel("paper")} aria-label="Газета">
                   {Icon.newspaper}
                 </button>
-                <button className="vn-icon" onClick={() => setPanel("directory")} aria-label="Справочник" disabled={!!w.combat}>
+                <button className="vn-icon" onClick={() => setPanel("directory")} aria-label="Справочник" disabled={!!combat}>
                   {Icon.directory}
                 </button>
               </>
             )}
-            <Link className="vn-icon" href="/" aria-label="Все герои">
+            <Link className="vn-icon" href="/" aria-label="Главный экран">
               {Icon.home}
             </Link>
           </nav>
@@ -481,7 +484,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         )}
         {error && <p className="error small">{error}</p>}
 
-        {w.combat && atEnd && !streaming && !enter && <CombatPanel w={w} c={c} disabled={busy} onMove={(move, target) => send({ kind: "combat", move, target }, move)} />}
+        {combat && atEnd && !streaming && !enter && <CombatPanel w={w} c={c} disabled={busy} onMove={(move, target) => send({ kind: "combat", move, target }, move)} />}
 
         {showChoices && !w.case?.result && w.case && w.case.visits >= w.case.limit && (
           <button className="btn vn-case-done" onClick={() => setClosing("confirm")}>
@@ -552,8 +555,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
 
       {panel === "history" && (
         <Drawer title="История" onClose={() => setPanel(null)}>
-          {view.turns.map((t) => (
-            <Entry key={t.turnNo} t={t} isCase={!!w.case} />
+          {view.turns.filter((t) => combatEnabled || t.kind !== "combat" || t.beats.length > 0).map((t) => (
+            <Entry key={t.turnNo} t={t} isCase={!!w.case} combat={combatEnabled} />
           ))}
         </Drawer>
       )}
@@ -603,7 +606,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           <WorldMap
             w={w}
             rules={R}
-            disabled={busy || !!w.combat}
+            disabled={busy || !!combat}
             onTravel={(to) => send({ kind: "travel", to }, `Путь в «${locationById(w, to)?.name}»`)}
             onRest={() => send({ kind: "rest" }, "Привал")}
           />
@@ -615,7 +618,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           <Sheet c={c} />
           <p className="small muted" style={{ marginTop: 10 }}>
             {Object.keys(R.races).length > 1 ? `${R.races[c.race]?.name}, ` : ""}
-            {R.classes[c.cls]?.name}. {ab.name}: {ab.desc}. {c.backstory}
+            {R.classes[c.cls]?.name}. {combatEnabled ? `${ab.name}: ${ab.desc}. ` : ""}{c.backstory}
           </p>
           <p className="small muted">
             Ходов: {view.turnNo} · расход: ${view.costUsd.toFixed(3)}

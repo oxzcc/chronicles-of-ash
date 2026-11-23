@@ -14,6 +14,10 @@ describe("реестр миров", () => {
     expect(isWorldId(DEFAULT_WORLD)).toBe(true);
     expect(() => getWorld("nope")).toThrow();
   });
+  it("отдельный бой выключен только у Аркхэма", () => {
+    expect(getWorld("arkham").features.combat).toBe(false);
+    expect(getWorld("fantasy").features.combat).not.toBe(false);
+  });
   it("лист без мира — мир по умолчанию", () => {
     expect(worldOf({}).id).toBe(DEFAULT_WORLD);
     expect(worldOf({ world: "fantasy" }).id).toBe("fantasy");

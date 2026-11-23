@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { CASE_HUB_ID, mulberry32, neighbors, sameName, type CharacterDraft } from "@ash/engine";
+import { CASE_HUB_ID, mulberry32, neighbors, sameName, startCombat, type CharacterDraft } from "@ash/engine";
 import { getWorld } from "@ash/worlds";
 import { createRouter, type CompletionRequest, type CompletionResult, type LlmProvider } from "@ash/llm";
 import { createDb, images, npcs } from "@ash/db";
@@ -58,17 +58,28 @@ describe("новая игра", () => {
 
 describe("мир Аркхэма", () => {
   const arkhamDraft: CharacterDraft = { world: "arkham", phobia: "Мертвецы", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...getWorld("arkham").rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
-  it("дело от фейковой модели, ход и бой по правилам Аркхэма", async () => {
+  it("опасное действие остаётся сценой даже при боевом ответе модели", async () => {
     const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "a" });
     expect(g.usedFallback).toBe(false);
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-9+arkham-6");
+    expect(a.records[0]!.promptVersion).toBe("gm-10+arkham-7");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
-    expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
-    expect(b.records.some((r) => r.kind === "combat")).toBe(true);
+    expect(g.campaign.combat).toBeNull();
+    expect(b.records.some((r) => r.kind === "combat")).toBe(false);
+    expect(b.records[0]?.response?.combat).toBeNull();
+  });
+  it("старое сохранение выходит из боя, а прямой боевой ход отклоняется", async () => {
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "old-combat" });
+    g.campaign.combat = startCombat(g.character, [{ name: "Громила", hp: 8, ac: 11, attack: 2, damage: "1d6" }], mulberry32(2)).state;
+    const out = await playTurn(deps(), g, [], { kind: "action", text: "Пытаюсь остановить громилу словами" });
+    expect(g.campaign.combat).toBeNull();
+    expect(out.records[0]?.kind).toBe("action");
+    g.campaign.combat = startCombat(g.character, [{ name: "Громила", hp: 8, ac: 11, attack: 2, damage: "1d6" }], mulberry32(2)).state;
+    await expect(playTurn(deps(), g, [], { kind: "combat", move: "attack", target: 0 })).rejects.toThrow(/обычные сцены/);
+    expect(g.campaign.combat).toBeNull();
   });
   it("дело целиком: справочник, переход, улика, реконструкция, закрытие со счётом", async () => {
     const { publicCampaign } = await import("@ash/engine");

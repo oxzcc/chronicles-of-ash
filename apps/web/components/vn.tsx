@@ -14,10 +14,10 @@ export const playerKinds = new Set(["action", "choice", "present"]);
 export const heroBeat = (name: string, text: string): Shown => ({ speaker: name, text, hero: true });
 
 /** Реплики хода в порядке показа: действие героя, ответ мастера, раунды боя — голосом рассказчика. */
-export function beatsOf(t: Pick<TurnView, "beats" | "combatEvents" | "narration" | "kind" | "action">, heroName?: string): Shown[] {
+export function beatsOf(t: Pick<TurnView, "beats" | "combatEvents" | "narration" | "kind" | "action">, heroName?: string, combat = true): Shown[] {
   const own: Shown[] = heroName && playerKinds.has(t.kind) && t.action ? [heroBeat(heroName, t.action)] : [];
   if (t.beats?.length) return [...own, ...t.beats];
-  if (t.combatEvents?.length) return t.combatEvents.map((e) => ({ speaker: null, text: e.text }));
+  if (combat && t.combatEvents?.length) return t.combatEvents.map((e) => ({ speaker: null, text: e.text }));
   return t.narration ? [...own, { speaker: null, text: t.narration }] : own;
 }
 
