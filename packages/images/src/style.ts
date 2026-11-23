@@ -62,6 +62,13 @@ export const isInterior = (world: World, type: string) => world.art.interiorType
 export const editPrompt = (world: World, look: string, change: string) =>
   `${world.art.lora ? `${world.art.lora.trigger}, ` : ""}the same person as in the reference image${look ? ` (${look})` : ""}: keep the exact same face, identity and age, hairstyle, glasses and every accessory, clothing, body, pose, framing and plain light grey background. Change only the facial expression to ${change}.`;
 
+/**
+ * Ключевой момент (этап 4): тот же герой, но не очередной портрет — широкая сценическая иллюстрация.
+ * Портрет остаётся единственным опорным кадром; облик повторяем словами, как при правке эмоций.
+ */
+export const momentPrompt = (world: World, look: string, description: string, lora = false) =>
+  `${stylePart(world, lora)}, wide cinematic 16:9 environmental illustration of the same person as in the reference image${look ? ` (${look})` : ""}. Preserve the exact same face, identity and age, hairstyle, glasses and every accessory, clothing, body proportions and skin tone. Replace the reference's waist-up framing and plain grey studio background with a wide scene: ${description}. The person appears exactly once as a full figure naturally integrated into the environment, with anatomically correct hands. No other people, no duplicate person, no split screen, no collage, no studio backdrop, no text, no watermark, no signature.`;
+
 /** Облик из промпта готового портрета: без триггера, кадра и фона — для промпта правки. */
 export function lookFromPrompt(world: World, prompt: string): string {
   let s = prompt.trim();

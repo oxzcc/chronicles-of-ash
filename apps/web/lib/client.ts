@@ -2,7 +2,7 @@
 
 import type { Character, CheckResult, CombatEvent, CombatOutcome, CombatState, LocationType, PublicCampaign, TurnEffect } from "@ash/engine";
 import type { Beat, Suggestion } from "@ash/llm";
-import type { SceneView } from "@ash/game";
+import type { SceneView, TurnMoment } from "@ash/game";
 
 export type { SceneView };
 
@@ -21,6 +21,8 @@ export interface TurnView {
   combatEvents: CombatEvent[];
   /** Что изменил ход: улики, адреса, рассудок, деньги, предметы — плашки в сцене и в истории. */
   effects: TurnEffect[];
+  /** Ключевая иллюстрация, связанная именно с этим ходом. */
+  moment?: TurnMoment;
 }
 
 export type { TurnEffect };

@@ -6,8 +6,8 @@ import { getWorld } from "@ash/worlds";
 import { describe, expect, it } from "vitest";
 import { createRouter } from "@ash/llm";
 import {
-  DEFAULT_EDIT_MODEL, editPrompt, FakeImageProvider, FalImageProvider, heroVariants, LocalStorage, lookFromPrompt, renderBackground, renderPortrait, renderVariant,
-  describeNpc, portraitPrompt,
+  DEFAULT_EDIT_MODEL, editPrompt, FakeImageProvider, FalImageProvider, heroVariants, LocalStorage, lookFromPrompt, renderBackground, renderMoment, renderPortrait, renderVariant,
+  describeMoment, describeNpc, momentPrompt, portraitPrompt,
 } from "../src/index";
 
 const world = getWorld("fantasy");
@@ -116,6 +116,31 @@ describe("стиль по мирам", () => {
     const d = await describeLocation(router, arkham, { name: "Пристань", type: "docks", desc: "Туман" });
     expect(asked[0]).toMatch(/Only objects of 1926/);
     expect(d).toMatch(/^river wharf/);
+  });
+  it("ключевой момент: служебная модель выбирает сцену из развязки, не меняя её исход", async () => {
+    const asked: string[] = [];
+    const router: any = {
+      route: () => ({
+        model: "m",
+        provider: {
+          complete: async (r: any) => (
+            asked.push(r.messages[0].content),
+            { text: "the investigator closing a leather case file beside a green reading lamp, shoulders finally lowering", toolCalls: [], usage: {}, model: "m" }
+          ),
+        },
+      }),
+    };
+    const d = await describeMoment(router, arkham, {
+      story: "Агнес назвала убийцу. В библиотеке стало тихо.",
+      place: { name: "Библиотека", type: "library", desc: "Зелёные лампы" },
+      tone: "restrained relief",
+    });
+    expect(asked[0]).toContain("Агнес назвала убийцу");
+    expect(asked[0]).toContain("Do not invent a different outcome");
+    expect(d).toMatch(/^interior of an old university library/);
+    expect(d).toContain("closing a leather case file");
+    expect(momentPrompt(arkham, "a woman reporter, round glasses", d, true)).toMatch(/^mthnr style, /);
+    expect(momentPrompt(arkham, "a woman reporter, round glasses", d, true)).toContain("Replace the reference's waist-up framing");
   });
 });
 
@@ -529,5 +554,36 @@ describe("варианты лица (эмоции)", () => {
     expect(calls[0]!.body).toMatchObject({ prompt: "smile", sync_mode: true, image_size: { width: 1024, height: 1536 }, seed: 5, loras: [{ path: "https://x/l.safetensors", scale: 1.2 }] });
     expect(calls[0]!.body.image_urls[0]).toMatch(/^data:image\/png;base64,/);
     expect(r.costUsd).toBeCloseTo(0.02 * (1 + 1.572864), 4);
+  });
+});
+
+describe("ключевые иллюстрации с героем", () => {
+  const arkham = getWorld("arkham");
+  it("опорный портрет превращается в широкую сцену без вырезания фона", async () => {
+    const storage = new LocalStorage(await mkdtemp(join(tmpdir(), "ash-img-")));
+    const provider = new FakeImageProvider();
+    const base = await renderPortrait({ world: arkham, provider, storage, description: "a woman librarian, round glasses", key: "hero/base" });
+    const edit = provider.edit.bind(provider);
+    let request: any;
+    provider.edit = (r) => ((request = r), edit(r));
+    const r = await renderMoment({
+      world: arkham,
+      provider,
+      storage,
+      baseUrl: base.url,
+      look: "a woman librarian, round glasses",
+      description: "the investigator closing a case file beside a green reading lamp",
+      key: "moment/close",
+      seed: 7,
+    });
+    expect(r.url).toBe("/api/images/moment/close.webp");
+    expect([request.width, request.height]).toEqual([1920, 1088]);
+    expect([r.width, r.height]).toEqual([1920, 1088]);
+    expect(r.prompt).toContain("round glasses");
+    expect(r.prompt).toContain("closing a case file");
+    expect(r.prompt).toContain("wide cinematic 16:9");
+    const meta = await sharp((await storage.get(r.url))!).metadata();
+    expect(meta.format).toBe("webp");
+    expect((await storage.get(r.url))!.equals((await storage.get(base.url))!)).toBe(false);
   });
 });

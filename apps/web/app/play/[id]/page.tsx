@@ -254,9 +254,16 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     // Все, кто говорит в текущих репликах, — их портреты тоже ждём. И противника в бою.
     const speakers = all.map((b) => npcView(scene, b.speaker));
     const foe = view.campaign.combat ? npcView(scene, foeOf(view.campaign.combat)?.name) : undefined;
-    // Варианты лица (эмоции, состояние героя) тоже приходят опросом.
-    return !!scene.variantsPending || [bg, npc, foe, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"));
-  }, [view, scene, all, enter?.to]);
+    const moment = all[Math.min(cursor, Math.max(0, all.length - 1))]?.moment;
+    const momentImage = moment ? scene.moments?.[moment.imageId] : undefined;
+    // Варианты лица (эмоции, состояние героя) и ключевая иллюстрация тоже приходят опросом.
+    return (
+      !!scene.variantsPending ||
+      momentImage?.status === "queued" ||
+      momentImage?.status === "working" ||
+      [bg, npc, foe, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"))
+    );
+  }, [view, scene, all, cursor, enter?.to]);
   // Пока ход не сохранён, сервер не знает фон новой локации — передаём его явно.
   const sceneUrl = `/api/campaigns/${id}/scene` + (enter?.imageId ? `?loc=${encodeURIComponent(enter.to)}&bg=${enter.imageId}` : "");
   useEffect(() => {
@@ -273,7 +280,11 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   // Готовые варианты лица — в кэш браузера заранее: эмоция появляется сразу, а не по мере загрузки.
   useEffect(() => {
     if (!scene) return;
-    const urls = [...Object.values(scene.heroMoods ?? {}), ...Object.values(scene.npcs).flatMap((n) => Object.values(n.emotions ?? {}))];
+    const urls = [
+      ...Object.values(scene.heroMoods ?? {}),
+      ...Object.values(scene.npcs).flatMap((n) => Object.values(n.emotions ?? {})),
+      ...Object.values(scene.moments ?? {}).flatMap((m) => (m.url ? [m.url] : [])),
+    ];
     for (const u of urls) new Image().src = u;
   }, [scene]);
 
@@ -283,9 +294,12 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const here = locationById(w, w.current)!;
   // Во время входа — уже новое место, даже пока ход не сохранён.
   const place = enter ? { name: enter.name, type: enter.type } : here;
-  const bgUrl = scene?.locations[enter?.to ?? w.current]?.url;
-  const titleCard = enter?.phase === "title";
   const beat = beats[Math.min(cursor, beats.length - 1)];
+  const momentActive = !!beat?.moment;
+  const momentImage = beat?.moment ? scene?.moments?.[beat.moment.imageId] : undefined;
+  const momentUrl = momentImage?.status === "ready" ? momentImage.url : null;
+  const bgUrl = momentUrl ?? scene?.locations[enter?.to ?? w.current]?.url;
+  const titleCard = enter?.phase === "title";
   // Кадр героя: говорит он сам, на сцене остаётся собеседник — приглушённо, как при голосе рассказчика.
   const heroLine = !!beat?.hero;
   const speakerName = heroLine ? null : (beat?.speaker ?? null);
@@ -324,7 +338,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     <div className="vn">
       {bgUrl ? <img className="vn-bg" key={bgUrl} src={bgUrl} alt="" /> : <div className="vn-bg vn-bg-empty" />}
       <div className="vn-shade" />
-      {titleCard ? null : w.combat ? (
+      {titleCard ? null : momentActive ? null : w.combat ? (
         <>
           <Bust url={scene?.hero?.url} over={heroOver} name={c.name} side="left" />
           <Bust url={foeImg?.url} name={foe?.name ?? "Противник"} side="right" failed={!foeImg || foeImg.status === "failed" || foeImg.status === "none"} />

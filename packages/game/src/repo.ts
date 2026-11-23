@@ -39,7 +39,7 @@ export interface LoadedCampaign {
   recent: TurnRow[];
 }
 
-export type TurnRow = Pick<TurnRecord, "kind" | "action" | "narration" | "beats" | "speaker" | "line" | "rolls" | "suggestions"> & {
+export type TurnRow = Pick<TurnRecord, "kind" | "action" | "narration" | "beats" | "speaker" | "line" | "rolls" | "suggestions" | "moment"> & {
   turnNo: number;
   combatEvents: TurnRecord["combatEvents"];
   /** Что изменил ход — плашки для игрока. У ходов до плашек — пусто. */
@@ -48,7 +48,7 @@ export type TurnRow = Pick<TurnRecord, "kind" | "action" | "narration" | "beats"
 };
 
 function toRow(t: typeof turns.$inferSelect): TurnRow {
-  const resp = (t.response ?? {}) as { beats?: TurnRecord["beats"]; suggestions?: (string | TurnRecord["suggestions"][number])[]; combatEvents?: TurnRecord["combatEvents"] };
+  const resp = (t.response ?? {}) as { beats?: TurnRecord["beats"]; suggestions?: (string | TurnRecord["suggestions"][number])[]; combatEvents?: TurnRecord["combatEvents"]; moment?: TurnRecord["moment"] };
   // Ходы до gm-2: текст без реплик, варианты строками.
   const beats = resp.beats ?? (t.narration && t.kind !== "combat"
     ? [...t.narration.split(/\n\s*\n/).map((text) => ({ speaker: null, text })), ...(t.line ? [{ speaker: t.speaker ?? "Голос", text: t.line }] : [])]
@@ -58,6 +58,7 @@ function toRow(t: typeof turns.$inferSelect): TurnRow {
     beats, speaker: t.speaker, line: t.line ?? "", rolls: t.rolls ?? [],
     suggestions: (resp.suggestions ?? []).map((x) => (typeof x === "string" ? { text: x } : x)), combatEvents: resp.combatEvents ?? [],
     effects: ((t.applied ?? null) as { effects?: TurnEffect[] } | null)?.effects ?? [], createdAt: t.createdAt,
+    ...(resp.moment ? { moment: resp.moment } : {}),
   };
 }
 
@@ -121,7 +122,7 @@ export async function saveTurn(db: Db, c: { id: string; characterId: string; tur
           narration: r.narration,
           speaker: r.speaker,
           line: r.line,
-          response: { ...(r.response ?? {}), suggestions: r.suggestions, combatEvents: r.combatEvents, ...(r.raw ? { raw: r.raw } : {}) },
+          response: { ...(r.response ?? {}), suggestions: r.suggestions, combatEvents: r.combatEvents, ...(r.raw ? { raw: r.raw } : {}), ...(r.moment ? { moment: r.moment } : {}) },
           applied: r.applied,
           rolls: r.rolls,
           model: r.model,

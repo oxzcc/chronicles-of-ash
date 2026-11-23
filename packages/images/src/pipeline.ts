@@ -1,10 +1,10 @@
 import sharp from "sharp";
 import { CLIP_LIMIT, clippedShare, EMPTY_LIMIT, finishBackground, finishPortrait, finishVariant, headFrame, opaqueShare, portraitOnGrey } from "./process";
 import type { PortraitInspector } from "./inspect";
-import type { ImageProvider } from "./provider";
+import { BACKGROUND_SIZE, type ImageProvider } from "./provider";
 import type { ImageStorage } from "./storage";
 import type { World } from "@ash/worlds";
-import { backgroundPrompt, editPrompt, portraitPrompt, worldLora, type TimeOfDay } from "./style";
+import { backgroundPrompt, editPrompt, momentPrompt, portraitPrompt, worldLora, type TimeOfDay } from "./style";
 
 export interface Rendered {
   url: string;
@@ -121,4 +121,47 @@ export async function renderVariant(o: {
   const done = await finishVariant(cut, bw, bh);
   const url = await o.storage.put(`${o.key}.webp`, done.bytes, "image/webp");
   return { url, prompt, model, costUsd: cost, width: done.width, height: done.height };
+}
+
+/**
+ * Ключевой момент: правка портрета героя в широкую сцену 1920×1088. Фон не вырезаем —
+ * на выходе нужна цельная иллюстрация, а не прозрачный бюст. Ход её не ждёт: задача идёт через очередь.
+ */
+export async function renderMoment(o: {
+  world: World;
+  provider: ImageProvider;
+  storage: ImageStorage;
+  /** Адрес готового портрета героя — единственный опорный кадр. */
+  baseUrl: string;
+  look: string;
+  /** Действие, место и настроение — из describeMoment. */
+  description: string;
+  key: string;
+  seed: number;
+  signal?: AbortSignal;
+}): Promise<Rendered> {
+  if (!o.provider.edit) throw new Error(`провайдер ${o.provider.name} не умеет правку`);
+  const base = await o.storage.get(o.baseUrl);
+  if (!base) throw new Error(`нет файла портрета ${o.baseUrl}`);
+  const meta = await sharp(base).metadata();
+  const bw = meta.width ?? 0;
+  const bh = meta.height ?? 0;
+  if (!bw || !bh) throw new Error("пустой портрет");
+  const sourceWidth = 1024;
+  const sourceHeight = Math.round((sourceWidth * bh) / bw / 16) * 16;
+  const src = await portraitOnGrey(base, sourceWidth, sourceHeight);
+  const lora = worldLora(o.world, o.provider);
+  const prompt = momentPrompt(o.world, o.look, o.description, !!lora);
+  const raw = await o.provider.edit({
+    image: src,
+    prompt,
+    width: BACKGROUND_SIZE.width,
+    height: BACKGROUND_SIZE.height,
+    seed: o.seed,
+    lora,
+    signal: o.signal,
+  });
+  const done = await finishBackground(raw.bytes);
+  const url = await o.storage.put(`${o.key}.webp`, done.bytes, "image/webp");
+  return { url, prompt, model: raw.model, costUsd: raw.costUsd, width: done.width, height: done.height };
 }

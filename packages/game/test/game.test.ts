@@ -508,6 +508,44 @@ describe.skipIf(!url)("картинки", async () => {
     await drain(d);
     expect((await row(bgId)).url).toMatch(/-r2\.webp$/);
   }, 20_000); // дважды прогоняет всю очередь мира — дольше 5 с по умолчанию
+  it("закрытие дела: герой в широкой иллюстрации, задача не дублируется и переживает загрузку", async () => {
+    const d = await deps();
+    await drain(d);
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const arkham = getWorld("arkham");
+    const draftA: CharacterDraft = { world: "arkham", phobia: "Мертвецы", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: draftA, rng: mulberry32(6), seed: "moment" });
+    const id = await createCampaign(db, uid, g);
+    const c = await loadCampaign(db, uid, id);
+    const opts = await v.createHeroOptions(db, fakeRouter(), uid, { world: "arkham", race: "human", cls: "journalist", gender: "f" }, "");
+    await drain(d);
+    await v.attachHeroPortrait(db, uid, c.characterId, opts[0]!.id);
+
+    const out = await playTurn(dpsFake(), c.state, c.recent, { kind: "close", answers: { a1: "Кит Ларкин отравил тётю ради наследства" } });
+    await v.prepareVisuals(db, id, out.state, out.records);
+    const close = out.records.find((r) => r.kind === "close")!;
+    const moment = close.moment!;
+    expect(moment.type).toBe("case-close");
+    expect(moment.imageId).toBeTruthy();
+    let scene = await v.sceneView(db, id, c.characterId, out.state.campaign);
+    expect(scene.moments[moment.imageId]!.status).toBe("queued");
+
+    // Повторная подготовка того же хода возвращает ту же строку, а не новую генерацию.
+    await v.prepareVisuals(db, id, out.state, out.records);
+    expect(close.moment).toEqual(moment);
+    await saveTurn(db, c, out.state, out.records);
+    await drain(d);
+
+    scene = await v.sceneView(db, id, c.characterId, out.state.campaign);
+    expect(scene.moments[moment.imageId]).toMatchObject({ status: "ready", url: expect.stringMatching(/^\/api\/images\/moment\/.+\.webp$/) });
+    const [img] = await db.select().from(images).where(eq(images.id, moment.imageId));
+    expect(img!.job).toMatchObject({ type: "moment", moment: "case-close", base: opts[0]!.id });
+    expect(img!.prompt).toContain("wide cinematic 16:9");
+    expect(img!.prompt).toContain("a woman newspaper reporter");
+    expect((await campaignTurns(db, id)).at(-1)!.moment).toEqual(moment);
+  }, 20_000);
+
   it("эмоции: лицо рисуется правкой готового портрета; ждёт портрет; у жителей лимит, у своих — один раз на мир", async () => {
     const d = await deps();
     await drain(d);

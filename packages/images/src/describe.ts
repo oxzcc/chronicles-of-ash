@@ -264,6 +264,33 @@ export async function describeLocation(router: ModelRouter, world: World, loc: {
   }
 }
 
+/**
+ * Один визуально понятный момент из уже написанной развязки. Служебная модель не меняет исход:
+ * она только выбирает действие героя, настроение и детали места для английского промпта FLUX.
+ * Других людей опускаем: опорный портрет задаёт личность одного героя, а не всей группы.
+ */
+export async function describeMoment(
+  router: ModelRouter,
+  world: World,
+  o: { story: string; place: { name: string; type: LocationType; desc: string }; tone: string },
+  signal?: AbortSignal,
+): Promise<string> {
+  const base = world.art.locationEn[o.place.type] ?? world.art.locationEn[world.rules.defaultLocationType] ?? "";
+  const fallback = `${base}, the investigator alone after the ending, full figure, ${o.tone}`;
+  try {
+    const text = oneLine(
+      await ask(
+        router,
+        `Write an English image prompt fragment (35-65 words, no style words, no names) for one wide cinematic aftermath shot from this ${world.art.genreEn} story. Choose one visually telling instant from the ending. Show only the investigator, one full figure, doing one visible action in a specific environment; include two or three concrete setting details and the emotional aftermath. Omit every other person and creature. Do not invent a different outcome. ${world.art.eraRuleEn}\nPlace: ${o.place.name} (${o.place.type}), ${base}${isInterior(world, o.place.type) ? ", interior view" : ""}. Description (Russian): ${o.place.desc}\nRequired tone: ${o.tone}.\nEnding (Russian): ${o.story.slice(0, 6000)}\nAnswer with the fragment only.`,
+        signal,
+      ),
+    );
+    return text && !CYR.test(text) ? `${base}, ${text}` : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export interface LookVariant {
   /** Коротко по-русски — подпись под портретом. */
   label: string;
