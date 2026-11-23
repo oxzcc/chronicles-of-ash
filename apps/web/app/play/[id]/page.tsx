@@ -7,7 +7,7 @@ import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnEffect, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
 import { BeatText, beatsOf, Bust, Drawer, heroBeat, Icon, Pips, playerKinds, TextFrame, type Mark, type Shown } from "@/components/vn";
-import { CaseFile, CloseCase, Directory, Newspaper, People } from "@/components/case";
+import { CaseFile, CaseFinale, CloseCase, CloseCaseConfirm, Directory, Newspaper, People } from "@/components/case";
 
 type Input =
   | { kind: "start" }
@@ -31,7 +31,8 @@ interface Live {
   done?: boolean;
 }
 
-type Panel = null | "history" | "quest" | "map" | "hero" | "paper" | "directory" | "close";
+type Panel = null | "history" | "quest" | "map" | "hero" | "paper" | "directory";
+type Closing = null | "confirm" | "answers" | "resolution";
 
 /**
  * Вход в локацию: заставка с названием → голос рассказчика → через NPC_DELAY_MS появляется NPC.
@@ -78,9 +79,12 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     if (!panel) setFocus(null);
   }, [panel]);
   const [enter, setEnter] = useState<Enter | null>(null);
+  const [closing, setClosing] = useState<Closing>(null);
+  const [closeAnswers, setCloseAnswers] = useState<Record<string, string>>({});
+  const [preparingClose, setPreparingClose] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
-  const busy = live !== null;
+  const busy = live !== null || preparingClose;
   const started = useRef(false);
   const diceQueue = useRef<Promise<void>>(Promise.resolve());
 
@@ -89,9 +93,12 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       .then((v) => {
         setView(v);
         const last = v.turns.at(-1);
-        if (last) {
-          setBatch([last]);
-          setCursor(Math.max(0, beatsOf(last, v.character.name).length - 1));
+        const shown = v.campaign.case?.result ? ([...v.turns].reverse().find((t) => t.kind === "close") ?? last) : last;
+        if (shown) {
+          setBatch([shown]);
+          setCursor(Math.max(0, beatsOf(shown, v.character.name).length - 1));
+          // Закрытое дело всегда открывается на финальном экране, а не на старом диалоге.
+          if (v.campaign.case?.result) setClosing("resolution");
         }
       })
       .catch((e) => setError(e.message));
@@ -122,7 +129,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
 
   const send = useCallback(
     async (input: Input, label: string) => {
-      if (live) return;
+      if (live) return false;
+      let succeeded = false;
       setError("");
       setPanel(null);
       setCursor(0);
@@ -148,6 +156,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           setLive((l) => l && { ...l, combatEvents: [...l.combatEvents, ...e.events] });
           setView((v) => v && { ...v, campaign: { ...v.campaign, combat: e.combat } });
         } else if (e.type === "done") {
+          succeeded = true;
           setLive((l) => l && { ...l, done: true });
           setBatch(e.turns);
           setView((v) => v && { ...v, turnNo: e.turnNo, character: e.character, campaign: e.campaign, turns: [...v.turns, ...e.turns], costUsd: v.costUsd + e.costUsd, scene: e.scene });
@@ -162,9 +171,37 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       });
       await diceQueue.current;
       setLive(null);
+      return succeeded;
     },
     [id, live, view, waitingLabel],
   );
+
+  const beginClosing = async () => {
+    if (busy) return;
+    setError("");
+    setPanel(null);
+    setEnter(null);
+    setClosing("answers");
+    setPreparingClose(true);
+    try {
+      const prepared = await api<{ scene: SceneView }>(`/api/campaigns/${id}/closing`, {});
+      setView((v) => v && { ...v, scene: prepared.scene });
+    } catch (e) {
+      setClosing(null);
+      setError((e as Error).message);
+    } finally {
+      setPreparingClose(false);
+    }
+  };
+
+  const submitClose = async (answers: Record<string, string>) => {
+    if (busy) return;
+    setClosing("resolution");
+    setBatch([]);
+    const ok = await send({ kind: "close", answers }, "Дело закрыто");
+    // Ответы остаются во внешнем состоянии: после сетевой или LLM-ошибки их не нужно вводить заново.
+    if (!ok) setClosing("answers");
+  };
 
   // Новая кампания — мастер сразу рассказывает завязку.
   useEffect(() => {
@@ -254,16 +291,9 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     // Все, кто говорит в текущих репликах, — их портреты тоже ждём. И противника в бою.
     const speakers = all.map((b) => npcView(scene, b.speaker));
     const foe = view.campaign.combat ? npcView(scene, foeOf(view.campaign.combat)?.name) : undefined;
-    const moment = all[Math.min(cursor, Math.max(0, all.length - 1))]?.moment;
-    const momentImage = moment ? scene.moments?.[moment.imageId] : undefined;
-    // Варианты лица (эмоции, состояние героя) и ключевая иллюстрация тоже приходят опросом.
-    return (
-      !!scene.variantsPending ||
-      momentImage?.status === "queued" ||
-      momentImage?.status === "working" ||
-      [bg, npc, foe, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"))
-    );
-  }, [view, scene, all, cursor, enter?.to]);
+    // Варианты лица (эмоции, состояние героя) тоже приходят опросом.
+    return !!scene.variantsPending || [bg, npc, foe, scene.hero, ...speakers].some((x) => x && (x.status === "queued" || x.status === "working"));
+  }, [view, scene, all, enter?.to]);
   // Пока ход не сохранён, сервер не знает фон новой локации — передаём его явно.
   const sceneUrl = `/api/campaigns/${id}/scene` + (enter?.imageId ? `?loc=${encodeURIComponent(enter.to)}&bg=${enter.imageId}` : "");
   useEffect(() => {
@@ -280,11 +310,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   // Готовые варианты лица — в кэш браузера заранее: эмоция появляется сразу, а не по мере загрузки.
   useEffect(() => {
     if (!scene) return;
-    const urls = [
-      ...Object.values(scene.heroMoods ?? {}),
-      ...Object.values(scene.npcs).flatMap((n) => Object.values(n.emotions ?? {})),
-      ...Object.values(scene.moments ?? {}).flatMap((m) => (m.url ? [m.url] : [])),
-    ];
+    const urls = [...Object.values(scene.heroMoods ?? {}), ...Object.values(scene.npcs).flatMap((n) => Object.values(n.emotions ?? {}))];
     for (const u of urls) new Image().src = u;
   }, [scene]);
 
@@ -292,14 +318,14 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
 
   const { character: c, campaign: w } = view;
   const here = locationById(w, w.current)!;
-  // Во время входа — уже новое место, даже пока ход не сохранён.
-  const place = enter ? { name: enter.name, type: enter.type } : here;
+  const closureActive = closing === "answers" || closing === "resolution";
+  const office = w.locations.find((l) => l.type === "office" && /Уэйкфилд/i.test(l.name)) ?? w.locations.find((l) => l.type === "office");
+  // Ответы и развязка — отдельная сцена в кабинете, а не панель поверх текущего диалога.
+  const place = closureActive && office ? office : enter ? { name: enter.name, type: enter.type } : here;
+  const sceneLocation = closureActive && office ? office.id : (enter?.to ?? w.current);
+  const bgUrl = scene?.locations[sceneLocation]?.url;
+  const titleCard = !closureActive && enter?.phase === "title";
   const beat = beats[Math.min(cursor, beats.length - 1)];
-  const momentActive = !!beat?.moment;
-  const momentImage = beat?.moment ? scene?.moments?.[beat.moment.imageId] : undefined;
-  const momentUrl = momentImage?.status === "ready" ? momentImage.url : null;
-  const bgUrl = momentUrl ?? scene?.locations[enter?.to ?? w.current]?.url;
-  const titleCard = enter?.phase === "title";
   // Кадр героя: говорит он сам, на сцене остаётся собеседник — приглушённо, как при голосе рассказчика.
   const heroLine = !!beat?.hero;
   const speakerName = heroLine ? null : (beat?.speaker ?? null);
@@ -310,8 +336,10 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   // На сцене — тот, кто говорит; когда звучит голос рассказчика — последний собеседник, приглушённо.
   // При входе в локацию прежний собеседник остался позади: до выхода NPC сцена пуста, потом — тот, кто заговорит.
   const nextNpc = all.find((b) => b.speaker)?.speaker ?? null;
-  const onStage = enter ? (enter.phase === "open" ? (speakerName ?? nextNpc) : null) : (speakerName ?? (w.combat ? null : (w.npc?.name ?? null)));
+  const onStage = closureActive ? speakerName : enter ? (enter.phase === "open" ? (speakerName ?? nextNpc) : null) : (speakerName ?? (w.combat ? null : (w.npc?.name ?? null)));
   const stage = npcView(scene, onStage);
+  // До первой реплики развязки остаётся задумчивый герой; затем на сцене только говорящие NPC.
+  const closingHero = closing === "answers" || (closing === "resolution" && !beat);
   // Эмоция реплики — вариант лица поверх портрета, если он уже готов; иначе нейтральный портрет.
   const emotionUrl = speakerName && beat?.emotion ? stage?.emotions?.[beat.emotion] : undefined;
   const role = speakerName && w.npc && matchName(speakerName, [w.npc.name]) === 0 ? w.npc.role : undefined;
@@ -319,7 +347,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const foeImg = npcView(scene, foe?.name);
   const lastWithSuggestions = [...view.turns].reverse().find((t) => t.suggestions.length);
   const suggestions = !w.combat && lastWithSuggestions ? lastWithSuggestions.suggestions : [];
-  const showChoices = !busy && !enter && atEnd && !w.combat;
+  const showChoices = !busy && !enter && atEnd && !w.combat && !closureActive;
+  const finale = closing === "resolution" && !!w.case?.result && atEnd && !streaming && !live && !!beat && !beat.speaker && !beat.hero;
   const submit = () => text.trim() && send({ kind: "action", text: text.trim() }, text.trim());
   const R = worldOf(c).rules;
   const ab = R.classes[c.cls]!.ability;
@@ -328,6 +357,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const hurt = (kind: TurnEffect["kind"]) => fx.some((e) => e.kind === kind && !e.good);
   // Клик по подсвеченной находке: улика — в досье, адрес — в справочник (или на карту), рассудок и здоровье — лист героя.
   const openMark = (m: Mark) => {
+    if (closureActive) return;
     setFocus(m.ref ?? null);
     if (m.kind === "address") setPanel(w.case ? "directory" : "map");
     else if (m.kind === "clue" || m.kind === "deduction" || m.kind === "objective" || m.kind === "attitude" || m.kind === "caught") setPanel("quest");
@@ -335,10 +365,16 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   };
 
   return (
-    <div className="vn">
+    <div className={`vn ${closureActive ? "vn-closing" : ""} ${closing === "answers" ? "vn-answering" : ""}`}>
       {bgUrl ? <img className="vn-bg" key={bgUrl} src={bgUrl} alt="" /> : <div className="vn-bg vn-bg-empty" />}
       <div className="vn-shade" />
-      {titleCard ? null : momentActive ? null : w.combat ? (
+      {titleCard ? null : closureActive ? (
+        closingHero ? (
+          <Bust url={scene?.hero?.url} over={scene?.heroMoods?.thinking} name={c.name} side="left" />
+        ) : (
+          onStage && <Bust url={stage?.url} over={emotionUrl} name={onStage} side="left" failed={!stage || stage.status === "failed" || stage.status === "none"} />
+        )
+      ) : w.combat ? (
         <>
           <Bust url={scene?.hero?.url} over={heroOver} name={c.name} side="left" />
           <Bust url={foeImg?.url} name={foe?.name ?? "Противник"} side="right" failed={!foeImg || foeImg.status === "failed" || foeImg.status === "none"} />
@@ -394,36 +430,39 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </header>
 
-      <section className="vn-dock" hidden={titleCard}>
-        {(beat || streaming) && (
-          <TextFrame
-            speaker={heroLine ? c.name : speakerName}
-            role={heroLine ? undefined : role}
-            hero={heroLine}
-            avatar={heroLine ? heroFace : undefined}
-            onAdvance={!atEnd ? advance : undefined}
-            hint={!atEnd ? "Пробел" : undefined}
-          >
-            {beat ? <BeatText beat={beat} onMark={openMark} /> : <span className="vn-writing">{live?.waiting}</span>}
-            {heroLine && streaming && atEnd ? (
-              <div className="vn-writing vn-after">{live?.waiting}</div>
-            ) : (
-              beat && streaming && atEnd && <span className="vn-caret" aria-hidden="true" />
+      <section className={`vn-dock ${closing === "answers" ? "vn-dock-close" : ""}`} hidden={titleCard}>
+        {closing === "answers" && w.case ? (
+          <CloseCase c={w.case} busy={busy} answers={closeAnswers} onChange={setCloseAnswers} onSubmit={submitClose} onCancel={() => { setClosing(null); setError(""); }} />
+        ) : finale && w.case?.result && beat ? (
+          <CaseFinale result={w.case.result} text={beat.text} />
+        ) : (
+          <>
+            {(beat || streaming) && (
+              <TextFrame
+                speaker={heroLine ? c.name : speakerName}
+                role={heroLine ? undefined : role}
+                hero={heroLine}
+                avatar={heroLine ? heroFace : undefined}
+                onAdvance={!atEnd ? advance : undefined}
+                hint={!atEnd ? "Пробел" : undefined}
+              >
+                {beat ? <BeatText beat={beat} onMark={openMark} /> : <span className="vn-writing">{live?.waiting}</span>}
+                {heroLine && streaming && atEnd ? (
+                  <div className="vn-writing vn-after">{live?.waiting}</div>
+                ) : (
+                  beat && streaming && atEnd && <span className="vn-caret" aria-hidden="true" />
+                )}
+              </TextFrame>
             )}
-          </TextFrame>
+            {closing !== "answers" && <Pips total={beats.length} at={cursor} />}
+          </>
         )}
-        <Pips total={beats.length} at={cursor} />
         {error && <p className="error small">{error}</p>}
 
         {w.combat && atEnd && !streaming && !enter && <CombatPanel w={w} c={c} disabled={busy} onMove={(move, target) => send({ kind: "combat", move, target }, move)} />}
 
-        {showChoices && w.case?.result && (
-          <button className="btn vn-case-done" onClick={() => setPanel("quest")}>
-            Итоги дела: {w.case.result.score} из {w.case.result.mentor} →
-          </button>
-        )}
         {showChoices && !w.case?.result && w.case && w.case.visits >= w.case.limit && (
-          <button className="btn vn-case-done" onClick={() => setPanel("close")}>
+          <button className="btn vn-case-done" onClick={() => setClosing("confirm")}>
             Время вышло — закрыть дело
           </button>
         )}
@@ -462,10 +501,12 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         )}
       </section>
 
-      <button className="vn-history" onClick={() => setPanel("history")}>
-        {Icon.history}
-        История
-      </button>
+      {!closureActive && (
+        <button className="vn-history" onClick={() => setPanel("history")}>
+          {Icon.history}
+          История
+        </button>
+      )}
 
       {enter && titleCard && (
         <div className="vn-arrival" aria-live="polite">
@@ -497,7 +538,9 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
                 const x = w.case?.clues.find((k) => k.id === clue);
                 send({ kind: "present", clue }, `Показываю ${w.npc?.name ?? ""}: ${x?.title ?? x?.text ?? "улику"}`);
               }}
-              onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)} onClose={() => setPanel("close")} />
+              onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)}
+              onClose={() => { setPanel(null); setClosing("confirm"); }}
+            />
           ) : (
             <>
               <Quest w={w} doneText={worldOf(c).ui.questDone} />
@@ -507,11 +550,6 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
               </p>
             </>
           )}
-        </Drawer>
-      )}
-      {panel === "close" && w.case && (
-        <Drawer title="Закрыть дело" onClose={() => setPanel("quest")}>
-          <CloseCase c={w.case} busy={busy} onCancel={() => setPanel("quest")} onSubmit={(answers) => send({ kind: "close", answers }, "Дело закрыто")} />
         </Drawer>
       )}
       {panel === "paper" && w.case && (
@@ -554,6 +592,8 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           </p>
         </Drawer>
       )}
+
+      {closing === "confirm" && <CloseCaseConfirm busy={preparingClose} onConfirm={beginClosing} onCancel={() => setClosing(null)} />}
 
       {asking && (
         <CheckDialog

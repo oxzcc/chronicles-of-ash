@@ -79,6 +79,9 @@ export interface CaseResult {
   timeUp: boolean;
 }
 
+/** Раскрыто ли дело по сути ответов; штрафы и соревнование с наставником на это не влияют. */
+export const caseSolved = (r: Pick<CaseResult, "points" | "max">) => r.max > 0 && r.points * 2 >= r.max;
+
 export interface CaseState {
   /** Что произошло на самом деле. Видит только мастер. */
   truth: string;

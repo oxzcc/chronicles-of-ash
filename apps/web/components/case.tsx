@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
-import { attitudeWord, locationById, sameName, type PublicCampaign, type PublicCase, type Verdict } from "@ash/engine";
+import { attitudeWord, caseSolved, locationById, sameName, type CaseResult, type PublicCampaign, type PublicCase, type Verdict } from "@ash/engine";
 
 /**
  * Интерфейс детективного дела (мир Аркхэма): досье, газета, справочник, закрытие дела и разбор.
@@ -186,31 +187,71 @@ export function CaseResultView({ c }: { c: PublicCase }) {
   );
 }
 
-/** Вопросы дела: игрок отвечает своими словами. Вопросы видны только здесь — как в Mythos Tales. */
-export function CloseCase({ c, busy, onSubmit, onCancel }: { c: PublicCase; busy: boolean; onSubmit: (answers: Record<string, string>) => void; onCancel: () => void }) {
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const filled = Object.values(answers).some((x) => x.trim());
+/** Подтверждение до смены сцены: само расследование здесь ещё не заканчивается. */
+export function CloseCaseConfirm({ busy, onConfirm, onCancel }: { busy: boolean; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="vn-close-veil" role="dialog" aria-modal="true" aria-labelledby="close-confirm-title">
+      <div className="vn-close-confirm">
+        <div className="eyebrow">Завершение расследования</div>
+        <h2 id="close-confirm-title">Перейти к выводам?</h2>
+        <p>В кабинете доктора Уэйкфилда ты ответишь на вопросы дела. До отправки ответов можно вернуться к поискам; после неё расследование закончится.</p>
+        <div className="row">
+          <button className="btn ghost" onClick={onCancel} disabled={busy}>Ещё поищу</button>
+          <button className="btn" onClick={onConfirm} disabled={busy}>В кабинет наставника</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Финальный экран: исход считает движок, последнюю реплику написал рассказчик. */
+export function CaseFinale({ result, text }: { result: CaseResult; text: string }) {
+  const solved = caseSolved(result);
+  return (
+    <div className={`vn-finale ${solved ? "solved" : "unsolved"}`}>
+      <div className="eyebrow">Завершение дела</div>
+      <h2>{solved ? "Дело раскрыто" : "Дело не раскрыто"}</h2>
+      <p className="vn-finale-text">{text}</p>
+      <div className="vn-finale-score">Ответы: {result.points} из {result.max} · Итоговый счёт: {result.score}</div>
+      <Link className="btn" href="/">Выйти на главный экран</Link>
+    </div>
+  );
+}
+
+/** Вопросы дела на отдельной сцене. Ответы хранятся снаружи, чтобы ошибка развязки их не стёрла. */
+export function CloseCase({ c, busy, answers, onChange, onSubmit, onCancel }: { c: PublicCase; busy: boolean; answers: Record<string, string>; onChange: (answers: Record<string, string>) => void; onSubmit: (answers: Record<string, string>) => void; onCancel: () => void }) {
+  const [incomplete, setIncomplete] = useState(false);
+  const filled = c.questions.some((q) => answers[q.id]?.trim());
+  const allFilled = c.questions.every((q) => answers[q.id]?.trim());
+  const submit = () => {
+    if (!allFilled) setIncomplete(true);
+    else onSubmit(answers);
+  };
   return (
     <div className="case-close">
-      <p className="small muted">
-        Ответь на вопросы своими словами. Ответы оценят по сути; после этого дело закроется, и ты узнаешь, что произошло на самом деле.
-        {c.visits < c.limit ? " Можно вернуться и поискать ещё — но каждый визит стоит очков." : ""}
-      </p>
-      {c.questions.map((q) => (
-        <label key={q.id} className="case-q">
-          <span>
-            {q.text} <span className="muted small">· {q.points} очков</span>
-          </span>
-          <textarea rows={2} maxLength={400} value={answers[q.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))} disabled={busy} />
-        </label>
-      ))}
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <button className="btn ghost small" onClick={onCancel} disabled={busy}>
-          Ещё поищу
-        </button>
-        <button className="btn" onClick={() => onSubmit(answers)} disabled={busy || !filled}>
-          Закрыть дело
-        </button>
+      <div className="case-close-head">
+        <div className="eyebrow">Кабинет доктора Уэйкфилда</div>
+        <h2>Сложи свою версию</h2>
+        <p>Ответь своими словами. Пустые ответы будут засчитаны как неверные. После отправки начнётся развязка, и вернуться к поискам уже нельзя.</p>
+      </div>
+      <div className="case-close-questions">
+        {c.questions.map((q) => (
+          <label key={q.id} className="case-q">
+            <span>{q.text} <span className="muted small">· {q.points} очков</span></span>
+            <textarea rows={3} maxLength={400} value={answers[q.id] ?? ""} onChange={(e) => onChange({ ...answers, [q.id]: e.target.value })} disabled={busy} />
+          </label>
+        ))}
+      </div>
+      {incomplete && !allFilled && (
+        <div className="case-close-warning" role="alert">
+          <span>Остались пустые ответы. Закрыть дело с тем, что удалось узнать?</span>
+          <button className="btn ghost small" onClick={() => setIncomplete(false)} disabled={busy}>Дописать</button>
+          <button className="btn small" onClick={() => onSubmit(answers)} disabled={busy}>Закрыть с пропусками</button>
+        </div>
+      )}
+      <div className="row case-close-actions">
+        <button className="btn ghost" onClick={onCancel} disabled={busy}>Вернуться к поискам</button>
+        <button className="btn" onClick={submit} disabled={busy || !filled}>Изложить версию</button>
       </div>
     </div>
   );

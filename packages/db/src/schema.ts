@@ -91,7 +91,7 @@ export const npcs = pgTable("npcs", {
 
 export const images = pgTable("images", {
   id: id(),
-  kind: text("kind").notNull(), // hero | npc | background | emotion | moment
+  kind: text("kind").notNull(), // hero | npc | background
   /** Чья картинка: портреты героя видит только их игрок. Фоны — общая библиотека (null). */
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),

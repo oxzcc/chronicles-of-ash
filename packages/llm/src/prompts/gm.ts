@@ -7,7 +7,7 @@ import type { World } from "@ash/worlds";
 import type { ToolDef } from "../types";
 
 /** Версия промптов — пишется в каждый ход, чтобы сравнивать качество между версиями. */
-export const PROMPT_VERSION = "gm-7";
+export const PROMPT_VERSION = "gm-8";
 
 /**
  * Правила мастера: общие разделы (проверки, бой, форма ответа) здесь,

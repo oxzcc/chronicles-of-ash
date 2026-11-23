@@ -64,7 +64,7 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-7+arkham-6");
+    expect(a.records[0]!.promptVersion).toBe("gm-8+arkham-6");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
@@ -120,7 +120,19 @@ describe("мир Аркхэма", () => {
     expect(res.answers.map((a) => a.verdict)).toEqual(["right", "wrong", "wrong"]);
     expect(res).toMatchObject({ points: 20, mentor: 40, penalty: 0, score: 20 });
     expect(w.complete).toBe(true);
+    expect(close.records[0]!.beats.at(-1)).toMatchObject({ speaker: null });
+    expect(close.records[0]!.beats.at(-1)!.text).toContain("Дело раскрыто");
+    expect(close.records[0]!.suggestions).toEqual([]);
     await expect(playTurn(deps(), g, recs, { kind: "close", answers: { a1: "x" } })).rejects.toThrow(/закрыто/);
+    await expect(playTurn(deps(), g, recs, { kind: "action", text: "Продолжаю расследование" })).rejects.toThrow(/закрыто/);
+  });
+  it("нераскрытое дело: рассказчик получает и называет именно этот кодовый исход", async () => {
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "unsolved" });
+    const close = await playTurn(deps(), g, [], { kind: "close", answers: { a1: "Дворецкий", a2: "Несчастный случай" } });
+    expect(g.campaign.case!.result!.points).toBe(0);
+    expect(close.records[0]!.beats.at(-1)).toMatchObject({ speaker: null });
+    expect(close.records[0]!.beats.at(-1)!.text).toContain("Дело не раскрыто");
+    expect(close.records[0]!.beats.at(-1)!.text).not.toMatch(/(?<!не )раскрыто/);
   });
   it("люди и предъявление: карточки говоривших, улика уличает лжеца, метка у его реплики", async () => {
     const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "present" });
@@ -508,44 +520,6 @@ describe.skipIf(!url)("картинки", async () => {
     await drain(d);
     expect((await row(bgId)).url).toMatch(/-r2\.webp$/);
   }, 20_000); // дважды прогоняет всю очередь мира — дольше 5 с по умолчанию
-  it("закрытие дела: герой в широкой иллюстрации, задача не дублируется и переживает загрузку", async () => {
-    const d = await deps();
-    await drain(d);
-    const uid = crypto.randomUUID();
-    await ensureUser(db, uid);
-    const arkham = getWorld("arkham");
-    const draftA: CharacterDraft = { world: "arkham", phobia: "Мертвецы", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
-    const g = await newGame({ router: fakeRouter(), tier: "free", draft: draftA, rng: mulberry32(6), seed: "moment" });
-    const id = await createCampaign(db, uid, g);
-    const c = await loadCampaign(db, uid, id);
-    const opts = await v.createHeroOptions(db, fakeRouter(), uid, { world: "arkham", race: "human", cls: "journalist", gender: "f" }, "");
-    await drain(d);
-    await v.attachHeroPortrait(db, uid, c.characterId, opts[0]!.id);
-
-    const out = await playTurn(dpsFake(), c.state, c.recent, { kind: "close", answers: { a1: "Кит Ларкин отравил тётю ради наследства" } });
-    await v.prepareVisuals(db, id, out.state, out.records);
-    const close = out.records.find((r) => r.kind === "close")!;
-    const moment = close.moment!;
-    expect(moment.type).toBe("case-close");
-    expect(moment.imageId).toBeTruthy();
-    let scene = await v.sceneView(db, id, c.characterId, out.state.campaign);
-    expect(scene.moments[moment.imageId]!.status).toBe("queued");
-
-    // Повторная подготовка того же хода возвращает ту же строку, а не новую генерацию.
-    await v.prepareVisuals(db, id, out.state, out.records);
-    expect(close.moment).toEqual(moment);
-    await saveTurn(db, c, out.state, out.records);
-    await drain(d);
-
-    scene = await v.sceneView(db, id, c.characterId, out.state.campaign);
-    expect(scene.moments[moment.imageId]).toMatchObject({ status: "ready", url: expect.stringMatching(/^\/api\/images\/moment\/.+\.webp$/) });
-    const [img] = await db.select().from(images).where(eq(images.id, moment.imageId));
-    expect(img!.job).toMatchObject({ type: "moment", moment: "case-close", base: opts[0]!.id });
-    expect(img!.prompt).toContain("wide cinematic 16:9");
-    expect(img!.prompt).toContain("a woman newspaper reporter");
-    expect((await campaignTurns(db, id)).at(-1)!.moment).toEqual(moment);
-  }, 20_000);
-
   it("эмоции: лицо рисуется правкой готового портрета; ждёт портрет; у жителей лимит, у своих — один раз на мир", async () => {
     const d = await deps();
     await drain(d);
@@ -642,5 +616,38 @@ describe.skipIf(!url)("картинки", async () => {
     // Перерисовка мира с героями: варианты лица — снова в очередь вместе со своими портретами.
     const counts = await v.restyleImages(db, "arkham", { heroes: true, dryRun: true });
     expect(counts.emotion).toBeGreaterThanOrEqual(4);
+  }, 20_000);
+
+  it("закрытие дела: кабинет и задумчивый вариант героя, без отдельной иллюстрации и дублей", async () => {
+    const d = await deps();
+    await drain(d);
+    const uid = crypto.randomUUID();
+    await ensureUser(db, uid);
+    const arkham = getWorld("arkham");
+    const draftA: CharacterDraft = { world: "arkham", phobia: "Мертвецы", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] };
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: draftA, rng: mulberry32(5), seed: "closing" });
+    const id = await createCampaign(db, uid, g);
+    const c = await loadCampaign(db, uid, id);
+    const opts = await v.createHeroOptions(db, fakeRouter(), uid, { world: "arkham", race: "human", cls: "journalist", gender: "f" }, "");
+    await drain(d);
+    await v.attachHeroPortrait(db, uid, c.characterId, opts[0]!.id);
+
+    const prepared = await v.prepareCaseClosing(db, id, c.characterId, arkham, g.campaign);
+    expect(prepared.location.id).toBe("L0");
+    expect(prepared.location.type).toBe("office");
+    expect(g.campaign.locations.find((l) => l.id === "L0")!.imageId).toBeTruthy();
+    const variants = async () => (await db.select().from(images)).filter((r) => r.kind === "emotion" && (r.job as { base?: string; mood?: string }).base === opts[0]!.id && (r.job as { mood?: string }).mood === "thinking");
+    const first = await variants();
+    expect(first).toHaveLength(1);
+    expect(first[0]!.tags).toContain(`emo:${opts[0]!.id}:thinking`);
+    expect(prepared.scene.variantsPending).toBe(true);
+
+    await v.prepareCaseClosing(db, id, c.characterId, arkham, g.campaign);
+    expect((await variants()).map((r) => r.id)).toEqual(first.map((r) => r.id));
+    await drain(d);
+    const scene = await v.sceneView(db, id, c.characterId, g.campaign);
+    expect(scene.heroMoods?.thinking).toMatch(/^\/api\/images\/emo\/.+\.webp$/);
+    expect(scene.locations.L0?.status).toBe("ready");
+    expect((await db.select({ kind: images.kind }).from(images)).map((r) => r.kind)).not.toContain("moment");
   }, 20_000);
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getWorld } from "@ash/worlds";
 import {
-  applyCaseChanges, checkTwist, closeCase, deductionCandidates, effect, presentClue, layoutCase, lookup, markDeduction, mulberry32, publicCampaign, travelCase, type CaseSeed,
+  applyCaseChanges, caseSolved, checkTwist, closeCase, deductionCandidates, effect, presentClue, layoutCase, lookup, markDeduction, mulberry32, publicCampaign, travelCase, type CaseSeed,
 } from "../src/index";
 
 const W = getWorld("arkham");
@@ -112,6 +112,11 @@ describe("дело: ходы", () => {
     w.case!.visits = 6; // путь наставника — 4
     const r = closeCase(w, [{ id: "a1", answer: "Кит", verdict: "right" }, { id: "a2", answer: "?", verdict: "partial" }]);
     expect(r).toMatchObject({ points: 25, max: 40, penalty: 6, sanityPenalty: 0, score: 19, mentor: 40, timeUp: false });
+    // Исход зависит от ответов, а не от итогового счёта после штрафов.
+    expect(caseSolved(r)).toBe(true);
+    expect(caseSolved({ points: 20, max: 40 })).toBe(true);
+    expect(caseSolved({ points: 19, max: 40 })).toBe(false);
+    expect(caseSolved({ points: 0, max: 0 })).toBe(false);
     expect(r.answers[2]).toMatchObject({ id: "a3", verdict: "wrong" });
     expect(w.complete).toBe(true);
     expect(() => closeCase(w, [])).toThrow(/закрыто/);

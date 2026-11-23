@@ -26,12 +26,6 @@ export type TurnInput =
 
 export type TurnKind = TurnInput["kind"] | "knockout" | "breakdown";
 
-/** Сценическая иллюстрация, привязанная к конкретному ходу (этап 4). */
-export interface TurnMoment {
-  type: "case-close";
-  imageId: string;
-}
-
 /** Одна запись в журнале кампании = одна строка таблицы turns. */
 export interface TurnRecord {
   kind: TurnKind;
@@ -53,8 +47,6 @@ export interface TurnRecord {
   degraded: boolean;
   /** Сырой ответ модели — только когда JSON не разобрался, для разбора промптов. */
   raw?: string;
-  /** Ключевая иллюстрация этого хода; id ставится, когда задача поставлена в очередь. */
-  moment?: TurnMoment;
 }
 
 /** События для клиента по ходу хода (SSE). */

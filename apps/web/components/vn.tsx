@@ -5,7 +5,7 @@ import { sortEffects, type EffectKind } from "@ash/engine";
 import type { Beat, TurnEffect, TurnView } from "@/lib/client";
 
 /** Реплика на экране; hero — действие самого героя, первым кадром хода. */
-export type Shown = Beat & { hero?: true; moment?: TurnView["moment"] };
+export type Shown = Beat & { hero?: true };
 
 /** Ходы, которые начинает сам игрок: его слова — первый кадр. */
 export const playerKinds = new Set(["action", "choice", "present"]);
@@ -14,12 +14,11 @@ export const playerKinds = new Set(["action", "choice", "present"]);
 export const heroBeat = (name: string, text: string): Shown => ({ speaker: name, text, hero: true });
 
 /** Реплики хода в порядке показа: действие героя, ответ мастера, раунды боя — голосом рассказчика. */
-export function beatsOf(t: Pick<TurnView, "beats" | "combatEvents" | "narration" | "kind" | "action" | "moment">, heroName?: string): Shown[] {
+export function beatsOf(t: Pick<TurnView, "beats" | "combatEvents" | "narration" | "kind" | "action">, heroName?: string): Shown[] {
   const own: Shown[] = heroName && playerKinds.has(t.kind) && t.action ? [heroBeat(heroName, t.action)] : [];
-  const moment = t.moment ? { moment: t.moment } : {};
-  if (t.beats?.length) return [...own, ...t.beats.map((b) => ({ ...b, ...moment }))];
+  if (t.beats?.length) return [...own, ...t.beats];
   if (t.combatEvents?.length) return t.combatEvents.map((e) => ({ speaker: null, text: e.text }));
-  return t.narration ? [...own, { speaker: null, text: t.narration, ...moment }] : own;
+  return t.narration ? [...own, { speaker: null, text: t.narration }] : own;
 }
 
 /** Силуэт, пока портрет рисуется. */

@@ -26,20 +26,9 @@ export class FakeImageProvider implements ImageProvider {
     return { bytes: await sharp(Buffer.from(svg)).png().toBuffer(), contentType: "image/png", model: "fake", costUsd: 0 };
   }
 
-  /** Правка — тот же кадр с другим оттенком; широкий ключевой момент — сцена с силуэтом героя. */
+  /** Правка — тот же кадр с другим оттенком: видно, что лицо сменилось. */
   async edit(req: EditRequest): Promise<ImageResult> {
     if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
-    if (req.width > req.height) {
-      const h = hash(req.prompt + (req.seed ?? ""));
-      const hue = 15 + (h % 40);
-      const w = req.width;
-      const ht = req.height;
-      const x = Math.round(w * 0.62);
-      const headY = Math.round(ht * 0.31);
-      const headR = Math.round(ht * 0.065);
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${ht}"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="hsl(${hue},40%,24%)"/><stop offset="1" stop-color="hsl(${hue + 10},30%,7%)"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><path d="M0 ${Math.round(ht * 0.7)} Q ${Math.round(w * 0.3)} ${Math.round(ht * 0.58)} ${Math.round(w * 0.55)} ${Math.round(ht * 0.68)} T ${w} ${Math.round(ht * 0.62)} V${ht} H0 Z" fill="hsl(${hue},25%,10%)"/><g fill="hsl(${hue},35%,42%)"><circle cx="${x}" cy="${headY}" r="${headR}"/><path d="M${x - headR} ${headY + headR} Q${x - headR * 3} ${Math.round(ht * 0.6)} ${x - headR * 2} ${Math.round(ht * 0.86)} L${x - headR} ${Math.round(ht * 0.86)} L${x} ${Math.round(ht * 0.62)} L${x + headR} ${Math.round(ht * 0.86)} L${x + headR * 2} ${Math.round(ht * 0.86)} Q${x + headR * 3} ${Math.round(ht * 0.6)} ${x + headR} ${headY + headR} Z"/></g></svg>`;
-      return { bytes: await sharp(Buffer.from(svg)).png().toBuffer(), contentType: "image/png", model: "fake", costUsd: 0 };
-    }
     const bytes = await sharp(req.image).resize(req.width, req.height).modulate({ hue: 30 + (hash(req.prompt) % 120) }).png().toBuffer();
     return { bytes, contentType: "image/png", model: "fake", costUsd: 0 };
   }

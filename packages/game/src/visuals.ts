@@ -1,11 +1,11 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { campaigns, characters, images, npcs, type Db } from "@ash/db";
 import {
-  hashStr, heroMood, heroMoodsAhead, isUnhinged, locationById, matchName, neighbors, sameName,
+  hashStr, heroMood, heroMoodsAhead, locationById, matchName, neighbors, sameName,
   type Campaign, type Character, type CharacterDraft, type HeroMood, type LocationType,
 } from "@ash/engine";
 import {
-  baseHero, describeLocation, describeMoment, describeNpc, guessNpc, heroVariants, lookFromPrompt, portraitInspector, renderBackground, renderMoment, renderPortrait, renderVariant,
+  baseHero, describeLocation, describeNpc, guessNpc, heroVariants, lookFromPrompt, portraitInspector, renderBackground, renderPortrait, renderVariant,
   type ImageProvider, type ImageStorage, type NpcCard, type TimeOfDay,
 } from "@ash/images";
 import type { ModelRouter, Speaker } from "@ash/llm";
@@ -32,16 +32,6 @@ type Job = { world?: string; rev?: number } & (
   | { type: "portrait"; description: string; seed: number }
   /** Вариант лица: эмоция NPC или состояние героя — правка готового портрета base (id картинки). */
   | { type: "variant"; base: string; mood: string; change: string; seed: number }
-  /** Ключевой момент: герой с опорного портрета в широкой иллюстрации уже написанной сцены. */
-  | {
-      type: "moment";
-      base: string;
-      moment: "case-close";
-      story: string;
-      place: { name: string; type: LocationType; desc: string };
-      tone: string;
-      seed: number;
-    }
 );
 
 export interface VisualDeps {
@@ -345,6 +335,23 @@ export async function ensureHeroMoods(db: Db, world: World, portraitImageId: str
 }
 
 /**
+ * Отдельный процесс закрытия: тот же фон кабинета и обычный портрет героя с вариантом лица.
+ * Новой широкой картинки не создаём; задумчивый вариант переиспользуется между кампаниями героя.
+ */
+export async function prepareCaseClosing(db: Db, campaignId: string, characterId: string, world: World, w: Campaign) {
+  const office = w.locations.find((l) => l.type === "office" && /Уэйкфилд/i.test(l.name)) ?? w.locations.find((l) => l.type === "office");
+  if (!office) throw new GameError("Для закрытия дела нужен кабинет наставника.");
+  await ensureBackground(db, campaignId, world, w, { locId: office.id });
+  const change = world.art.emotions?.closing;
+  const [hero] = await db.select({ img: characters.portraitImageId }).from(characters).where(eq(characters.id, characterId));
+  if (change && hero?.img) await enqueueVariant(db, { world, baseId: hero.img, mood: "thinking", change });
+  return {
+    location: { id: office.id, name: office.name, type: office.type },
+    scene: await sceneView(db, campaignId, characterId, w),
+  };
+}
+
+/**
  * Про запас: фоны мест, куда герой может пойти сразу, постоянные лица мира и портреты жителей дела, которых там можно встретить.
  * Зовётся при создании кампании (пока рассказчик пишет завязку) и после каждого хода — для новых адресов.
  * Все задачи — с низким приоритетом: срочные портреты и фоны идут первыми.
@@ -364,51 +371,6 @@ export async function prefetchVisuals(db: Db, campaignId: string, world: World, 
     for (const p of people) await ensureNpc(db, campaignId, world, { name: p.name, race, gender: p.gender!, role: p.role, look: p.look }, { prefetch: true, rows });
   }
   return w.locations.filter((l) => l.imageId).length > before;
-}
-
-/** Тег ключевого момента: одна иллюстрация закрытия на кампанию, даже если подготовку вызвали повторно. */
-export const momentTag = (campaignId: string, type: "case-close") => `moment:${campaignId}:${type}`;
-
-/**
- * Финал дела: широкая иллюстрация с героем, привязанная к записи закрытия. Тон берём из результата
- * движка, а не из выдумки модели; конкретный момент служебная модель выберет из уже написанной развязки.
- * Неудачная задача тоже запоминается: повторная подготовка не запускает новые платные попытки.
- */
-async function ensureCaseCloseMoment(db: Db, campaignId: string, world: World, state: GameState, portraitImageId: string, record: TurnRecord) {
-  const result = state.campaign.case?.result;
-  const place = locationById(state.campaign, state.campaign.current);
-  if (!result || !place) return;
-  const tag = momentTag(campaignId, "case-close");
-  const [have] = await db
-    .select({ id: images.id })
-    .from(images)
-    .where(and(eq(images.kind, "moment"), sql`${images.tags} @> ARRAY[${tag}]::text[]`, inArray(images.status, ["queued", "working", "ready", "failed"])))
-    .orderBy(images.createdAt)
-    .limit(1);
-  const success = result.points * 2 >= result.max;
-  const tone = isUnhinged(state.character)
-    ? "haunted exhaustion and dread; the uncovered truth offers no comfort"
-    : success
-      ? "restrained, hard-won relief after uncovering the truth, without celebration or triumph"
-      : "uncertainty and regret after an incomplete reconstruction, without celebration or triumph";
-  const imageId =
-    have?.id ??
-    (await enqueue(db, {
-      kind: "moment",
-      tags: [tag],
-      campaignId,
-      job: {
-        world: world.id,
-        type: "moment",
-        base: portraitImageId,
-        moment: "case-close",
-        story: (record.beats.map((b) => b.text).join("\n") || record.narration).slice(0, 6000),
-        place: { name: place.name, type: place.type, desc: place.desc },
-        tone: `${result.timeUp ? "time has run out; " : ""}${tone}`,
-        seed: hashStr(`${campaignId}:${portraitImageId}:case-close`) % 1_000_000,
-      },
-    }));
-  record.moment = { type: "case-close", imageId };
 }
 
 /** Вызывается после хода, до сохранения: может записать фон в состояние кампании. */
@@ -431,8 +393,6 @@ export async function prepareVisuals(db: Db, campaignId: string, state: GameStat
       .from(characters)
       .innerJoin(campaigns, eq(campaigns.characterId, characters.id))
       .where(eq(campaigns.id, campaignId));
-    const close = records.find((r) => r.kind === "close");
-    if (close && hero?.img) await ensureCaseCloseMoment(db, campaignId, world, state, hero.img, close);
     await ensureHeroMoods(db, world, hero?.img, state.character, state.campaign);
   }
 }
@@ -465,14 +425,12 @@ export interface ImageView {
 
 export interface SceneView {
   hero: ImageView | null;
-  /** Готовые лица героя по состоянию (heroMood): wounded, edge, breakdown → адрес. */
+  /** Готовые лица героя: состояния wounded/edge/breakdown и thinking для закрытия дела. */
   heroMoods?: Record<string, string>;
   /** Фоны локаций по id локации. */
   locations: Record<string, ImageView>;
   /** Портреты NPC по имени в нижнем регистре; emotions — готовые варианты лица: эмоция → адрес. */
   npcs: Record<string, ImageView & { name: string; emotions?: Record<string, string> }>;
-  /** Ключевые иллюстрации кампании по id картинки; ход хранит нужный id в TurnRecord.moment. */
-  moments: Record<string, ImageView>;
   /** Какие-то варианты лица ещё рисуются — клиенту стоит опрашивать сцену. */
   variantsPending?: boolean;
 }
@@ -495,16 +453,11 @@ export async function sceneView(db: Db, campaignId: string, characterId: string,
   const ready = new Map<string, Record<string, string>>();
   for (const v of variants) if (v.status === "ready" && v.url) ready.set(v.base, { ...(ready.get(v.base) ?? {}), [v.mood]: v.url });
   const withEmotions = (img: string | null) => (img && ready.has(img) ? { emotions: ready.get(img)! } : {});
-  const momentRows = await db
-    .select({ id: images.id, status: images.status, url: images.url })
-    .from(images)
-    .where(and(eq(images.kind, "moment"), eq(images.campaignId, campaignId)));
   return {
     hero: view(ch?.img),
     ...(ch?.img && ready.has(ch.img) ? { heroMoods: ready.get(ch.img)! } : {}),
     locations: Object.fromEntries(w.locations.filter((l) => l.imageId).map((l) => [l.id, view(l.imageId)!]).filter(([, v]) => v)),
     npcs: Object.fromEntries(npcRows.map((n) => [n.key, { name: n.name, ...(view(n.img) ?? { status: "none", url: null }), ...withEmotions(n.img) }])),
-    moments: Object.fromEntries(momentRows.map((m) => [m.id, { status: m.status, url: m.url }])),
     ...(variants.some((v) => v.status !== "ready") ? { variantsPending: true } : {}),
   };
 }
@@ -586,27 +539,6 @@ export async function processOne(d: VisualDeps, signal?: AbortSignal): Promise<b
       r = await renderVariant({
         world, provider: d.provider, storage: d.storage, baseUrl: base.url, look: lookFromPrompt(world, base.prompt), change: j.change,
         key: `emo/${row.id}${rev}`, seed: j.seed, signal,
-      });
-    } else if (j.type === "moment") {
-      const [base] = await d.db.select({ status: images.status, url: images.url, prompt: images.prompt }).from(images).where(eq(images.id, j.base));
-      if (!base || base.status === "failed") throw new Error("исходный портрет не нарисован");
-      if (base.status !== "ready" || !base.url) {
-        // Как и вариант лица, ключевой момент ждёт портрет без расхода попытки.
-        await d.db.update(images).set({ status: "queued", attempts: Math.max(0, row.attempts - 1), createdAt: new Date() }).where(eq(images.id, row.id));
-        await new Promise((res) => setTimeout(res, VARIANT_WAIT_MS));
-        return true;
-      }
-      const description = await describeMoment(d.router, world, { story: j.story, place: j.place, tone: j.tone }, signal);
-      r = await renderMoment({
-        world,
-        provider: d.provider,
-        storage: d.storage,
-        baseUrl: base.url,
-        look: lookFromPrompt(world, base.prompt),
-        description,
-        key: `moment/${row.id}${rev}`,
-        seed: j.seed,
-        signal,
       });
     } else {
       const description = await describeLocation(d.router, world, { name: j.name, type: j.locType, desc: j.desc }, signal);

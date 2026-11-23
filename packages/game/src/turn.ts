@@ -1,5 +1,5 @@
 import {
-  applyCaseChanges, applyChanges, applyNpcNotes, breakDown, checkTwist, effect, emptyApplied, presentClue, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
+  applyCaseChanges, applyChanges, applyNpcNotes, breakDown, caseSolved, checkTwist, effect, emptyApplied, presentClue, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
   playerMove, sameName, skillCheck, startCombat, storyMove, travel, travelCase,
   type CombatEvent, type CombatOutcome, type TurnEffect, type Verdict,
 } from "@ash/engine";
@@ -28,6 +28,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const world = worldOf(c);
   const R = world.rules;
   const records: TurnRecord[] = [];
+  if (w.case?.result) throw new GameError("Дело уже закрыто. Вернись на главный экран.");
   const history = (): HistoryEntry[] => toHistory([...prior, ...records]);
   const emotionsSent = new Set<string>();
   /** Эмоции реплик — по списку мира; новые пары «имя + эмоция» — сразу в очередь картинок. */
@@ -335,7 +336,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const result = closeCase(w, cs.questions.map((q) => ({ id: q.id, answer: answers[q.id] ?? "", verdict: verdicts![q.id] ?? "wrong" })));
       const word = { right: "верно", partial: "отчасти верно", wrong: "неверно" } as const;
       const lines = cs.questions.map((q, i) => `${q.text} Ответ героя: «${answers[q.id] || "—"}» — ${word[result.answers[i]!.verdict]}.`);
-      await narrate("close", "Дело закрыто", caseActions.close(lines, timeUp, isUnhinged(c)), { extraUsage: extra, keepSanity: true });
+      await narrate("close", "Дело закрыто", caseActions.close(lines, timeUp, isUnhinged(c), caseSolved(result)), { extraUsage: extra, keepSanity: true });
       break;
     }
     case "combat": {
