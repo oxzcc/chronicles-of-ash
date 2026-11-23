@@ -17,7 +17,9 @@ export function emotionId(world: World, raw: string | undefined): string | undef
 export function normalizeEmotions(world: World, beats: Beat[]): Beat[] {
   return beats.map((b) => {
     if (b.emotion === undefined) return b;
-    const id = b.speaker ? emotionId(world, b.emotion) : undefined;
+    // null — не «поле забыли», а явный возврат к нейтральному лицу.
+    if (b.emotion === null && b.speaker && world.art.emotions) return b;
+    const id = b.speaker && b.emotion ? emotionId(world, b.emotion) : undefined;
     if (id === b.emotion) return b;
     const { emotion: _drop, ...rest } = b;
     return id ? { ...rest, emotion: id } : rest;

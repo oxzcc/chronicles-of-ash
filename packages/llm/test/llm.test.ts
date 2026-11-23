@@ -237,8 +237,8 @@ describe("промпты по мирам", () => {
     expect(a).toContain("ПОСТОЯННЫЕ ЛИЦА:");
     expect(a).toContain(`доктор Сайлас Уэйкфилд (наставник, отставной профессор антропологии): ${arkham.cast!.mentor.look}.`);
     expect(gmRules(world)).not.toContain("ПОСТОЯННЫЕ ЛИЦА");
-    expect(promptVersion(arkham)).toBe("gm-8+arkham-6");
-    expect(promptVersion(world)).toBe("gm-8");
+    expect(promptVersion(arkham)).toBe("gm-9+arkham-6");
+    expect(promptVersion(world)).toBe("gm-9");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
     const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] }, mulberry32(1));
@@ -256,7 +256,7 @@ describe("промпты по мирам", () => {
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-8+arkham-6");
+    expect(r.promptVersion).toBe("gm-9+arkham-6");
   });
 });
 
@@ -276,7 +276,8 @@ describe("дело в промптах", () => {
     expect(p).toContain("Разгадка: Корделию Вейл отравил");
     expect(p).toContain("[c1] Дом Вейлов на Сосновой улице (L1) — не найдена, ключевая");
     expect(p).toMatch(/Места, о которых герой ещё не знает: Бакалея Финнегана \(L4/);
-    expect(p).toContain("известные герою адреса, каждый переход — визит по делу");
+    expect(p).toContain("из текущей сцены — никак; выход на улицу выполняет игра");
+    expect(p).toContain("никуда через рассказ");
     expect(p).toContain("Визиты: 0 из 10.");
   });
   it("ответ мастера несёт улики и адреса", () => {
@@ -326,7 +327,7 @@ describe("люди и тайны в промптах", () => {
 });
 
 describe("эмоции реплик", () => {
-  it("эмоция только у NPC; «нет» и null — без эмоции; слово приводится к нижнему регистру", () => {
+  it("эмоция только у NPC; «нет» и null — явный сброс; слово приводится к нижнему регистру", () => {
     const r = parseGmResponse(
       JSON.stringify({
         beats: [
@@ -341,7 +342,7 @@ describe("эмоции реплик", () => {
     );
     expect(r.ok).toBe(true);
     const beats = r.ok ? r.value.beats : [];
-    expect(beats.map((b) => b.emotion)).toEqual([undefined, "страх", undefined, undefined, undefined]);
+    expect(beats.map((b) => b.emotion)).toEqual([undefined, "страх", null, null, undefined]);
   });
   it("эмоция видна уже в недописанном ответе, если идёт перед text", () => {
     const beats = partialBeats('{"beats":[{"speaker":"Кит","emotion":"гнев","text":"Вон отсю');

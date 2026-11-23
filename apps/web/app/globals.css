@@ -203,6 +203,12 @@ textarea { resize: vertical; }
 .vn-pips span { width: 20px; height: 3px; background: #4a3a28; }
 .vn-pips span.on { background: var(--gold); }
 .vn-choices { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.street-hub { padding: 12px 16px; overflow-y: auto; background: rgba(17, 12, 9, 0.9); border: 1px solid #4a3a28; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); }
+.street-hub h3 { margin: 3px 0 4px; color: var(--gold-hi); }
+.street-hub p { margin: 0; }
+.street-addresses { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin: 10px 0 0; }
+.street-addresses button { width: 100%; border-radius: 0; color: var(--ink); background: rgba(201, 164, 92, 0.06); }
+.vn-leave { align-self: flex-start; }
 /* Готовые варианты — на общей подложке, разделены тонкой золотой линией (как в BG3) */
 .vn-choices .suggestions { flex-direction: column; flex-wrap: nowrap; gap: 0; margin: 0; padding: 6px 0; background: rgba(17, 12, 9, 0.88); border: 1px solid #4a3a28; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); }
 .vn-choices .suggestions button { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border-radius: 0; padding: 12px 22px; font-family: var(--text); font-size: 19px; background: transparent; border: 0; color: var(--ink); transition: background 0.15s, color 0.15s; }

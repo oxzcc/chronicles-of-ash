@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getWorld } from "@ash/worlds";
 import {
-  applyCaseChanges, caseSolved, checkTwist, closeCase, deductionCandidates, effect, presentClue, layoutCase, lookup, markDeduction, mulberry32, publicCampaign, travelCase, type CaseSeed,
+  applyCaseChanges, CASE_HUB_ID, caseSolved, checkTwist, closeCase, deductionCandidates, effect, ensureCaseHub, leaveCase, presentClue, layoutCase, lookup, markDeduction, mulberry32, publicCampaign, travelCase, type CaseSeed,
 } from "../src/index";
 
 const W = getWorld("arkham");
@@ -16,8 +16,9 @@ describe("дело: раскладка", () => {
     expect(c.clues.filter((x) => !x.requires)).toHaveLength(8);
     expect(c.clues.filter((x) => x.requires).map((x) => x.requires)).toEqual([["c1", "c2", "c3"], ["c4", "c6"]]);
     expect(c.questions.map((q) => q.points)).toEqual([20, 10, 10]);
-    // Старт, общественные (участок, морг, библиотека) и дом Вейлов из завязки; бар, особняк Хоу и подвал — нет.
-    expect(c.known.sort()).toEqual(["L0", "L1", "L2", "L3", "L6"]);
+    // Старт, общественные (участок, морг, библиотека), дом Вейлов и служебная улица; бар, особняк Хоу и подвал — нет.
+    expect(c.known.sort()).toEqual([CASE_HUB_ID, "L0", "L1", "L2", "L3", "L6"]);
+    expect(w.locations.find((l) => l.id === CASE_HUB_ID)).toMatchObject({ name: "Улицы Аркхэма", type: "street" });
     expect(c.par).toBe(4); // Дом Вейлов, морг, бар, особняк Хоу
     expect(c.limit).toBe(10);
     expect(w.target).toBe("");
@@ -45,15 +46,35 @@ describe("дело: раскладка", () => {
 });
 
 describe("дело: ходы", () => {
-  it("переход — только по известным адресам, каждый визит на счету, время кончается", () => {
+  it("адреса выбираются с улицы-хаба; выход бесплатен, каждый визит на счету, время кончается", () => {
     const w = fresh();
     expect(() => travelCase(R, w, "L4", mulberry32(1))).toThrow(/не знаешь/);
     expect(() => travelCase(R, w, "L0", mulberry32(1))).toThrow(/и так здесь/);
+    expect(() => travelCase(R, w, "L1", mulberry32(1))).toThrow(/Сначала выйди на улицу/);
+    const left = leaveCase(w);
+    expect([left.from.id, left.to.id, w.current, w.npc]).toEqual(["L0", CASE_HUB_ID, CASE_HUB_ID, null]);
+    expect(w.case!.visits).toBe(0);
+    expect(() => leaveCase(w)).toThrow(/уже на улице/);
     travelCase(R, w, "L1", mulberry32(1));
+    expect(w.case!.visits).toBe(1);
+    leaveCase(w);
     expect(w.case!.visits).toBe(1);
     w.case!.visits = w.case!.limit - 1;
     expect(travelCase(R, w, "L2", mulberry32(1)).timeUp).toBe(true);
     expect(() => travelCase(R, w, "L3", mulberry32(1))).toThrow(/Время вышло/);
+    // Даже после лимита можно выйти на улицу и закрыть дело, но не посетить новый адрес.
+    leaveCase(w);
+    expect(w.current).toBe(CASE_HUB_ID);
+    expect(() => travelCase(R, w, "L3", mulberry32(1))).toThrow(/Время вышло/);
+  });
+  it("старая кампания получает улицу-хаб автоматически и без дублирования", () => {
+    const w = fresh();
+    w.locations = w.locations.filter((l) => l.id !== CASE_HUB_ID);
+    w.case!.known = w.case!.known.filter((id) => id !== CASE_HUB_ID);
+    expect(ensureCaseHub(w).id).toBe(CASE_HUB_ID);
+    expect(ensureCaseHub(w).id).toBe(CASE_HUB_ID);
+    expect(w.locations.filter((l) => l.id === CASE_HUB_ID)).toHaveLength(1);
+    expect(w.case!.known.filter((id) => id === CASE_HUB_ID)).toHaveLength(1);
   });
   it("улика находится только там, где лежит, не больше двух за ход; вывод так не находится", () => {
     const w = fresh();
@@ -174,7 +195,7 @@ describe("дело: что видит клиент", () => {
     expect(json).toContain("горький зеленоватый осадок"); // найденная
     expect(pub.case!.questions[0]).toEqual({ id: "a1", text: "Кто виновен в смерти миссис Вейл и зачем?", points: 20 });
     expect(pub.case!.people.map((p) => p.name)).not.toContain("Арчибальд Хоу");
-    expect(pub.locations.map((l) => l.id).sort()).toEqual(["L0", "L1", "L2", "L3", "L6"]);
+    expect(pub.locations.map((l) => l.id).sort()).toEqual([CASE_HUB_ID, "L0", "L1", "L2", "L3", "L6"]);
     // Тайны жителей и поворот — только у мастера.
     expect(json).not.toMatch(/motive|alibi|secret|"lie"|twist/);
     expect(json).not.toContain("подписал «сердечный приступ»");

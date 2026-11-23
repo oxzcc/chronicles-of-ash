@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { attitudeWord, caseSolved, locationById, sameName, type CaseResult, type PublicCampaign, type PublicCase, type Verdict } from "@ash/engine";
+import { attitudeWord, CASE_HUB_ID, caseSolved, locationById, sameName, type CaseResult, type PublicCampaign, type PublicCase, type Verdict } from "@ash/engine";
 
 /**
  * Интерфейс детективного дела (мир Аркхэма): досье, газета, справочник, закрытие дела и разбор.
@@ -275,11 +275,33 @@ export function Newspaper({ c }: { c: PublicCase }) {
   );
 }
 
+/** Улица-хаб: следующий адрес выбирает игрок, а не рассказчик. */
+export function StreetHub({ w, busy, onTravel }: { w: PublicCampaign; busy: boolean; onTravel: (id: string) => void }) {
+  const c = w.case!;
+  const blocked = busy || !!w.combat || !!c.result || c.visits >= c.limit;
+  const places = w.locations.filter((l) => l.id !== CASE_HUB_ID);
+  return (
+    <div className="street-hub">
+      <div className="eyebrow">Улицы Аркхэма</div>
+      <h3>Куда отправиться?</h3>
+      <p className="small muted">Выход на улицу времени не стоит. Следующий выбранный адрес — новый визит.</p>
+      <div className="suggestions street-addresses">
+        {places.map((l) => (
+          <button key={l.id} disabled={blocked} onClick={() => onTravel(l.id)}>
+            {l.name}{l.visited ? " · уже был" : ""}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Справочник: поиск по имени или названию и список известных адресов с жителями. */
 export function Directory({ w, busy, focus, onLookup, onTravel }: { w: PublicCampaign; busy: boolean; focus?: string | null; onLookup: (q: string) => void; onTravel: (id: string) => void }) {
   const c = w.case!;
   const [q, setQ] = useState("");
-  const blocked = busy || !!w.combat || !!c.result || c.visits >= c.limit;
+  const atHub = w.current === CASE_HUB_ID;
+  const blocked = busy || !!w.combat || !!c.result || c.visits >= c.limit || !atHub;
   return (
     <div className="directory">
       <form
@@ -294,7 +316,7 @@ export function Directory({ w, busy, focus, onLookup, onTravel }: { w: PublicCam
           Найти
         </button>
       </form>
-      <p className="small muted">Услышал имя — найди его здесь: адрес появится на карте. Каждый визит по адресу стоит времени.</p>
+      <p className="small muted">Услышал имя — найди его здесь: адрес появится на карте. Каждый визит по адресу стоит времени.{!atHub ? " Чтобы выбрать адрес, сначала выйди на улицу." : ""}</p>
       {w.locations.map((l) => {
         const here = l.id === w.current;
         const people = c.people.filter((p) => p.at === l.id);

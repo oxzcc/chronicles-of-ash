@@ -73,10 +73,10 @@ export interface Beat {
   /** Пометки после проверки: только то, что движок принял. */
   marks?: BeatMark[];
   /**
-   * Эмоция говорящего (id из art.emotions мира: fear, anger…). Мастер пишет слово («страх»), игра сверяет
-   * со списком мира и оставляет id; у рассказчика эмоции нет. Рисовать ли лицо — решает код.
+   * Эмоция говорящего (id из art.emotions мира: fear, anger…). undefined — сохранить текущее
+   * выражение, null — явно вернуть нейтральный портрет. У рассказчика поля нет.
    */
-  emotion?: string;
+  emotion?: string | null;
 }
 
 /** Убирает кавычки-ёлочки и тире, которыми модели иногда обрамляют реплику. */
@@ -93,11 +93,16 @@ const refsSchema = z
       .slice(0, 3),
   );
 
-/** Эмоция — одно слово; «нет», «нейтрально» и null — без эмоции. Сверку со списком мира делает игра. */
+/** Эмоция — одно слово; «нет», «нейтрально» и null — явный сброс; поле без значения — сохранить прежнюю. */
 const emotionSchema = z
   .unknown()
-  .transform((x) => (typeof x === "string" ? x.trim().toLowerCase().replace(/ё/g, "е").slice(0, 20) : ""))
-  .transform((x) => (x && !/^(null|none|нет|нейтрально|нейтральная|neutral|-)$/.test(x) ? x : undefined))
+  .transform((x): string | null | undefined => {
+    if (x === null) return null;
+    if (typeof x !== "string") return undefined;
+    const value = x.trim().toLowerCase().replace(/ё/g, "е").slice(0, 20);
+    if (!value) return undefined;
+    return /^(null|none|нет|нейтрально|нейтральная|neutral|-)$/.test(value) ? null : value;
+  })
   .catch(undefined);
 
 const BeatSchema = z
@@ -106,7 +111,7 @@ const BeatSchema = z
     const speaker = b.speaker && b.speaker.trim() && !/^(рассказчик|мастер|narrator)$/i.test(b.speaker.trim()) ? b.speaker.trim().slice(0, 40) : null;
     const beat: Beat = { speaker, text: (speaker ? unquote(b.text) : b.text.trim()).slice(0, 1500) };
     if (b.finds?.length) beat.refs = b.finds;
-    if (speaker && b.emotion) beat.emotion = b.emotion;
+    if (speaker && b.emotion !== undefined) beat.emotion = b.emotion;
     return beat;
   });
 

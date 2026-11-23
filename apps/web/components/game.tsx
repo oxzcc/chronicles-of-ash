@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  abilityMod, isHealing, locationTypeName, neighbors, proficiency, resolveSkill, STATS,
+  abilityMod, CASE_HUB_ID, isHealing, locationTypeName, neighbors, proficiency, resolveSkill, STATS,
   type Character, type CheckResult, type CombatMove, type DiceShow, type PublicCampaign, type Ruleset,
 } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
@@ -217,9 +217,10 @@ export function Quest({ w, doneText = "Квест выполнен." }: { w: Pub
 }
 
 export function WorldMap({ w, rules, disabled, onTravel, onRest }: { w: PublicCampaign; rules: Ruleset; disabled: boolean; onTravel: (id: string) => void; onRest: () => void }) {
-  // В деле дорог нет: можно пойти по любому известному адресу (клиент и так видит только известные).
+  // В деле дорог нет: адреса доступны только с улицы-хаба, не прямо из разговора.
   const isCase = !!w.case;
-  const near = new Set(isCase ? w.locations.filter((l) => l.id !== w.current).map((l) => l.id) : neighbors(w, w.current).map((l) => l.id));
+  const atHub = w.current === CASE_HUB_ID;
+  const near = new Set(isCase ? w.locations.filter((l) => atHub && l.id !== w.current).map((l) => l.id) : neighbors(w, w.current).map((l) => l.id));
   const W = 300;
   const H = 200;
   // Поля по краям, чтобы подписи крайних точек не обрезались.
@@ -256,7 +257,7 @@ export function WorldMap({ w, rules, disabled, onTravel, onRest }: { w: PublicCa
         })}
       </svg>
       <div className="small muted" style={{ marginTop: 8 }}>
-        Здесь: {w.locations.find((l) => l.id === w.current)?.name}. {isCase ? "Известные адреса" : "Дороги ведут в"}: {[...near].map((id) => w.locations.find((l) => l.id === id)?.name).join(", ")}.
+        Здесь: {w.locations.find((l) => l.id === w.current)?.name}. {isCase && !atHub ? "Сначала выйди на улицу — следующий адрес выбирается там." : <>{isCase ? "Известные адреса" : "Дороги ведут в"}: {[...near].map((id) => w.locations.find((l) => l.id === id)?.name).join(", ")}.</>}
       </div>
       <div className="row" style={{ marginTop: 10 }}>
         {[...near].map((id) => (

@@ -2,18 +2,19 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { heroMood, locationById, locationTypeName, matchName, type CheckResult, type CombatEvent, type CombatMove, type CombatState, type LocationType } from "@ash/engine";
+import { CASE_HUB_ID, emotionAt, heroMood, locationById, locationTypeName, matchName, type CheckResult, type CombatEvent, type CombatMove, type CombatState, type LocationType } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnEffect, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
 import { BeatText, beatsOf, Bust, Drawer, heroBeat, Icon, Pips, playerKinds, TextFrame, type Mark, type Shown } from "@/components/vn";
-import { CaseFile, CaseFinale, CloseCase, CloseCaseConfirm, Directory, Newspaper, People } from "@/components/case";
+import { CaseFile, CaseFinale, CloseCase, CloseCaseConfirm, Directory, Newspaper, People, StreetHub } from "@/components/case";
 
 type Input =
   | { kind: "start" }
   | { kind: "action"; text: string }
   | { kind: "choice"; index: number }
   | { kind: "travel"; to: string }
+  | { kind: "leave" }
   | { kind: "rest" }
   | { kind: "combat"; move: CombatMove; target?: number }
   | { kind: "lookup"; query: string }
@@ -58,6 +59,26 @@ function npcView(scene: SceneView | undefined, name: string | null | undefined) 
   const all = Object.values(scene.npcs);
   const i = matchName(name, all.map((n) => n.name));
   return i >= 0 ? all[i] : undefined;
+}
+
+/** Портрет с устойчивой эмоцией: наследует её между репликами и ходами, но не между сценами и NPC. */
+function StageBust({ name, sceneLocation, beats, index, stage, dim = false }: {
+  name: string;
+  sceneLocation: string;
+  beats: Shown[];
+  index: number;
+  stage: SceneView["npcs"][string] | undefined;
+  dim?: boolean;
+}) {
+  const carry = useRef<{ key: string; emotion?: string }>({ key: "" });
+  const key = `${sceneLocation}|${name}`;
+  const initial = carry.current.key === key ? carry.current.emotion : undefined;
+  const emotion = emotionAt(beats, index, name, initial);
+  useEffect(() => {
+    carry.current = { key, ...(emotion ? { emotion } : {}) };
+  }, [key, emotion]);
+  const over = emotion ? stage?.emotions?.[emotion] : undefined;
+  return <Bust url={stage?.url} over={over} name={name} side="left" dim={dim} failed={!stage || stage.status === "failed" || stage.status === "none"} />;
 }
 
 /** Противник на сцене: выбранная цель, если жива, иначе первый живой. */
@@ -117,6 +138,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       const npc = view?.campaign.npc?.name;
       if (kind === "action" || kind === "choice") return npc ? `${npc} отвечает` : "Мир откликается";
       if (kind === "travel") return "Дорога ведёт дальше";
+      if (kind === "leave") return "Выход на улицу";
       if (kind === "rest") return "Привал";
       if (kind === "start") return "История начинается";
       if (kind === "lookup") return "Листаю справочник";
@@ -135,7 +157,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       setPanel(null);
       setCursor(0);
       // Начало и переход: заставка сразу, ещё до ответа сервера.
-      const dest = input.kind === "travel" ? input.to : input.kind === "start" ? view?.campaign.current : undefined;
+      const dest = input.kind === "travel" ? input.to : input.kind === "leave" ? CASE_HUB_ID : input.kind === "start" ? view?.campaign.current : undefined;
       const loc = dest && view ? locationById(view.campaign, dest) : undefined;
       setEnter(loc ? { to: loc.id, name: loc.name, type: loc.type, phase: "title", imageId: null } : null);
       setLive({ label, kind: input.kind, beats: [], waiting: waitingLabel(input.kind), rolls: [], combatEvents: [] });
@@ -340,14 +362,14 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const stage = npcView(scene, onStage);
   // До первой реплики развязки остаётся задумчивый герой; затем на сцене только говорящие NPC.
   const closingHero = closing === "answers" || (closing === "resolution" && !beat);
-  // Эмоция реплики — вариант лица поверх портрета, если он уже готов; иначе нейтральный портрет.
-  const emotionUrl = speakerName && beat?.emotion ? stage?.emotions?.[beat.emotion] : undefined;
   const role = speakerName && w.npc && matchName(speakerName, [w.npc.name]) === 0 ? w.npc.role : undefined;
   const foe = w.combat ? foeOf(w.combat) : undefined;
   const foeImg = npcView(scene, foe?.name);
   const lastWithSuggestions = [...view.turns].reverse().find((t) => t.suggestions.length);
   const suggestions = !w.combat && lastWithSuggestions ? lastWithSuggestions.suggestions : [];
   const showChoices = !busy && !enter && atEnd && !w.combat && !closureActive;
+  const atHub = w.current === CASE_HUB_ID;
+  const showHub = showChoices && !!w.case && atHub && !w.case.result;
   const finale = closing === "resolution" && !!w.case?.result && atEnd && !streaming && !live && !!beat && !beat.speaker && !beat.hero;
   const submit = () => text.trim() && send({ kind: "action", text: text.trim() }, text.trim());
   const R = worldOf(c).rules;
@@ -372,7 +394,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         closingHero ? (
           <Bust url={scene?.hero?.url} over={scene?.heroMoods?.thinking} name={c.name} side="left" />
         ) : (
-          onStage && <Bust url={stage?.url} over={emotionUrl} name={onStage} side="left" failed={!stage || stage.status === "failed" || stage.status === "none"} />
+          onStage && <StageBust name={onStage} sceneLocation={sceneLocation} beats={all} index={cursor} stage={stage} />
         )
       ) : w.combat ? (
         <>
@@ -380,7 +402,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           <Bust url={foeImg?.url} name={foe?.name ?? "Противник"} side="right" failed={!foeImg || foeImg.status === "failed" || foeImg.status === "none"} />
         </>
       ) : (
-        onStage && <Bust url={stage?.url} over={emotionUrl} name={onStage} side="left" dim={!speakerName} failed={!stage || stage.status === "failed" || stage.status === "none"} />
+        onStage && <StageBust name={onStage} sceneLocation={sceneLocation} beats={all} index={cursor} stage={stage} dim={!speakerName} />
       )}
 
       <header className="vn-hud">
@@ -466,7 +488,15 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
             Время вышло — закрыть дело
           </button>
         )}
-        {showChoices && (
+        {showHub && (
+          <StreetHub w={w} busy={busy} onTravel={(to) => send({ kind: "travel", to }, `Путь в «${locationById(w, to)?.name}»`)} />
+        )}
+        {showChoices && w.case && !atHub && !w.case.result && (
+          <button className="btn ghost vn-leave" onClick={() => send({ kind: "leave" }, "Выхожу на улицу")}>
+            Выйти на улицу
+          </button>
+        )}
+        {showChoices && !atHub && (
           <div className="vn-choices">
             {suggestions.length > 0 && (
               <Suggestions

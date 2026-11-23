@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { mulberry32, neighbors, sameName, type CharacterDraft } from "@ash/engine";
+import { CASE_HUB_ID, mulberry32, neighbors, sameName, type CharacterDraft } from "@ash/engine";
 import { getWorld } from "@ash/worlds";
 import { createRouter, type CompletionRequest, type CompletionResult, type LlmProvider } from "@ash/llm";
 import { createDb, images, npcs } from "@ash/db";
@@ -64,7 +64,7 @@ describe("мир Аркхэма", () => {
     expect(g.character.world).toBe("arkham");
     expect(g.campaign.locations[0]!.type).toBe("office");
     const a = await playTurn(deps(), g, [], { kind: "start" });
-    expect(a.records[0]!.promptVersion).toBe("gm-8+arkham-6");
+    expect(a.records[0]!.promptVersion).toBe("gm-9+arkham-6");
     expect(g.campaign.npc?.name).toBe("Сержант Маллой");
     const b = await playTurn(deps(), g, a.records, { kind: "action", text: "Нападаю на громилу" });
     expect(g.campaign.combat?.enemies[0]!.name).toBe("Громила из Нижнего города");
@@ -85,6 +85,14 @@ describe("мир Аркхэма", () => {
     expect(look.records[0]!.applied!.effects).toEqual([{ kind: "address", text: "Бакалея Финнегана", good: true, ref: "L4" }]);
     recs = [...recs, ...look.records];
     await expect(playTurn(deps(), g, recs, { kind: "travel", to: "L5" })).rejects.toThrow(/не знаешь/);
+    // Из сцены сначала выходим на бесплатную улицу-хаб; следующий адрес выбирается уже оттуда.
+    let arrived = 0;
+    const left = await playTurn(deps({ onArrive: async () => void arrived++ }), g, recs, { kind: "leave" });
+    expect(w.current).toBe(CASE_HUB_ID);
+    expect(w.npc).toBeNull();
+    expect(w.case!.visits).toBe(0);
+    expect(arrived).toBe(1);
+    recs = [...recs, ...left.records];
     // Мастер нашёл улику в доме Вейлов — движок принимает её только там.
     const scripted = scriptedRouter([{
       beats: [{ speaker: null, text: "В чашке — горький зеленоватый осадок.", finds: [{ ref: "c1", quote: "горький зеленоватый осадок" }, { ref: "c3", quote: "в чашке" }] }],
@@ -126,6 +134,44 @@ describe("мир Аркхэма", () => {
     await expect(playTurn(deps(), g, recs, { kind: "close", answers: { a1: "x" } })).rejects.toThrow(/закрыто/);
     await expect(playTurn(deps(), g, recs, { kind: "action", text: "Продолжаю расследование" })).rejects.toThrow(/закрыто/);
   });
+  it("рассказ не переносит героя по делу и не выводит жителя другого адреса", async () => {
+    const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "confine" });
+    const w = g.campaign;
+    const from = w.current;
+    const other = w.locations.find((l) => l.id !== from && l.id !== CASE_HUB_ID)!;
+    const person = w.case!.people.find((p) => p.at !== from)!;
+    const visits = w.case!.visits;
+    let arrived = 0;
+    const speakers: string[] = [];
+    const emotions: string[] = [];
+    const r = await playTurn(deps({
+      router: scriptedRouter([{
+        move: other.name,
+        speaker: { name: person.name, race: "human", gender: person.gender ?? "m", role: person.role },
+        beats: [
+          { speaker: null, text: `Герой уже в месте «${other.name}».` },
+          { speaker: person.name, emotion: "страх", text: "Что вы здесь делаете?" },
+        ],
+        npcs: [{ name: person.name, told: ["говорил из другого адреса"] }],
+      }]),
+      onArrive: async () => void arrived++,
+      onSpeaker: (s) => void speakers.push(s.name),
+      onEmotion: (name, emotion) => void emotions.push(`${name}|${emotion}`),
+    }), g, [], { kind: "action", text: "Слушаю рассказчика" });
+    const rec = r.records[0]!;
+    expect(w.current).toBe(from);
+    expect(w.case!.visits).toBe(visits);
+    expect(w.npc).toBeNull();
+    expect(arrived).toBe(0);
+    expect(speakers).toEqual([]);
+    expect(emotions).toEqual([]);
+    expect(rec.response!.move).toBeNull();
+    expect(rec.response!.speaker).toBeNull();
+    expect(rec.beats.map((b) => b.speaker)).toEqual([null, null]);
+    expect(rec.beats.map((b) => b.emotion)).toEqual([undefined, undefined]);
+    expect(rec.applied!.rejected.join()).toMatch(/следующий адрес выбирает игрок на улице/);
+    expect(w.memory ?? []).not.toContainEqual(expect.objectContaining({ name: person.name }));
+  });
   it("нераскрытое дело: рассказчик получает и называет именно этот кодовый исход", async () => {
     const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "unsolved" });
     const close = await playTurn(deps(), g, [], { kind: "close", answers: { a1: "Дворецкий", a2: "Несчастный случай" } });
@@ -137,6 +183,8 @@ describe("мир Аркхэма", () => {
   it("люди и предъявление: карточки говоривших, улика уличает лжеца, метка у его реплики", async () => {
     const g = await newGame({ router: fakeRouter(), tier: "free", draft: arkhamDraft, rng: mulberry32(1), seed: "present" });
     const w = g.campaign;
+    // Разговор и предъявление происходят там, где этот житель действительно находится.
+    w.current = w.case!.people.find((p) => p.name === "Кит Ларкин")!.at;
     const kit = { name: "Кит Ларкин", race: "human", gender: "m", role: "племянник покойной" };
     let r = await playTurn(deps({ router: scriptedRouter([{
       beats: [{ speaker: null, text: "Кит курит у стойки." }, { speaker: "Кит Ларкин", text: "К тёте я в тот вечер не заходил." }],
@@ -596,10 +644,11 @@ describe.skipIf(!url)("картинки", async () => {
         { speaker: null, emotion: "страх", text: "Свеча гаснет." },
         { speaker: "Мэри Хоу", emotion: "Страх", text: "Кто здесь?!" },
         { speaker: "Мэри Хоу", emotion: "ярость", text: "Уходите." },
+        { speaker: "Мэри Хоу", emotion: null, text: "Прошу прощения." },
       ],
     };
     const r = await playTurn(deps0({ router: scriptedRouter([reply]), onEmotion: (n, e) => early.push(`${n}|${e}`) }), c.state, c.recent, { kind: "start" });
-    expect(r.records[0]!.beats.map((b) => b.emotion)).toEqual([undefined, "fear", undefined]);
+    expect(r.records[0]!.beats.map((b) => b.emotion)).toEqual([undefined, "fear", undefined, null]);
     expect(early).toEqual(["Мэри Хоу|fear"]);
     r.state.character.hp = Math.floor(r.state.character.hpMax / 3); // ранен
     await v.prepareVisuals(db, id, r.state, r.records);
