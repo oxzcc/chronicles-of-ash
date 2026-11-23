@@ -90,7 +90,7 @@ export function CaseFile({ w, busy, focus, onReconstruct, onClose, onPresent }: 
               {x.text}
               {/* Предъявить улику тому, с кем говоришь: уличит ли она его — решает игра. */}
               {w.npc && onPresent && !c.result && (
-                <button className="btn ghost small case-present" disabled={busy || !!w.combat} onClick={() => onPresent(x.id)}>
+                <button className="btn ghost small case-present" disabled={busy} onClick={() => onPresent(x.id)}>
                   Показать: {w.npc.name}
                 </button>
               )}
@@ -130,7 +130,7 @@ export function CaseFile({ w, busy, focus, onReconstruct, onClose, onPresent }: 
             <button className="btn ghost small" disabled={busy || c.canDeduce === 0 || version.trim().length < 10} onClick={() => onReconstruct(version.trim())}>
               Сложить картину
             </button>
-            <button className="btn small" disabled={busy || !!w.combat} onClick={onClose}>
+            <button className="btn small" disabled={busy} onClick={onClose}>
               Закрыть дело…
             </button>
           </div>
@@ -278,7 +278,7 @@ export function Newspaper({ c }: { c: PublicCase }) {
 /** Улица-хаб: следующий адрес выбирает игрок, а не рассказчик. */
 export function StreetHub({ w, busy, onTravel }: { w: PublicCampaign; busy: boolean; onTravel: (id: string) => void }) {
   const c = w.case!;
-  const blocked = busy || !!w.combat || !!c.result || c.visits >= c.limit;
+  const blocked = busy || !!c.result || c.visits >= c.limit;
   const places = w.locations.filter((l) => l.id !== CASE_HUB_ID);
   return (
     <div className="street-hub">
@@ -301,7 +301,7 @@ export function Directory({ w, busy, focus, onLookup, onTravel }: { w: PublicCam
   const c = w.case!;
   const [q, setQ] = useState("");
   const atHub = w.current === CASE_HUB_ID;
-  const blocked = busy || !!w.combat || !!c.result || c.visits >= c.limit || !atHub;
+  const blocked = busy || !!c.result || c.visits >= c.limit || !atHub;
   return (
     <div className="directory">
       <form

@@ -65,7 +65,7 @@ export function Beats({ beats }: { beats: Beat[] }) {
   );
 }
 
-export function Entry({ t, isCase }: { t: Pick<TurnView, "kind" | "action" | "beats" | "rolls" | "combatEvents" | "effects">; isCase?: boolean }) {
+export function Entry({ t, isCase, combat = true }: { t: Pick<TurnView, "kind" | "action" | "beats" | "rolls" | "combatEvents" | "effects">; isCase?: boolean; combat?: boolean }) {
   const player = t.kind === "action" || t.kind === "choice" || t.kind === "present";
   return (
     <div className="entry">
@@ -76,7 +76,7 @@ export function Entry({ t, isCase }: { t: Pick<TurnView, "kind" | "action" | "be
           🎲 {r.summary}
         </span>
       ))}
-      {t.combatEvents.length > 0 && (
+      {combat && t.combatEvents.length > 0 && (
         <div className="combat-log">
           {t.combatEvents.map((e, i) => (
             <div key={i} className={e.tone}>
@@ -151,7 +151,9 @@ export function CheckDialog({ s, c, onRoll, onCancel }: { s: Suggestion & { chec
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function Sheet({ c }: { c: Character }) {
-  const R = worldOf(c).rules;
+  const world = worldOf(c);
+  const R = world.rules;
+  const combat = world.features.combat !== false;
   const ab = R.classes[c.cls]!.ability;
   return (
     <div className="card">
@@ -167,7 +169,7 @@ export function Sheet({ c }: { c: Character }) {
         <span>
           Здоровье {c.hp}/{c.hpMax}
         </span>
-        <span>КД {c.ac}</span>
+        {combat && <span>КД {c.ac}</span>}
         <span>{capitalize(R.money.sheet(c.gold))}</span>
       </div>
       {c.sanity !== undefined && c.sanityMax ? (
@@ -185,9 +187,11 @@ export function Sheet({ c }: { c: Character }) {
         </>
       ) : null}
       <div className="kv" style={{ marginTop: 6 }}>
-        <span>
-          {ab.name}: {c.abilityUses}/{ab.uses}
-        </span>
+        {combat && (
+          <span>
+            {ab.name}: {c.abilityUses}/{ab.uses}
+          </span>
+        )}
         <span>
           {R.healing.countLabel}: {c.items.filter((x) => isHealing(R, x)).length}
         </span>

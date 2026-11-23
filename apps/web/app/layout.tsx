@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata = {
-  title: "Хроники Пепла",
-  description: "Тёмное фэнтези, где историю пишет ИИ-мастер, а исход решают кубики.",
+  title: "Таинственные дела в Аркхэме",
+  description: "Мистический детектив, 1926 год: улики, свидетели и то, чего лучше не знать.",
   icons: { icon: "/favicon.svg" },
 };
 

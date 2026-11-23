@@ -27,8 +27,11 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const { character: c, campaign: w } = state;
   const world = worldOf(c);
   const R = world.rules;
+  const combatEnabled = world.features.combat !== false;
   const records: TurnRecord[] = [];
   if (w.case?.result) throw new GameError("Дело уже закрыто. Вернись на главный экран.");
+  // Старые сохранения мира без боя не должны остаться запертыми в удалённом режиме.
+  if (!combatEnabled) w.combat = null;
   if (w.case) ensureCaseHub(w);
   const history = (): HistoryEntry[] => toHistory([...prior, ...records]);
   /** В деле житель другого адреса не может оказаться на сцене без кодового перехода; на улице-хабе NPC нет. */
@@ -72,6 +75,8 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       allowChecks: !opts.preRolls?.length,
     });
     const resp = r.response;
+    // Промпт — не граница безопасности: даже ошибочный combat от модели не включает режим мира.
+    if (!combatEnabled) resp.combat = null;
     resp.beats = withEmotions(resp.beats);
     confineCaseResponse(resp);
     const applied = applyChanges(R, c, w, {
@@ -150,7 +155,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const needCase = () => {
     if (!w.case) throw new GameError("В этом мире нет дел.");
     if (w.case.result) throw new GameError("Дело уже закрыто.");
-    if (w.combat) throw new GameError("Идёт бой — выбери действие в бою.");
+    if (combatEnabled && w.combat) throw new GameError("Идёт бой — выбери действие в бою.");
     return w.case;
   };
 
@@ -194,7 +199,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
 
   /** Если ответ мастера объявил бой — начинаем его; враги могут ударить первыми. */
   const maybeStartCombat = async (resp: { combat: { enemies: unknown[] } | null }) => {
-    if (!resp.combat || w.combat) return;
+    if (!combatEnabled || !resp.combat || w.combat) return;
     const start = startCombat(c, resp.combat.enemies as any[], deps.rng);
     w.combat = start.state;
     combatRecord("Начало боя", start.events, start.outcome);
@@ -232,7 +237,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       break;
     }
     case "action": {
-      if (w.combat) throw new GameError("Идёт бой — выбери действие в бою.");
+      if (combatEnabled && w.combat) throw new GameError("Идёт бой — выбери действие в бою.");
       const text = input.text.trim().slice(0, MAX_ACTION_LENGTH);
       if (!text) throw new GameError("Напиши, что делает герой.");
       const { resp } = await narrate("action", text, text, { allowMove: true });
@@ -242,7 +247,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       break;
     }
     case "choice": {
-      if (w.combat) throw new GameError("Идёт бой — выбери действие в бою.");
+      if (combatEnabled && w.combat) throw new GameError("Идёт бой — выбери действие в бою.");
       // Варианты — из последнего ответа мастера, где они были (клиент показывает те же).
       const last = [...prior, ...records].reverse().find((r) => r.suggestions?.length);
       const pick = last?.suggestions?.[input.index];
@@ -285,14 +290,14 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       }
       await deps.onArrive?.();
       const late = "timeUp" in t && t.timeUp ? " Это последний визит: время вышло, после этой сцены герою придётся закрыть дело." : "";
-      const { resp } = await narrate("travel", `Путь в «${t.to.name}»`, systemActions.travel(t.from.name, t.to.name, t.encounter) + late);
+      const { resp } = await narrate("travel", `Путь в «${t.to.name}»`, systemActions.travel(t.from.name, t.to.name, t.encounter, combatEnabled) + late);
       await maybeStartCombat(resp);
       await checkDowned();
       await checkBroken();
       break;
     }
     case "rest": {
-      if (w.combat) throw new GameError("Посреди боя не отдохнуть.");
+      if (combatEnabled && w.combat) throw new GameError("Посреди боя не отдохнуть.");
       const missing = c.hpMax - c.hp;
       const { resp, applied } = await narrate("rest", "Привал", systemActions.rest(missing));
       // Отдых удался, если мастер вернул здоровье (или его и так хватало) и не начался бой.
@@ -376,6 +381,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       break;
     }
     case "combat": {
+      if (!combatEnabled) throw new GameError("В этом мире опасные встречи разыгрываются как обычные сцены.");
       if (!w.combat) throw new GameError("Сейчас нет боя.");
       let step;
       try {

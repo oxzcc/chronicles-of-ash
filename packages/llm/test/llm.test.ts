@@ -233,12 +233,16 @@ describe("промпты по мирам", () => {
     expect(a).toContain('"race":"human"');
     expect(a).not.toMatch(/Baldur|тёмно-фэнтезийн|золот/);
     expect(gmRules(world)).not.toContain("РАССЛЕДОВАНИЕ:");
+    expect(a).toContain("ОПАСНЫЕ ВСТРЕЧИ:");
+    expect(a).toContain('"combat":null,');
+    expect(a).not.toContain("БОЙ: если начинается схватка");
+    expect(gmRules(world)).toContain("БОЙ: если начинается схватка");
     // Постоянные лица: одна внешность во всех делах; у фэнтези их нет.
     expect(a).toContain("ПОСТОЯННЫЕ ЛИЦА:");
     expect(a).toContain(`доктор Сайлас Уэйкфилд (наставник, отставной профессор антропологии): ${arkham.cast!.mentor.look}.`);
     expect(gmRules(world)).not.toContain("ПОСТОЯННЫЕ ЛИЦА");
-    expect(promptVersion(arkham)).toBe("gm-9+arkham-6");
-    expect(promptVersion(world)).toBe("gm-9");
+    expect(promptVersion(arkham)).toBe("gm-10+arkham-7");
+    expect(promptVersion(world)).toBe("gm-10");
     expect(rollCheckTool(arkham.rules).parameters).toMatchObject({ properties: { skill: { enum: expect.arrayContaining(["Психология", "Оккультизм"]) } } });
     expect(JSON.stringify(rollCheckTool(arkham.rules))).not.toContain("Магия");
     const hero = createCharacter(arkham.rules, { world: "arkham", phobia: "Темнота", name: "Агнес", gender: "f", race: "human", cls: "journalist", base: { ...arkham.rules.recommended.journalist! }, skills: ["Обман", "Архивы"] }, mulberry32(1));
@@ -256,7 +260,7 @@ describe("промпты по мирам", () => {
     const camp = layoutCampaign(arkham.rules, arkham.fallbackQuest, "s");
     const r = await runNarratorTurn({ world: arkham, provider: new FakeProvider(), model: "fake", worldBible: "", scene: { character: hero, campaign: camp, history: [], action: "Осматриваюсь" }, rng: mulberry32(2) });
     expect(r.response.speaker?.name).toBe("Сержант Маллой");
-    expect(r.promptVersion).toBe("gm-9+arkham-6");
+    expect(r.promptVersion).toBe("gm-10+arkham-7");
   });
 });
 

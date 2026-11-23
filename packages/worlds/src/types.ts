@@ -35,6 +35,8 @@ export interface World {
   features: {
     /** Детективное дело вместо квеста: улики, справочник, газета, закрытие дела. */
     case?: boolean;
+    /** Отдельный боевой режим. По умолчанию включён; false — опасности разыгрываются как сцены. */
+    combat?: boolean;
   };
   /** Запасное дело (для features.case). */
   fallbackCase?: CaseSeed;
