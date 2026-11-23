@@ -98,6 +98,20 @@ export class FakeProvider implements LlmProvider {
     }
     if (prompt.includes('"questTitle"')) return this.plain(JSON.stringify(fake === FAKE_SCENES.arkham ? FAKE_ARKHAM_QUEST : FAKE_QUEST));
     if (prompt.includes("предысторию")) return this.plain(fake.bio);
+    // Финал дела: несколько уже знакомых участников и отдельная последняя реплика рассказчика.
+    if (prompt.includes("[Дело закрыто]")) {
+      const verdict = prompt.includes("«Дело раскрыто»") ? "Дело раскрыто" : "Дело не раскрыто";
+      return this.plain(JSON.stringify({
+        beats: [
+          { speaker: null, text: "В кабинете стихает дождь. Уэйкфилд раскладывает твои записи рядом с протоколом, и разрозненные мелочи наконец образуют одну цепочку." },
+          { speaker: "доктор Сайлас Уэйкфилд", text: "Теперь видно главное: сеанс использовали как прикрытие, а книга понадобилась тому, кто знал её содержимое заранее." },
+          { speaker: "Кит Ларкин", text: "Я думал, всё сойдёт за несчастный случай. Но чашку и страницу из книги я действительно забрал." },
+          { speaker: null, text: `${verdict}. Полиция получает признание и улики, но последняя страница рукописи так и остаётся пустой — словно часть истории ещё не решилась показаться на свет.` },
+        ],
+        speaker: { name: "доктор Сайлас Уэйкфилд", race: "human", gender: "m", role: "наставник, отставной профессор" },
+        changes: { hp: 0, sanity: 0, gold: 0, addItems: [], removeItems: [] }, combat: null, questDone: [], questComplete: false, suggestions: [], clues: [], reveal: [],
+      }));
+    }
     const wantsRoll = (this.opts.askRoll ?? true) && !!req.tools?.length && last?.role === "user" && !prompt.includes("[Проверка уже брошена игрой]");
     if (wantsRoll) {
       return {

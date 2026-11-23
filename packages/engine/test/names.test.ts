@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getWorld } from "@ash/worlds";
-import { findPlace, layoutCampaign, layoutCase, matchName, mulberry32, neighbors, sameName, storyMove } from "../src/index";
+import { CASE_HUB_ID, findPlace, layoutCampaign, layoutCase, matchName, mulberry32, neighbors, sameName, storyMove } from "../src/index";
 
 describe("имена: тот же ли человек", () => {
   it("короткое имя и падежи — тот же; лишнее слово — другой", () => {
@@ -55,11 +55,13 @@ describe("переход по рассказу", () => {
     const w = layoutCase(A.rules, A.fallbackCase!, "s");
     const unknown = w.locations.find((l) => !w.case!.known.includes(l.id))!;
     expect(storyMove(A.rules, w, unknown.id, mulberry32(1))).toMatchObject({ error: expect.stringMatching(/не знаешь/) });
+    w.current = CASE_HUB_ID;
     const known = w.locations.find((l) => w.case!.known.includes(l.id) && l.id !== w.current)!;
     expect(storyMove(A.rules, w, known.name, mulberry32(1))).toMatchObject({ to: { id: known.id } });
     expect(w.case!.visits).toBe(1);
     w.case!.visits = w.case!.limit;
-    expect(storyMove(A.rules, w, w.locations[0]!.id, mulberry32(1))).toMatchObject({ error: expect.stringMatching(/Время вышло/) });
+    const next = w.locations.find((l) => l.id !== w.current && w.case!.known.includes(l.id))!;
+    expect(storyMove(A.rules, w, next.id, mulberry32(1))).toMatchObject({ error: expect.stringMatching(/Время вышло/) });
   });
 });
 

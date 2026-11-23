@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { heroMood, heroMoodsAhead } from "../src";
+import { emotionAt, heroMood, heroMoodsAhead } from "../src";
 
 const hero = (o: Partial<{ hp: number; hpMax: number; sanity: number; sanityMax: number }> = {}) => ({ hp: 12, hpMax: 12, sanity: 12, sanityMax: 12, ...o });
 
@@ -28,5 +28,29 @@ describe("лицо героя по состоянию", () => {
     expect(heroMoodsAhead(hero({ hp: 7 }))).toEqual([]);
     expect(heroMoodsAhead(hero({ hp: 6 }))).toEqual(["wounded"]);
     expect(heroMoodsAhead(hero({ sanity: 6 }))).toEqual(["edge", "breakdown"]);
+  });
+});
+
+describe("эмоция NPC между репликами и ходами", () => {
+  const beats = [
+    { speaker: "Кит Ларкин", emotion: "fear" },
+    { speaker: "Мэри Хоу", emotion: "anger" },
+    { speaker: "Кит Ларкин" },
+    { speaker: "Кит Ларкин", emotion: null },
+    { speaker: "Кит Ларкин", emotion: "anger" },
+    { speaker: "Кит Ларкин" },
+  ];
+
+  it("пустое поле сохраняет выражение, чужие реплики его не меняют", () => {
+    expect(beats.map((_, i) => emotionAt(beats, i, "кит ларкин"))).toEqual(["fear", "fear", "fear", undefined, "anger", "anger"]);
+  });
+
+  it("initial переносит выражение на следующий ход, null возвращает нейтральное лицо", () => {
+    expect(emotionAt([{ speaker: "Кит Ларкин" }], 0, "Кит Ларкин", "fear")).toBe("fear");
+    expect(emotionAt([{ speaker: "Кит Ларкин", emotion: null }], 0, "Кит Ларкин", "fear")).toBeUndefined();
+  });
+
+  it("без собеседника выражения нет", () => {
+    expect(emotionAt(beats, 0, null, "fear")).toBeUndefined();
   });
 });

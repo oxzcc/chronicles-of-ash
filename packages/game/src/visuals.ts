@@ -335,6 +335,23 @@ export async function ensureHeroMoods(db: Db, world: World, portraitImageId: str
 }
 
 /**
+ * Отдельный процесс закрытия: тот же фон кабинета и обычный портрет героя с вариантом лица.
+ * Новой широкой картинки не создаём; задумчивый вариант переиспользуется между кампаниями героя.
+ */
+export async function prepareCaseClosing(db: Db, campaignId: string, characterId: string, world: World, w: Campaign) {
+  const office = w.locations.find((l) => l.type === "office" && /Уэйкфилд/i.test(l.name)) ?? w.locations.find((l) => l.type === "office");
+  if (!office) throw new GameError("Для закрытия дела нужен кабинет наставника.");
+  await ensureBackground(db, campaignId, world, w, { locId: office.id });
+  const change = world.art.emotions?.closing;
+  const [hero] = await db.select({ img: characters.portraitImageId }).from(characters).where(eq(characters.id, characterId));
+  if (change && hero?.img) await enqueueVariant(db, { world, baseId: hero.img, mood: "thinking", change });
+  return {
+    location: { id: office.id, name: office.name, type: office.type },
+    scene: await sceneView(db, campaignId, characterId, w),
+  };
+}
+
+/**
  * Про запас: фоны мест, куда герой может пойти сразу, постоянные лица мира и портреты жителей дела, которых там можно встретить.
  * Зовётся при создании кампании (пока рассказчик пишет завязку) и после каждого хода — для новых адресов.
  * Все задачи — с низким приоритетом: срочные портреты и фоны идут первыми.
@@ -408,7 +425,7 @@ export interface ImageView {
 
 export interface SceneView {
   hero: ImageView | null;
-  /** Готовые лица героя по состоянию (heroMood): wounded, edge, breakdown → адрес. */
+  /** Готовые лица героя: состояния wounded/edge/breakdown и thinking для закрытия дела. */
   heroMoods?: Record<string, string>;
   /** Фоны локаций по id локации. */
   locations: Record<string, ImageView>;

@@ -79,6 +79,9 @@ export interface CaseResult {
   timeUp: boolean;
 }
 
+/** Раскрыто ли дело по сути ответов; штрафы и соревнование с наставником на это не влияют. */
+export const caseSolved = (r: Pick<CaseResult, "points" | "max">) => r.max > 0 && r.points * 2 >= r.max;
+
 export interface CaseState {
   /** Что произошло на самом деле. Видит только мастер. */
   truth: string;
@@ -236,7 +239,49 @@ export function layoutCase(r: Ruleset, seed: CaseSeed, layoutSeed: string): Camp
   };
   // В деле нет «финальной локации»: развязку открывает сам игрок, закрывая дело.
   w.target = "";
+  ensureCaseHub(w);
   return w;
+}
+
+/** Служебная улица-хаб: не улика и не адрес из дела, а место выбора следующего визита. */
+export const CASE_HUB_ID = "HUB";
+
+/**
+ * Гарантирует хаб и в новых, и в уже сохранённых кампаниях без миграции БД.
+ * Выход сюда не считается визитом; жителей и улик здесь нет.
+ */
+export function ensureCaseHub(w: Campaign): MapLocation {
+  const c = w.case;
+  if (!c) throw new Error("Нет дела.");
+  let hub = locationById(w, CASE_HUB_ID);
+  if (!hub) {
+    hub = {
+      id: CASE_HUB_ID,
+      name: "Улицы Аркхэма",
+      type: "street",
+      desc: "Туман над мостовой, газовые фонари и дороги к известным адресам.",
+      x: 0.5,
+      y: 0.5,
+      visited: false,
+    };
+    w.locations.push(hub);
+  }
+  if (!c.known.includes(hub.id)) c.known.push(hub.id);
+  return hub;
+}
+
+/** Завершить сцену и выйти на улицу. Время дела не тратится, даже когда визиты уже кончились. */
+export function leaveCase(w: Campaign): { from: MapLocation; to: MapLocation } {
+  if (!w.case) throw new Error("Нет дела.");
+  if (w.case.result) throw new Error("Дело уже закрыто.");
+  if (w.combat) throw new Error("Нельзя уйти посреди боя.");
+  const from = locationById(w, w.current)!;
+  const to = ensureCaseHub(w);
+  if (from.id === to.id) throw new Error("Ты уже на улице.");
+  w.current = to.id;
+  to.visited = true;
+  w.npc = null;
+  return { from, to };
 }
 
 export const isKnown = (w: Campaign, id: string) => !!w.case?.known.includes(id);
@@ -245,17 +290,26 @@ export const timeIsUp = (w: Campaign) => !!w.case && w.case.visits >= w.case.lim
 /** Шанс встречи на пути: в деле редко и только к опасным местам. */
 export const caseEncounterChance = (r: Ruleset, type: string) => (r.locationTypes[type]?.safe ? 0 : 0.15);
 
-/** Переход в деле: в любое известное место, каждый визит на счету. */
+/**
+ * Переход в деле: сначала выход на служебную улицу (бесплатно), затем выбор известного адреса.
+ * Только вход по адресу из хаба считается визитом; рассказчик не может обойти этот порядок через move.
+ */
 export function travelCase(r: Ruleset, w: Campaign, toId: string, rng: Rng) {
   const c = w.case;
   if (!c) throw new Error("Нет дела.");
   if (c.result) throw new Error("Дело уже закрыто.");
   if (w.combat) throw new Error("Нельзя уйти посреди боя.");
-  if (timeIsUp(w)) throw new Error("Время вышло: пора закрывать дело.");
   const from = locationById(w, w.current)!;
+  ensureCaseHub(w);
   const to = locationById(w, toId);
   if (!to || !c.known.includes(to.id)) throw new Error("Этого адреса ты не знаешь.");
   if (to.id === w.current) throw new Error("Ты и так здесь.");
+  if (to.id === CASE_HUB_ID) {
+    const left = leaveCase(w);
+    return { ...left, encounter: false, timeUp: timeIsUp(w) };
+  }
+  if (timeIsUp(w)) throw new Error("Время вышло: пора закрывать дело.");
+  if (from.id !== CASE_HUB_ID) throw new Error("Сначала выйди на улицу.");
   const encounter = rng() < caseEncounterChance(r, to.type);
   w.current = to.id;
   to.visited = true;
@@ -400,6 +454,8 @@ export type PublicCampaign = Omit<Campaign, "case"> & { case?: PublicCase };
 export function publicCampaign(w: Campaign): PublicCampaign {
   const c = w.case;
   if (!c) return w as PublicCampaign;
+  // Старые сохранения получают хаб при первом же чтении, без отдельной миграции.
+  ensureCaseHub(w);
   const known = new Set(c.known);
   const { case: _secret, ...rest } = w;
   const pub: PublicCase = {

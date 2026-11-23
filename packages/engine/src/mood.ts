@@ -1,4 +1,5 @@
 import { isUnhinged, type Character } from "./character";
+import { sameName } from "./names";
 import type { Campaign } from "./world";
 
 /**
@@ -32,4 +33,24 @@ export function heroMoodsAhead(c: Pick<Character, "hp" | "hpMax" | "sanity" | "s
   if (c.hpMax > 0 && c.hp * 2 <= c.hpMax) out.push("wounded");
   if (c.sanity !== undefined && c.sanityMax && c.sanity * 2 <= c.sanityMax) out.push("edge", "breakdown");
   return out;
+}
+
+export interface EmotionBeat {
+  speaker: string | null;
+  emotion?: string | null;
+}
+
+/**
+ * Выражение NPC на выбранном кадре: пустое emotion наследует прежнее, null сбрасывает.
+ * initial переносит состояние на следующий ход; другие говорящие его не меняют.
+ * При смене сцены или NPC вызывающий начинает без initial.
+ */
+export function emotionAt(beats: readonly EmotionBeat[], index: number, name: string | null | undefined, initial?: string): string | undefined {
+  if (!name) return undefined;
+  let current = initial;
+  for (const b of beats.slice(0, Math.max(0, index + 1))) {
+    if (!b.speaker || !sameName(b.speaker, name) || b.emotion === undefined) continue;
+    current = b.emotion ?? undefined;
+  }
+  return current;
 }

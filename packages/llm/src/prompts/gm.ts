@@ -1,5 +1,5 @@
 import {
-  attitudeWord, checkable, DC, DC_MAX, DC_MIN, findNpc, locationById, locationTypeName, neighbors, normName, raceKeys, sheetText,
+  attitudeWord, CASE_HUB_ID, checkable, DC, DC_MAX, DC_MIN, findNpc, locationById, locationTypeName, neighbors, normName, raceKeys, sheetText,
   type Campaign, type Character, type NpcMemory, type Ruleset,
 } from "@ash/engine";
 import { caseRules, caseScene } from "./case";
@@ -7,7 +7,7 @@ import type { World } from "@ash/worlds";
 import type { ToolDef } from "../types";
 
 /** Версия промптов — пишется в каждый ход, чтобы сравнивать качество между версиями. */
-export const PROMPT_VERSION = "gm-7";
+export const PROMPT_VERSION = "gm-9";
 
 /**
  * Правила мастера: общие разделы (проверки, бой, форма ответа) здесь,
@@ -28,7 +28,7 @@ ${findsRule(world)}
 ${NPC_RULES}${world.art.emotions ? `\n${emotionRule(world.art.emotions)}` : ""}
 ВАРИАНТЫ: 3 коротких варианта действия от первого лица, разные по подходу. Если исход варианта неочевиден, укажи проверку, которую он потребует${g.choicesNote}: skill — навык или характеристика, dc — сложность. Хотя бы один вариант — без проверки.
 Ответ — строго один JSON-объект без markdown и пояснений вне него, поле beats — первым:
-{"beats":[{"speaker":null,"text":"повествование","finds":[]},{"speaker":"Имя NPC",${world.art.emotions ? '"emotion":null,' : ""}"text":"его прямая речь","finds":[]}],"speaker":{"name":"Имя","race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова","look":"внешность в 8–15 словах: возраст, сложение, лицо, одежда, примета"} или null,"changes":{"hp":0,${world.rules.sanity ? '"sanity":0,' : ""}"gold":0,"addItems":[],"removeItems":[]},"combat":null или {"enemies":[{"name":"Имя","hp":10,"ac":12,"attack":3,"damage":"1d6+1","gender":"m|f","look":"внешность"}]},"move":null,"npcs":[{"name":"Имя NPC","voice":"манера речи — только при первой встрече","attitude":0,"told":["что он впервые сказал герою"]}],"questDone":[],"questComplete":false,${world.features.case ? '"clues":[],"reveal":[],' : ""}"suggestions":[${JSON.stringify(ex)},${world.features.case ? '{"text":"Показываю ей найденную записку","present":"c2"},' : ""}{"text":"Молча ухожу"}]}
+{"beats":[{"speaker":null,"text":"повествование","finds":[]},{"speaker":"Имя NPC",${world.art.emotions ? '"emotion":null,' : ""}"text":"его прямая речь","finds":[]}],"speaker":{"name":"Имя","race":"${raceKeys(world.rules).join("|")}","gender":"m|f","role":"кто это, 2–4 слова","look":"внешность в 8–15 словах: возраст, сложение, лицо, одежда, примета"} или null,"changes":{"hp":0,${world.rules.sanity ? '"sanity":0,' : ""}"gold":0,"addItems":[],"removeItems":[]},"combat":null или {"enemies":[{"name":"Имя","hp":10,"ac":12,"attack":3,"damage":"1d6+1","gender":"m|f","look":"внешность"}]},"move":null,"npcs":[{"name":"Имя NPC","voice":"манера речи — только при первой встрече","attitude":0,"told":["что он впервые сказал герою"]}],"questDone":[],"questComplete":false,${world.features.case ? '"clues":[],"reveal":[],' : ""}"suggestions":[${JSON.stringify(ex)},${world.features.case ? '{"text":"Показываю ей найденную записку","present":"c2"},{"text":"Осматриваю место"}' : '{"text":"Молча ухожу"}'}]}
 speaker — тот NPC, с кем герой сейчас говорит или кто сейчас в центре сцены; null, если такого нет. look заполняй всегда одинаково для одного и того же NPC — по нему рисуется портрет.`;
 }
 
@@ -48,7 +48,7 @@ export function findsRule(world: World): string {
  * Редко и по делу: каждое новое лицо стоит денег, а нейтральный портрет — не ошибка.
  */
 export const emotionRule = (e: NonNullable<World["art"]["emotions"]>) =>
-  `ЭМОЦИИ (emotion): у реплики NPC можно указать одно слово — ${Object.values(e.npc).map((x) => x.ru).join(", ")} — только когда чувство сильное и явно видно по его словам и сцене: испуг, вспышка гнева, слёзы, искренняя радость, его уличили или ошеломили. Обычный разговор, сдержанность, лёгкое недовольство — emotion: null. Не больше двух реплик с эмоцией за ход; у реплики рассказчика — всегда null. Поле emotion пиши перед text.`;
+  `ЭМОЦИИ (emotion): у реплики NPC можно указать одно слово — ${Object.values(e.npc).map((x) => x.ru).join(", ")} — только когда чувство сильное и явно видно по его словам и сцене: испуг, вспышка гнева, слёзы, искренняя радость, его уличили или ошеломили. Если то же чувство продолжается в следующих репликах того же NPC, повторяй его: игра сохранит выражение лица и не станет рисовать новый портрет. Когда чувство закончилось, явно верни emotion: null — это возврат к нейтральному лицу. Если поля нет, прежняя эмоция сохраняется. Обычный разговор, сдержанность, лёгкое недовольство — emotion: null. Не больше двух разных эмоций за ход; у реплики рассказчика — всегда null. Поле emotion пиши перед text.`;
 
 /** Память о людях: мастер ведёт карточки, движок их хранит и режет. */
 export const NPC_RULES = `ПАМЯТЬ О ЛЮДЯХ (npcs): для каждого NPC, который говорил в этом ответе, верни {"name","voice","attitude","told"}: voice — манера речи в 5–10 словах, только при первой встрече; attitude — как изменилось его отношение к герою после этого хода: -1, 0 или 1; told — сведения, которые он впервые сообщил герою (факты, имена, места, время, его версия событий), коротко, до двух пунктов; не действия и не настроение, не пересказ уже сказанного. Держись раздела ЛЮДИ в сцене: человек говорит своей манерой, помнит, что уже рассказал, и не меняет слов без причины (уличили, испугался, подкупили). Отношение меняют поступки героя: грубость, угрозы, ложь — вниз; помощь, уважение, общая беда — вверх. Кто не говорил — в npcs не пиши.`;
@@ -135,10 +135,11 @@ export interface SceneContext {
 export function narratorUserPrompt(world: World, { character, campaign: w, history, action }: SceneContext): string {
   const R = world.rules;
   const cur = locationById(w, w.current)!;
-  // В деле герой ходит по известным адресам, а не по дорогам.
+  // В деле адрес выбирается только с улицы-хаба; из разговора рассказчик героя никуда не переносит.
   // Визиты по делу кончились — идти некуда, пора закрывать дело.
   const timeUp = !!w.case && w.case.visits >= w.case.limit;
-  const nb = (w.case ? w.locations.filter((l) => !timeUp && w.case!.known.includes(l.id) && l.id !== w.current) : neighbors(w, w.current))
+  const atHub = w.current === CASE_HUB_ID;
+  const nb = (w.case ? w.locations.filter((l) => atHub && !timeUp && w.case!.known.includes(l.id) && l.id !== w.current) : neighbors(w, w.current))
     .map((l) => `${l.name} (${locationTypeName(R, l.type)})`)
     .join("; ");
   const objs = w.objectives.map((o) => `[${o.id}] ${o.text} — ${o.done ? "выполнено" : "не выполнено"}`).join("\n");
@@ -150,7 +151,7 @@ ${sheetText(R, character)}
 ${objs}${w.complete ? "\nКвест уже завершён: веди эпилог или новую нить истории." : ""}
 
 ТЕКУЩАЯ ЛОКАЦИЯ: ${cur.name} (${locationTypeName(R, cur.type)}) — ${cur.desc}
-Куда можно пойти (${w.case ? "известные герою адреса, каждый переход — визит по делу" : "соседние места на карте"}): ${nb || (timeUp ? "никуда — визиты кончились" : "никуда")}${w.case ? `\n\n${caseScene(world, w)}` : ""}
+Куда можно пойти (${w.case ? atHub ? "известные герою адреса, выбор делает игрок отдельным переходом" : "из текущей сцены — никак; выход на улицу выполняет игра" : "соседние места на карте"}): ${nb || (timeUp ? "никуда — визиты кончились" : w.case && !atHub ? "никуда через рассказ" : "никуда")}${w.case ? `\n\n${caseScene(world, w)}` : ""}
 ${w.npc ? `Сейчас рядом: ${w.npc.name} (${w.npc.role})` : ""}${(() => {
     const cards = peopleCards(w, action);
     return cards ? `\nЛЮДИ, КОТОРЫХ ГЕРОЙ УЖЕ ВСТРЕЧАЛ (держись этого):\n${cards}` : "";
@@ -169,6 +170,8 @@ export const systemActions = {
   start: (place: string) => `[Начало приключения] Опиши, как герой оказывается в месте «${place}» и сталкивается с завязкой квеста. Представь ключевого NPC, если он есть.`,
   travel: (from: string, to: string, encounter: boolean) =>
     `[Перемещение] Герой идёт из «${from}» в «${to}». Опиши дорогу коротко и прибытие подробнее. ${encounter ? "В пути случается встреча — опасная или странная; если это враги, заполни combat." : "Дорога проходит без встреч."}`,
+  leave: (from: string, to: string) =>
+    `[Выход на улицу] Игра уже перенесла героя из «${from}» в служебный хаб «${to}». Одной-двумя репликами рассказчика опиши выход и улицу. Без NPC, улик и происшествий; speaker: null, move: null, combat: null. Не выбирай следующий адрес за игрока.`,
   rest: (missingHp: number) =>
     `[Отдых] Герой устраивает привал, чтобы восстановить силы. Реши, удалось ли отдохнуть спокойно в этом месте. Если удалось — верни changes.hp, равный недостающему здоровью (${missingHp}). Если отдых прерван — опиши, чем.`,
   /** Вариант с проверкой: игра уже бросила кубик, мастер описывает исход по результату. */

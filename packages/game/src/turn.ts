@@ -1,11 +1,11 @@
 import {
-  applyCaseChanges, applyChanges, applyNpcNotes, breakDown, checkTwist, effect, emptyApplied, presentClue, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, knockOut, locationById, lookup, markDeduction,
+  applyCaseChanges, applyChanges, applyNpcNotes, breakDown, caseSolved, checkTwist, effect, emptyApplied, presentClue, CASE_HUB_ID, CASE_LIMITS, closeCase, combatSummary, isUnhinged, deductionCandidates, ensureCaseHub, knockOut, leaveCase, locationById, lookup, markDeduction,
   playerMove, sameName, skillCheck, startCombat, storyMove, travel, travelCase,
   type CombatEvent, type CombatOutcome, type TurnEffect, type Verdict,
 } from "@ash/engine";
 import {
-  addUsage, caseActions, deducePrompt, emptyUsage, gradePrompt, parseDeduction, parseVerdicts, roughVerdict, runNarratorTurn, systemActions,
-  type Beat, type HistoryEntry, type Usage,
+  addUsage, beatsText, caseActions, deducePrompt, emptyUsage, gradePrompt, parseDeduction, parseVerdicts, roughVerdict, runNarratorTurn, systemActions,
+  type Beat, type GmResponse, type HistoryEntry, type Usage,
 } from "@ash/llm";
 import { worldOf } from "@ash/worlds";
 import { GameError, type GameState, type TurnDeps, type TurnInput, type TurnOutcome, type TurnRecord } from "./types";
@@ -28,11 +28,27 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
   const world = worldOf(c);
   const R = world.rules;
   const records: TurnRecord[] = [];
+  if (w.case?.result) throw new GameError("Дело уже закрыто. Вернись на главный экран.");
+  if (w.case) ensureCaseHub(w);
   const history = (): HistoryEntry[] => toHistory([...prior, ...records]);
+  /** В деле житель другого адреса не может оказаться на сцене без кодового перехода; на улице-хабе NPC нет. */
+  const speakerAllowed = (name: string) => {
+    if (!w.case) return true;
+    if (w.current === CASE_HUB_ID) return false;
+    const person = w.case.people.find((p) => sameName(p.name, name));
+    return !person || person.at === w.current;
+  };
+  const confineCaseResponse = (resp: GmResponse) => {
+    if (!w.case) return;
+    if (resp.speaker && !speakerAllowed(resp.speaker.name)) resp.speaker = null;
+    resp.beats = resp.beats.map((b) => b.speaker && !speakerAllowed(b.speaker) ? { ...b, speaker: null, emotion: undefined } : b);
+    resp.narration = beatsText(resp.beats);
+  };
   const emotionsSent = new Set<string>();
   /** Эмоции реплик — по списку мира; новые пары «имя + эмоция» — сразу в очередь картинок. */
   const withEmotions = (beats: Beat[]) => {
-    const out = normalizeEmotions(world, beats);
+    const normalized = normalizeEmotions(world, beats);
+    const out = normalized.map((b) => b.speaker && !speakerAllowed(b.speaker) ? { ...b, speaker: null, emotion: undefined } : b);
     for (const b of out)
       if (b.speaker && b.emotion && !sameName(b.speaker, c.name) && !emotionsSent.has(`${b.speaker}|${b.emotion}`)) {
         emotionsSent.add(`${b.speaker}|${b.emotion}`);
@@ -50,11 +66,14 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       // Реплики идут игроку сразу — уже с подсветкой находок, которые движок примет.
       onBeats: (beats) => deps.emit?.({ type: "beats", beats: previewMarks(c, w, withEmotions(beats)) }),
       onRoll: (roll) => deps.emit?.({ type: "roll", roll }),
-      onSpeaker: deps.onSpeaker,
+      onSpeaker: (speaker) => {
+        if (speakerAllowed(speaker.name)) deps.onSpeaker?.(speaker);
+      },
       allowChecks: !opts.preRolls?.length,
     });
     const resp = r.response;
     resp.beats = withEmotions(resp.beats);
+    confineCaseResponse(resp);
     const applied = applyChanges(R, c, w, {
       ...resp.changes,
       hp: opts.keepHp ? 0 : resp.changes.hp,
@@ -74,15 +93,19 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       applied.rejected.push(...found.rejected);
       if (applied.sanity < 0) w.case.sanityLost += -applied.sanity;
     }
-    // Мастер довёл героя до другого места прямо в рассказе — движок проверяет и переносит (после reveal: адрес мог открыться в этом же ответе).
-    if (opts.allowMove) {
+    // В фэнтези мастер может довести героя до соседнего места. В деле смена адреса — только отдельным
+    // кодовым переходом с улицы-хаба: текстовый move больше не может рассинхронизировать сцену.
+    if (opts.allowMove && !w.case) {
       const m = storyMove(R, w, resp.move, deps.rng);
       if (m && "error" in m) applied.rejected.push(m.error);
       else if (m) {
         applied.notes.push(`переход: ${m.to.name}${m.timeUp ? " (визиты кончились)" : ""}`);
         await deps.onArrive?.();
       }
+    } else if (opts.allowMove && w.case && resp.move) {
+      applied.rejected.push("move: в деле следующий адрес выбирает игрок на улице");
     }
+    if (w.case) resp.move = null;
     // Память о людях: карточки у всех, кто говорил; заметки мастера — только о них.
     const speakers = [...new Set(resp.beats.flatMap((b) => (b.speaker ? [b.speaker] : [])))].map((name) => ({ name, role: resp.speaker && sameName(resp.speaker.name, name) ? resp.speaker.role : "" }));
     const people = applyNpcNotes(w, speakers, resp.npcs);
@@ -238,6 +261,20 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       await checkBroken();
       break;
     }
+    case "leave": {
+      needCase();
+      let t;
+      try {
+        t = leaveCase(w);
+      } catch (e) {
+        throw new GameError((e as Error).message);
+      }
+      // Состояние, фон и отсутствие собеседника меняются до первой реплики о выходе.
+      await deps.onArrive?.();
+      await narrate("leave", `Выход из «${t.from.name}»`, systemActions.leave(t.from.name, t.to.name));
+      await checkBroken();
+      break;
+    }
     case "travel": {
       let t;
       try {
@@ -335,7 +372,7 @@ export async function playTurn(deps: TurnDeps, state: GameState, prior: Recordis
       const result = closeCase(w, cs.questions.map((q) => ({ id: q.id, answer: answers[q.id] ?? "", verdict: verdicts![q.id] ?? "wrong" })));
       const word = { right: "верно", partial: "отчасти верно", wrong: "неверно" } as const;
       const lines = cs.questions.map((q, i) => `${q.text} Ответ героя: «${answers[q.id] || "—"}» — ${word[result.answers[i]!.verdict]}.`);
-      await narrate("close", "Дело закрыто", caseActions.close(lines, timeUp, isUnhinged(c)), { extraUsage: extra, keepSanity: true });
+      await narrate("close", "Дело закрыто", caseActions.close(lines, timeUp, isUnhinged(c), caseSolved(result)), { extraUsage: extra, keepSanity: true });
       break;
     }
     case "combat": {

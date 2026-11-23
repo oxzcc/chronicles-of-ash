@@ -16,6 +16,8 @@ describe.each([FANTASY_SCENES, ARKHAM_SCENES].map((s) => [s.world, s] as const))
       if (s.npc) expect(Object.keys(R.races), s.id).toContain(s.npc.race);
     }
     const raw = set.quest.locations as { type: string }[];
-    expect(buildScene(set, set.scenes[0]!).campaign.locations.map((l) => l.type)).toEqual(raw.map((l) => l.type));
+    const expected = raw.map((l) => l.type);
+    if (getWorld(set.world).features.case) expected.push("street"); // служебная улица-хаб добавляется движком
+    expect(buildScene(set, set.scenes[0]!).campaign.locations.map((l) => l.type)).toEqual(expected);
   });
 });

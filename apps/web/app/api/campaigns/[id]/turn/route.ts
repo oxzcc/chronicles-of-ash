@@ -13,6 +13,7 @@ function parseInput(body: any): TurnInput {
   switch (body?.kind) {
     case "start":
     case "rest":
+    case "leave":
       return { kind: body.kind };
     case "action":
       return { kind: "action", text: String(body.text ?? "") };

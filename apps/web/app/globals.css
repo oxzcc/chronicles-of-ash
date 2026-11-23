@@ -203,6 +203,12 @@ textarea { resize: vertical; }
 .vn-pips span { width: 20px; height: 3px; background: #4a3a28; }
 .vn-pips span.on { background: var(--gold); }
 .vn-choices { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.street-hub { padding: 12px 16px; overflow-y: auto; background: rgba(17, 12, 9, 0.9); border: 1px solid #4a3a28; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); }
+.street-hub h3 { margin: 3px 0 4px; color: var(--gold-hi); }
+.street-hub p { margin: 0; }
+.street-addresses { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin: 10px 0 0; }
+.street-addresses button { width: 100%; border-radius: 0; color: var(--ink); background: rgba(201, 164, 92, 0.06); }
+.vn-leave { align-self: flex-start; }
 /* Готовые варианты — на общей подложке, разделены тонкой золотой линией (как в BG3) */
 .vn-choices .suggestions { flex-direction: column; flex-wrap: nowrap; gap: 0; margin: 0; padding: 6px 0; background: rgba(17, 12, 9, 0.88); border: 1px solid #4a3a28; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); }
 .vn-choices .suggestions button { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border-radius: 0; padding: 12px 22px; font-family: var(--text); font-size: 19px; background: transparent; border: 0; color: var(--ink); transition: background 0.15s, color 0.15s; }
@@ -294,6 +300,44 @@ textarea { resize: vertical; }
 .verdict.bad { background: #4a2420; color: #e09080; }
 .case-close { display: flex; flex-direction: column; gap: 14px; }
 .case-q { display: flex; flex-direction: column; gap: 6px; font-family: var(--display); font-size: 18px; }
+
+/* Отдельный процесс завершения: сначала вопросы, затем обычные реплики развязки и финал. */
+.vn-closing .vn-hud-right { display: none; }
+.vn-dock-close { left: auto; right: 4vw; width: min(760px, 58vw); bottom: 28px; transform: none; max-height: calc(100% - 138px); }
+.vn-dock-close .case-close { min-height: 0; max-height: 100%; box-sizing: border-box; padding: 24px 26px; overflow: hidden; background: rgba(17, 12, 9, 0.96); border: 1px solid var(--gold); box-shadow: 0 0 0 4px rgba(17, 12, 9, 0.9), 0 0 0 5px rgba(201, 164, 92, 0.35), 0 18px 50px rgba(0, 0, 0, 0.65); }
+.case-close-head { flex: none; }
+.case-close-head h2, .vn-finale h2, .vn-close-confirm h2 { margin: 3px 0 8px; font-family: var(--display); font-size: 30px; line-height: 1.1; color: var(--gold-hi); }
+.case-close-head p, .vn-close-confirm p { margin: 0; color: var(--ink); line-height: 1.45; }
+.eyebrow { font-family: var(--ui); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
+.case-close-questions { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 2px 8px 2px 2px; }
+.case-close-questions textarea { resize: vertical; min-height: 76px; max-height: 180px; padding: 10px 12px; background: rgba(8, 6, 4, 0.72); border: 1px solid #5a4423; color: var(--ink); font-family: var(--text); font-size: 17px; line-height: 1.4; }
+.case-close-questions textarea:focus { outline: 1px solid var(--gold); border-color: var(--gold-hi); }
+.case-close-actions { flex: none; justify-content: space-between; gap: 10px; }
+.case-close-warning { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border: 1px solid var(--ember); background: rgba(91, 45, 24, 0.35); font-family: var(--ui); }
+.case-close-warning > span { flex: 1 1 240px; }
+.vn-close-veil { position: fixed; inset: 0; z-index: 7; display: grid; place-items: center; box-sizing: border-box; padding: 20px; background: rgba(8, 6, 4, 0.76); }
+.vn-close-confirm { width: min(540px, 100%); box-sizing: border-box; padding: 28px; background: #17100b; border: 1px solid var(--gold); box-shadow: 0 0 0 4px #17100b, 0 0 0 5px rgba(201, 164, 92, 0.4), 0 24px 70px #000; }
+.vn-close-confirm .row { justify-content: flex-end; flex-wrap: wrap; margin-top: 22px; }
+.vn-finale { box-sizing: border-box; max-height: calc(100vh - 150px); overflow-y: auto; padding: 28px 32px; background: rgba(17, 12, 9, 0.96); border: 1px solid var(--gold); box-shadow: 0 0 0 4px rgba(17, 12, 9, 0.92), 0 0 0 5px rgba(201, 164, 92, 0.4), 0 18px 50px #000; }
+.vn-finale.solved { border-color: #a8bd87; }
+.vn-finale.unsolved { border-color: var(--ember); }
+.vn-finale-text { margin: 12px 0 18px; font-size: 21px; line-height: 1.55; color: #f0e2c9; white-space: pre-line; }
+.vn-finale-score { margin-bottom: 20px; font-family: var(--ui); font-size: 15px; color: var(--gold-hi); }
+
+@media (max-width: 760px) {
+  .vn-answering .vn-bust-wrap { top: 58px; height: 36%; }
+  .vn-dock-close { left: 10px; right: 10px; top: 35%; bottom: 10px; width: auto; max-height: none; }
+  .vn-dock-close .case-close { padding: 16px 14px; gap: 10px; }
+  .case-close-head h2, .vn-finale h2, .vn-close-confirm h2 { font-size: 25px; }
+  .case-close-head p { font-size: 14px; }
+  .case-close-questions { gap: 12px; }
+  .case-q { font-size: 16px; }
+  .case-close-actions { flex-wrap: wrap; }
+  .case-close-actions .btn { flex: 1 1 160px; }
+  .vn-close-confirm { padding: 22px 18px; }
+  .vn-finale { max-height: calc(100vh - 120px); padding: 22px 18px; }
+  .vn-finale-text { font-size: 18px; }
+}
 .paper { background: #e9e0cc; color: #231b12; padding: 18px 20px; border-radius: 2px; font-family: Georgia, "Times New Roman", serif; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); }
 .paper-head { text-align: center; border-bottom: 3px double #231b12; padding-bottom: 8px; margin-bottom: 12px; }
 .paper-title { font-family: var(--display); font-size: 30px; font-weight: 700; letter-spacing: 0.02em; }

@@ -224,6 +224,7 @@ export const arkhamArt: ArtStyle = {
       edge: "haunted: a hollow thousand-yard stare, tense jaw, a sheen of sweat on the brow, hair slightly dishevelled, the face as young as before",
       breakdown: "in the grip of terror: eyes wide and staring, mouth open in a silent scream, hair dishevelled",
     },
+    closing: "thoughtful and concentrating: brows slightly drawn together, eyes lowered as if reading notes, lips relaxed and closed",
     perNpc: 2,
     perCampaign: 12,
   },
