@@ -16,6 +16,8 @@
     "@ash/images": "workspace:^",
     "@ash/llm": "workspace:^",
     "@ash/worlds": "workspace:^",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "lucide-react": "^0.468.0",
     "next": "16.4.6",
     "react": "19",
     "react-dom": "19",

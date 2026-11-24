@@ -1,5 +1,7 @@
 "use client";
 
+import * as Dialog from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
 import {
   abilityMod, CASE_HUB_ID, isHealing, locationTypeName, neighbors, proficiency, resolveSkill, STATS,
   type Character, type CheckResult, type CombatMove, type DiceShow, type PublicCampaign, type Ruleset,
@@ -7,6 +9,7 @@ import {
 import { worldOf } from "@ash/worlds";
 import type { Beat, Suggestion, TurnView } from "@/lib/client";
 import { BeatText, EffectChips } from "./vn";
+import { CheckDie } from "./arkham-check";
 
 /** Кубик на экране — из проверки навыка или из боя. */
 export type DiceView = { label: string; d20: number; calc: string; verdict: string; tone: "crit" | "ok" | "bad" };
@@ -20,16 +23,36 @@ export const diceFromCheck = (r: CheckResult): DiceView => ({
 });
 export const diceFromCombat = (d: DiceShow): DiceView => d;
 
-export function Dice({ dice }: { dice: DiceView }) {
-  return (
+export function Dice({ dice, material = false }: { dice: DiceView; material?: boolean }) {
+  if (!material) return (
     <div className="dice-veil" role="status" aria-live="polite">
       <div className="dice">
         <div className="label">{dice.label}</div>
-        <div className="d20 spin" key={dice.calc}>
-          {dice.d20}
-        </div>
+        <div className="d20 spin" key={dice.calc}>{dice.d20}</div>
         <div className="label">{dice.calc}</div>
         <div className={`verdict ${dice.tone}`}>{dice.verdict}</div>
+      </div>
+    </div>
+  );
+  return (
+    <div className="dice-veil arkham-check-veil" role="status" aria-live="polite">
+      <div className="check-panel check-phase-result">
+        <div className="check-glow" aria-hidden="true" />
+        <header className="check-header">
+          <span className="eyebrow">Результат проверки</span>
+          <h2>{dice.label}</h2>
+        </header>
+        <div className="check-body">
+          <div className="dice-column">
+            <CheckDie value={dice.d20} />
+            <span className="dice-caption">Бросок учтён движком</span>
+          </div>
+          <div className={`check-result is-visible ${dice.tone}`}>
+            <span className="outcome-kicker">{dice.tone === "bad" ? "Проверка не пройдена" : dice.tone === "crit" ? "Особый результат" : "Проверка пройдена"}</span>
+            <strong>{dice.verdict}</strong>
+            <div className="result-formula"><b>{dice.calc}</b></div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -100,11 +123,11 @@ export function checkOdds(c: Character, skill: string, dc: number) {
   return { mod, chance: wins * 5, stat: STATS[r.stat].short, proficient: !!(r.skill && c.skills.includes(r.skill)) };
 }
 
-export function Suggestions({ items, c, disabled, onPick }: { items: Suggestion[]; c: Character; disabled: boolean; onPick: (index: number) => void }) {
+export function Suggestions({ items, c, disabled, onPick, material = false }: { items: Suggestion[]; c: Character; disabled: boolean; onPick: (index: number) => void; material?: boolean }) {
   return (
-    <div className="suggestions">
+    <div className={`suggestions ${material ? "quick-actions" : ""}`}>
       {items.map((s, i) => (
-        <button key={i} disabled={disabled} onClick={() => onPick(i)}>
+        <button key={i} className={material ? `texture-button ${s.check ? "primary" : ""}` : undefined} disabled={disabled} onClick={() => onPick(i)}>
           {s.present && <span className="check-tag present">Предъявить</span>}
           {s.check && (
             <span className="check-tag">
@@ -121,30 +144,37 @@ export function Suggestions({ items, c, disabled, onPick }: { items: Suggestion[
 export function CheckDialog({ s, c, onRoll, onCancel }: { s: Suggestion & { check: { skill: string; dc: number } }; c: Character; onRoll: () => void; onCancel: () => void }) {
   const o = checkOdds(c, s.check.skill, s.check.dc);
   return (
-    <div className="dice-veil" onClick={onCancel}>
-      <div className="check-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Проверка навыка">
-        <div className="small muted">Проверка</div>
-        <h2>{s.check.skill}</h2>
-        <div className="check-dc">СЛ {s.check.dc}</div>
-        <p className="small muted">«{s.text}»</p>
-        <div className="kv" style={{ justifyContent: "center", gap: 18 }}>
-          <span>
-            Бонус {o.mod >= 0 ? "+" : "−"}
-            {Math.abs(o.mod)} ({o.stat}
-            {o.proficient ? ", владение" : ""})
-          </span>
-          <span>Шанс {o.chance}%</span>
-        </div>
-        <div className="row" style={{ justifyContent: "center", marginTop: 18 }}>
-          <button className="btn" onClick={onRoll} autoFocus>
-            Бросить d20
-          </button>
-          <button className="btn ghost" onClick={onCancel}>
-            Отмена
-          </button>
-        </div>
-      </div>
-    </div>
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="arkham-overlay check-overlay" />
+        <Dialog.Content className="check-panel check-phase-ready">
+          <div className="check-glow" aria-hidden="true" />
+          <span className="check-case" aria-hidden="true">Проверка · {o.stat}</span>
+          <Dialog.Close className="icon-button check-close" aria-label="Закрыть проверку"><X size={22} strokeWidth={1.35} /></Dialog.Close>
+          <header className="check-header">
+            <span className="eyebrow">Проверка навыка</span>
+            <Dialog.Title>{s.check.skill}</Dialog.Title>
+            <Dialog.Description>{s.text}</Dialog.Description>
+          </header>
+          <div className="check-body">
+            <div className="dice-column">
+              <CheckDie value={null} />
+              <span className="dice-caption">Один бросок · одно решение</span>
+            </div>
+            <div className="check-facts">
+              <div className="fact-line"><span>Сложность</span><strong>{s.check.dc}</strong></div>
+              <div className="fact-line"><span>Модификатор</span><strong className="green">{o.mod >= 0 ? "+" : "−"}{Math.abs(o.mod)}</strong></div>
+              <div className="fact-line"><span>Характеристика</span><strong>{o.stat}{o.proficient ? " · владение" : ""}</strong></div>
+              <div className="fact-line"><span>Шанс успеха</span><strong>{o.chance}%</strong></div>
+            </div>
+          </div>
+          <footer className="check-footer">
+            <button type="button" className="quiet-button" onClick={onCancel}>Отложить</button>
+            <button type="button" className="texture-button primary" onClick={onRoll} autoFocus>Сделать проверку</button>
+          </footer>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

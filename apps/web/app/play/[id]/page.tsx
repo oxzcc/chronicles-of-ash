@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { CASE_HUB_ID, emotionAt, heroMood, locationById, locationTypeName, matchName, type CheckResult, type CombatEvent, type CombatMove, type CombatState, type LocationType } from "@ash/engine";
 import { worldOf } from "@ash/worlds";
 import { api, sleep, streamTurn, type Beat, type CampaignView, type SceneView, type Suggestion, type TurnEffect, type TurnView } from "@/lib/client";
 import { CheckDialog, CombatPanel, Dice, diceFromCheck, diceFromCombat, Entry, Quest, Sheet, Suggestions, WorldMap, type DiceView } from "@/components/game";
-import { BeatText, beatsOf, Bust, Drawer, heroBeat, Icon, Pips, playerKinds, TextFrame, type Mark, type Shown } from "@/components/vn";
-import { CaseFile, CaseFinale, CloseCase, CloseCaseConfirm, Directory, Newspaper, People, StreetHub } from "@/components/case";
+import { ArkhamTextFrame, BeatText, beatsOf, Bust, Drawer, heroBeat, Icon, Pips, playerKinds, TextFrame, type Mark, type Shown } from "@/components/vn";
+import { CaseFinale, CloseCase, CloseCaseConfirm, Directory, Newspaper, People, StreetHub } from "@/components/case";
+import { ArkhamDossier, type DossierTab } from "@/components/arkham-dossier";
+import { ArkhamSigil } from "@/components/arkham-sigil";
 
 type Input =
   | { kind: "start" }
@@ -52,6 +54,7 @@ const ARRIVAL_MS = 2600;
 const NPC_DELAY_MS = 4000;
 /** Сколько держится кадр с действием героя, прежде чем сам уступит ответу мира. */
 const HERO_LINE_MS = 1200;
+const twoDigits = (n: number) => String(n).padStart(2, "0");
 
 /** Портрет NPC по имени: точно или по похожему имени («Эзра» = «Эзра Кроу») — так же, как сервер. */
 function npcView(scene: SceneView | undefined, name: string | null | undefined) {
@@ -94,6 +97,9 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const [dice, setDice] = useState<DiceView | null>(null);
   const [asking, setAsking] = useState<{ index: number; s: Suggestion & { check: { skill: string; dc: number } } } | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  const [dossierTab, setDossierTab] = useState<DossierTab>("clues");
+  const [selectedClue, setSelectedClue] = useState("");
+  const sceneRef = useRef<HTMLDivElement>(null);
   /** Куда навести панель: id улики в досье или места в справочнике (клик по подсвеченной находке). */
   const [focus, setFocus] = useState<string | null>(null);
   useEffect(() => {
@@ -385,14 +391,38 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     if (closureActive) return;
     setFocus(m.ref ?? null);
     if (m.kind === "address") setPanel(w.case ? "directory" : "map");
-    else if (m.kind === "clue" || m.kind === "deduction" || m.kind === "objective" || m.kind === "attitude" || m.kind === "caught") setPanel("quest");
-    else setPanel("hero");
+    else if (m.kind === "clue" || m.kind === "deduction" || m.kind === "objective" || m.kind === "attitude" || m.kind === "caught") {
+      if (m.kind === "clue" || m.kind === "deduction") {
+        if (m.ref) setSelectedClue(m.ref);
+        setDossierTab("clues");
+      } else if (m.kind === "attitude" || m.kind === "caught") setDossierTab("testimony");
+      setPanel("quest");
+    } else setPanel("hero");
+  };
+
+  const moveScene = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!w.case || event.pointerType === "touch" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width - 0.5) * -7;
+    const y = ((event.clientY - bounds.top) / bounds.height - 0.5) * -4;
+    sceneRef.current?.style.setProperty("--scene-x", `${x}px`);
+    sceneRef.current?.style.setProperty("--scene-y", `${y}px`);
+  };
+  const resetScene = () => {
+    sceneRef.current?.style.setProperty("--scene-x", "0px");
+    sceneRef.current?.style.setProperty("--scene-y", "0px");
   };
 
   return (
-    <div className={`vn ${closureActive ? "vn-closing" : ""} ${closing === "answers" ? "vn-answering" : ""}`}>
+    <div
+      className={`vn ${w.case ? "arkham-ui" : ""} ${closureActive ? "vn-closing" : ""} ${closing === "answers" ? "vn-answering" : ""}`}
+      ref={sceneRef}
+      onPointerMove={moveScene}
+      onPointerLeave={resetScene}
+    >
       {bgUrl ? <img className="vn-bg" key={bgUrl} src={bgUrl} alt="" /> : <div className="vn-bg vn-bg-empty" />}
       <div className="vn-shade" />
+      {w.case && <><div className="scene-fog" aria-hidden="true" /><div className="scene-glow" aria-hidden="true" /><div className="scene-vignette" aria-hidden="true" /><div className="scene-grime" aria-hidden="true" /></>}
       {titleCard ? null : closureActive ? (
         closingHero ? (
           <Bust url={scene?.hero?.url} over={scene?.heroMoods?.thinking} name={c.name} side="left" />
@@ -408,61 +438,87 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         onStage && <StageBust name={onStage} sceneLocation={sceneLocation} beats={all} index={cursor} stage={stage} dim={!speakerName} />
       )}
 
-      <header className="vn-hud">
-        <div className="vn-place">
-          <div className="name">{place.name}</div>
-          <div className="sub">{locationTypeName(R, place.type)}</div>
-        </div>
-        <div className="vn-hud-right">
-          <button className="vn-hero" onClick={() => setPanel("hero")} aria-label="Лист героя">
-            {heroFace ? <img key={heroFace} src={heroFace} alt="" /> : <span className="vn-hero-ph">{c.name[0]}</span>}
-            <span className="vn-hero-info">
-              <span className="n">{c.name}</span>
-              <span key={`hp${view.turnNo}`} className={`vn-hp ${hurt("hp") ? "hurt" : ""}`} role="img" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
-                <span style={{ width: `${(100 * c.hp) / c.hpMax}%` }} />
-              </span>
-              {c.sanity !== undefined && c.sanityMax ? (
-                <span key={`sn${view.turnNo}`} className={`vn-hp vn-sanity ${c.sanity * 3 <= c.sanityMax ? "low" : ""} ${hurt("sanity") ? "hurt" : ""}`} role="img" aria-label={`Рассудок ${c.sanity} из ${c.sanityMax}`}>
-                  <span style={{ width: `${(100 * c.sanity) / c.sanityMax}%` }} />
-                </span>
-              ) : null}
-              <span className="vn-stat">
-                {c.hp}/{c.hpMax}{combatEnabled ? ` · КД ${c.ac}` : ""} · {R.money.short(c.gold)}
-              </span>
-            </span>
-          </button>
-          <nav className="vn-tools" aria-label="Панели">
-            <button className="vn-icon" onClick={() => setPanel("quest")} aria-label={`Журнал: ${worldOf(c).ui.quest.toLowerCase()}`}>
-              {Icon.journal}
-            </button>
-            <button className="vn-icon" onClick={() => setPanel("map")} aria-label="Карта" disabled={!!combat}>
-              {Icon.map}
-            </button>
-            {w.case && (
-              <>
-                <button className="vn-icon" onClick={() => setPanel("paper")} aria-label="Газета">
-                  {Icon.newspaper}
-                </button>
-                <button className="vn-icon" onClick={() => setPanel("directory")} aria-label="Справочник" disabled={!!combat}>
-                  {Icon.directory}
-                </button>
-              </>
-            )}
-            <Link className="vn-icon" href="/" aria-label="Главный экран">
-              {Icon.home}
-            </Link>
+      {w.case ? (
+        <header className="vn-hud arkham-header">
+          <div className="world-mark">
+            <ArkhamSigil className="world-sigil" />
+            <div><strong>Аркхэм</strong><span>Таинственные дела</span></div>
+          </div>
+          <nav className="main-nav" aria-label="Игровые разделы">
+            <button type="button" className={panel === null ? "is-active" : ""} onClick={() => setPanel(null)}><span>01</span> Сцена</button>
+            <button type="button" className={panel === "quest" ? "is-active" : ""} onClick={() => setPanel("quest")}><span>02</span> Досье <sup>{twoDigits(w.case.clues.length)}</sup></button>
           </nav>
-        </div>
-      </header>
+          <div className="arkham-hud-right">
+            <nav className="vn-tools arkham-tools" aria-label="Материалы и переходы">
+              <button className="vn-icon" onClick={() => setPanel("paper")} aria-label="Газета">{Icon.newspaper}</button>
+              <button className="vn-icon" onClick={() => setPanel("directory")} aria-label="Справочник" disabled={!!combat}>{Icon.directory}</button>
+              <button className="vn-icon" onClick={() => setPanel("map")} aria-label="Карта" disabled={!!combat}>{Icon.map}</button>
+              <Link className="vn-icon" href="/" aria-label="Главный экран">{Icon.home}</Link>
+            </nav>
+            <button className={`sanity ${hurt("sanity") ? "hurt" : ""}`} onClick={() => setPanel("hero")} aria-label={`Лист героя. Рассудок: ${c.sanity ?? 0} из ${c.sanityMax ?? 0}`}>
+              <svg viewBox="0 0 74 74" aria-hidden="true">
+                <circle className="sanity-fracture" cx="37" cy="37" r="32" pathLength="100" />
+                <circle className="sanity-value-ring" cx="37" cy="37" r="27" pathLength="100" style={{ strokeDasharray: `${c.sanityMax ? (100 * (c.sanity ?? 0)) / c.sanityMax : 0} 100` }} />
+              </svg>
+              <span className="sanity-core"><strong>{c.sanity ?? "—"}</strong><span>Рассудок</span></span>
+            </button>
+          </div>
+        </header>
+      ) : (
+        <header className="vn-hud">
+          <div className="vn-place">
+            <div className="name">{place.name}</div>
+            <div className="sub">{locationTypeName(R, place.type)}</div>
+          </div>
+          <div className="vn-hud-right">
+            <button className="vn-hero" onClick={() => setPanel("hero")} aria-label="Лист героя">
+              {heroFace ? <img key={heroFace} src={heroFace} alt="" /> : <span className="vn-hero-ph">{c.name[0]}</span>}
+              <span className="vn-hero-info">
+                <span className="n">{c.name}</span>
+                <span key={`hp${view.turnNo}`} className={`vn-hp ${hurt("hp") ? "hurt" : ""}`} role="img" aria-label={`Здоровье ${c.hp} из ${c.hpMax}`}>
+                  <span style={{ width: `${(100 * c.hp) / c.hpMax}%` }} />
+                </span>
+                <span className="vn-stat">{c.hp}/{c.hpMax}{combatEnabled ? ` · КД ${c.ac}` : ""} · {R.money.short(c.gold)}</span>
+              </span>
+            </button>
+            <nav className="vn-tools" aria-label="Панели">
+              <button className="vn-icon" onClick={() => setPanel("quest")} aria-label={`Журнал: ${worldOf(c).ui.quest.toLowerCase()}`}>{Icon.journal}</button>
+              <button className="vn-icon" onClick={() => setPanel("map")} aria-label="Карта" disabled={!!combat}>{Icon.map}</button>
+              <Link className="vn-icon" href="/" aria-label="Главный экран">{Icon.home}</Link>
+            </nav>
+          </div>
+        </header>
+      )}
+      {w.case && !closureActive && (
+        <section className="case-caption" aria-label="Текущее дело">
+          <span className="case-kicker"><i aria-hidden="true" /> Расследование · {w.case.visits}/{w.case.limit}</span>
+          <h1>{w.questTitle}</h1>
+          <p>{Icon.map} {place.name}</p>
+          <time>{locationTypeName(R, place.type)}</time>
+        </section>
+      )}
 
-      <section className={`vn-dock ${closing === "answers" ? "vn-dock-close" : ""}`} hidden={titleCard}>
+      <section className={`vn-dock ${w.case && !closureActive ? "interaction-dock" : ""} ${closing === "answers" ? "vn-dock-close" : ""}`} hidden={titleCard}>
         {closing === "answers" && w.case ? (
           <CloseCase c={w.case} busy={busy} answers={closeAnswers} onChange={setCloseAnswers} onSubmit={submitClose} onCancel={() => { setClosing(null); setError(""); }} />
         ) : finale && w.case?.result && beat ? (
           <CaseFinale result={w.case.result} text={beat.text} />
         ) : (
           <>
-            {(beat || streaming) && (
+            {(beat || streaming) && (w.case ? (
+              <ArkhamTextFrame
+                speaker={heroLine ? c.name : speakerName}
+                role={heroLine ? undefined : role}
+                hero={heroLine}
+                sequence={cursor + 1}
+                emotion={beat?.emotion}
+                onAdvance={!atEnd ? advance : undefined}
+                hint={!atEnd ? "Пробел" : undefined}
+              >
+                {beat ? <BeatText beat={beat} onMark={openMark} /> : <span className="vn-writing">{live?.waiting}</span>}
+                {heroLine && streaming && atEnd ? <div className="vn-writing vn-after">{live?.waiting}</div> : beat && streaming && atEnd && <span className="vn-caret" aria-hidden="true" />}
+              </ArkhamTextFrame>
+            ) : (
               <TextFrame
                 speaker={heroLine ? c.name : speakerName}
                 role={heroLine ? undefined : role}
@@ -478,7 +534,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
                   beat && streaming && atEnd && <span className="vn-caret" aria-hidden="true" />
                 )}
               </TextFrame>
-            )}
+            ))}
             {closing !== "answers" && <Pips total={beats.length} at={cursor} />}
           </>
         )}
@@ -506,6 +562,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
                 items={suggestions}
                 c={c}
                 disabled={busy}
+                material={!!w.case}
                 onPick={(index) => {
                   const s = suggestions[index]!;
                   // «Предъявить» — свой ход: уличит ли улика собеседника, решает игра.
@@ -516,7 +573,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
               />
             )}
             <form
-              className="vn-free"
+              className={`vn-free ${w.case ? "action-form" : ""}`}
               onSubmit={(e) => {
                 e.preventDefault();
                 submit();
@@ -526,7 +583,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
                 Свой вариант
               </label>
               <input id="free" value={text} maxLength={500} onChange={(e) => setText(e.target.value)} placeholder="Или напиши, что делаешь сам…" autoComplete="off" />
-              <button className="btn" disabled={!text.trim()}>
+              <button className={w.case ? "texture-button primary" : "btn"} disabled={!text.trim()}>
                 Действовать
               </button>
             </form>
@@ -560,31 +617,31 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           ))}
         </Drawer>
       )}
-      {panel === "quest" && (
-        <Drawer title={w.case ? "Досье" : "Журнал"} onClose={() => setPanel(null)}>
-          {w.case ? (
-            <CaseFile
-              w={w}
-              busy={busy}
-              focus={focus}
-              onPresent={(clue) => {
-                const x = w.case?.clues.find((k) => k.id === clue);
-                send({ kind: "present", clue }, `Показываю ${w.npc?.name ?? ""}: ${x?.title ?? x?.text ?? "улику"}`);
-              }}
-              onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)}
-              onClose={() => { setPanel(null); setClosing("confirm"); }}
-            />
-          ) : (
-            <>
-              <Quest w={w} doneText={worldOf(c).ui.questDone} />
-              <People w={w} focus={focus} title="Знакомые" />
-              <p className="small muted" style={{ marginTop: 12 }}>
-                {w.hook}
-              </p>
-            </>
-          )}
+      {panel === "quest" && (w.case ? (
+        <ArkhamDossier
+          open
+          onOpenChange={(open) => { if (!open) setPanel(null); }}
+          w={w}
+          busy={busy}
+          selectedClue={selectedClue}
+          onSelectClue={setSelectedClue}
+          tab={dossierTab}
+          onTabChange={setDossierTab}
+          focus={focus}
+          onPresent={(clue) => {
+            const x = w.case?.clues.find((k) => k.id === clue);
+            send({ kind: "present", clue }, `Показываю ${w.npc?.name ?? ""}: ${x?.title ?? x?.text ?? "улику"}`);
+          }}
+          onReconstruct={(t) => send({ kind: "reconstruct", text: t }, `Реконструкция: ${t}`)}
+          onCloseCase={() => { setPanel(null); setClosing("confirm"); }}
+        />
+      ) : (
+        <Drawer title="Журнал" onClose={() => setPanel(null)}>
+          <Quest w={w} doneText={worldOf(c).ui.questDone} />
+          <People w={w} focus={focus} title="Знакомые" />
+          <p className="small muted" style={{ marginTop: 12 }}>{w.hook}</p>
         </Drawer>
-      )}
+      ))}
       {panel === "paper" && w.case && (
         <Drawer title="Газета" onClose={() => setPanel(null)}>
           <Newspaper c={w.case} />
@@ -640,7 +697,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           }}
         />
       )}
-      {dice && <Dice dice={dice} />}
+      {dice && <Dice dice={dice} material={!!w.case} />}
     </div>
   );
 }

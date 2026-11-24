@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { sortEffects, type EffectKind } from "@ash/engine";
 import type { Beat, TurnEffect, TurnView } from "@/lib/client";
 
@@ -80,6 +80,53 @@ export function TextFrame({ speaker, role, children, onAdvance, hint, hero, avat
         </div>
       )}
     </div>
+  );
+}
+
+const EMOTION_RU: Record<string, string> = { fear: "страх", anger: "гнев", sorrow: "печаль", joy: "улыбка", shock: "потрясение" };
+
+/** Материальное окно реплики Аркхэма: растровая бумага, металлическая плашка и игровые находки. */
+export function ArkhamTextFrame({ speaker, role, children, onAdvance, hint, hero, sequence = 1, emotion }: {
+  speaker?: string | null;
+  role?: string;
+  children: ReactNode;
+  onAdvance?: () => void;
+  hint?: string;
+  hero?: boolean;
+  sequence?: number;
+  emotion?: string | null;
+}) {
+  const keyboardAdvance = (e: KeyboardEvent) => {
+    if (!onAdvance || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    onAdvance();
+  };
+  return (
+    <article
+      className={`arkham-dialogue ${speaker ? "" : "narrator"} ${hero ? "hero" : ""} ${onAdvance ? "clickable" : ""}`}
+      onClick={onAdvance}
+      onKeyDown={keyboardAdvance}
+      role={onAdvance ? "button" : undefined}
+      tabIndex={onAdvance ? 0 : undefined}
+      aria-label={onAdvance ? "Дальше" : speaker ? `Реплика: ${speaker}` : "Рассказчик"}
+    >
+      {speaker && (
+        <div className="speaker-caption">
+          <span>{hero ? "Ваше действие" : "Собеседник"}</span>
+          <strong>{speaker}</strong>
+          {role && <small>{role}</small>}
+        </div>
+      )}
+      <div className="dialogue-heading">
+        <span>{String(sequence).padStart(2, "0")} / {hero ? "Действие" : speaker ? "Реплика" : "Рассказ"}</span>
+        {emotion && EMOTION_RU[emotion] && <span className="mood">{EMOTION_RU[emotion]}</span>}
+      </div>
+      <div className="arkham-dialogue-text">{children}</div>
+      <footer className="dialogue-meta">
+        <span>{hero ? "Решение записано" : speaker ? "Разговор продолжается" : "Голос рассказчика"}</span>
+        {hint && <span className="written-note">{hint} · дальше</span>}
+      </footer>
+    </article>
   );
 }
 
